@@ -97,6 +97,8 @@ async function processForUser(
     const price = Number(t.price);
     const usdc = size * price;
 
+    const onchain = await fetchTxInfo(t.transactionHash);
+
     const { data: detIns, error: detErr } = await admin
       .from("detected_trades")
       .insert({
@@ -111,7 +113,7 @@ async function processForUser(
         price,
         size,
         usdc_size: usdc,
-        raw: t as any,
+        raw: { ...t, onchain } as any,
       })
       .select()
       .single();
