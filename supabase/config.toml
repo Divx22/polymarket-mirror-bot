@@ -4,4 +4,4 @@ project_id = "auqqwxxgjusuwqwxwysu"
 verify_jwt = false
 
 [functions.manual-poll]
-verify_jwt = true
+verify_jwt = false
