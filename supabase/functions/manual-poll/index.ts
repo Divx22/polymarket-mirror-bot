@@ -18,8 +18,10 @@ Deno.serve(async (req) => {
     global: { headers: { Authorization: authHeader } },
   });
 
-  const { data: userData, error: uerr } = await userClient.auth.getUser();
-  if (uerr || !userData.user) {
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const { data: claimsData, error: uerr } = await userClient.auth.getClaims(token);
+  const userId = claimsData?.claims?.sub;
+  if (uerr || !userId) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
