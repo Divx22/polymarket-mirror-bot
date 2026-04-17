@@ -1,0 +1,7 @@
+project_id = "auqqwxxgjusuwqwxwysu"
+
+[functions.poll-target-wallet]
+verify_jwt = false
+
+[functions.manual-poll]
+verify_jwt = true
