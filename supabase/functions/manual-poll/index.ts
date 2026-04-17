@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
 
   // Delegate to poll-target-wallet for this user
   const r = await fetch(
-    `${SUPABASE_URL}/functions/v1/poll-target-wallet?user_id=${userData.user.id}`,
+    `${SUPABASE_URL}/functions/v1/poll-target-wallet?user_id=${userId}`,
     {
       method: "POST",
       headers: {
