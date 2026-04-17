@@ -13,6 +13,31 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const DATA_API = "https://data-api.polymarket.com";
 const CLOB_API = "https://clob.polymarket.com";
+const POLYGONSCAN_API = "https://api.polygonscan.com/api";
+const POLYGONSCAN_KEY = Deno.env.get("POLYGONSCAN_API_KEY") ?? "";
+
+async function fetchTxInfo(txHash: string) {
+  if (!POLYGONSCAN_KEY || !txHash) return null;
+  try {
+    const [rcptR, txR] = await Promise.all([
+      fetch(`${POLYGONSCAN_API}?module=proxy&action=eth_getTransactionReceipt&txhash=${txHash}&apikey=${POLYGONSCAN_KEY}`),
+      fetch(`${POLYGONSCAN_API}?module=proxy&action=eth_getTransactionByHash&txhash=${txHash}&apikey=${POLYGONSCAN_KEY}`),
+    ]);
+    const rcpt = (await rcptR.json())?.result ?? null;
+    const tx = (await txR.json())?.result ?? null;
+    if (!rcpt && !tx) return null;
+    return {
+      block_number: rcpt?.blockNumber ? parseInt(rcpt.blockNumber, 16) : null,
+      gas_used: rcpt?.gasUsed ? parseInt(rcpt.gasUsed, 16) : null,
+      status: rcpt?.status === "0x1" ? "success" : rcpt?.status ? "failed" : null,
+      from: tx?.from ?? null,
+      to: tx?.to ?? null,
+    };
+  } catch (e) {
+    console.error("polygonscan err", e);
+    return null;
+  }
+}
 
 type Trade = {
   transactionHash: string;
@@ -72,6 +97,8 @@ async function processForUser(
     const price = Number(t.price);
     const usdc = size * price;
 
+    const onchain = await fetchTxInfo(t.transactionHash);
+
     const { data: detIns, error: detErr } = await admin
       .from("detected_trades")
       .insert({
@@ -86,7 +113,7 @@ async function processForUser(
         price,
         size,
         usdc_size: usdc,
-        raw: t as any,
+        raw: { ...t, onchain } as any,
       })
       .select()
       .single();
