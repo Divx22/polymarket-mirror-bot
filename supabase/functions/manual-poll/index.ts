@@ -18,8 +18,10 @@ Deno.serve(async (req) => {
     global: { headers: { Authorization: authHeader } },
   });
 
-  const { data: userData, error: uerr } = await userClient.auth.getUser();
-  if (uerr || !userData.user) {
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const { data: claimsData, error: uerr } = await userClient.auth.getClaims(token);
+  const userId = claimsData?.claims?.sub;
+  if (uerr || !userId) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -28,7 +30,7 @@ Deno.serve(async (req) => {
 
   // Delegate to poll-target-wallet for this user
   const r = await fetch(
-    `${SUPABASE_URL}/functions/v1/poll-target-wallet?user_id=${userData.user.id}`,
+    `${SUPABASE_URL}/functions/v1/poll-target-wallet?user_id=${userId}`,
     {
       method: "POST",
       headers: {
