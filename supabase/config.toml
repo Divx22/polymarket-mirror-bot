@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.manual-poll]
 verify_jwt = false
+
+[functions.reconcile-positions]
+verify_jwt = false
