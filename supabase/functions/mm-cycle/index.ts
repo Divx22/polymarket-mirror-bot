@@ -138,15 +138,9 @@ async function runForUser(admin: any, userId: string) {
   const signer = new Wallet(POLY_PRIVATE_KEY);
   const client = new ClobClient(CLOB_HOST, CHAIN_ID, signer, creds, POLY_PROXY_SIG, POLY_FUNDER_ADDRESS);
 
-  // Fetch current open orders from Polymarket so we can detect fills
-  let polyOpenIds = new Set<string>();
-  try {
-    const polyOpen: any = await client.getOpenOrders();
-    const list = Array.isArray(polyOpen) ? polyOpen : (polyOpen?.data ?? []);
-    polyOpenIds = new Set(list.map((o: any) => String(o.id ?? o.orderID ?? o.order_id)));
-  } catch (e) {
-    log.notes.errors.push({ stage: "getOpenOrders", error: String((e as any)?.message ?? e) });
-  }
+  // ===== Single source of truth: real Polymarket positions =====
+  const polyPositions = await getPolyPositions();
+
 
   let totalCapital = 0;
 
