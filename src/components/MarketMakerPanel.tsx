@@ -161,14 +161,42 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
 
   const importFromWallet = async () => {
     setImporting(true);
+    setWalletPreview([]);
+    setWalletPicked(new Set());
     try {
-      const { data, error } = await supabase.functions.invoke("mm-import-wallet", { body: { wallet: walletAddr } });
+      const { data, error } = await supabase.functions.invoke("mm-import-wallet", { body: { wallet: walletAddr, preview: true } });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error ?? "Preview failed");
+      const items = data.preview ?? [];
+      if (items.length === 0) {
+        toast.info("No eligible markets found in that wallet");
+      } else {
+        setWalletPreview(items);
+        setWalletPicked(new Set(items.map((i: any) => i.asset_id)));
+        toast.success(`Found ${items.length} eligible markets — pick which to add`);
+      }
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to load wallet");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const confirmWalletImport = async () => {
+    if (walletPicked.size === 0) return;
+    setImporting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("mm-import-wallet", {
+        body: { wallet: walletAddr, token_ids: Array.from(walletPicked) },
+      });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error ?? "Import failed");
-      toast.success(`Found ${data.found} positions, added ${data.added}, skipped ${data.skipped}`);
+      toast.success(`Added ${data.added} markets`);
+      setWalletPreview([]);
+      setWalletPicked(new Set());
       reload();
     } catch (e: any) {
-      toast.error(e.message ?? "Failed to import wallet");
+      toast.error(e.message ?? "Import failed");
     } finally {
       setImporting(false);
     }
