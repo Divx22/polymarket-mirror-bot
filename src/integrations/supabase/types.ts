@@ -245,6 +245,48 @@ export type Database = {
         }
         Relationships: []
       }
+      mm_fills: {
+        Row: {
+          asset_id: string
+          filled_at: string
+          id: string
+          market_question: string | null
+          outcome: string | null
+          poly_order_id: string | null
+          price: number
+          shares: number
+          side: string
+          usdc_value: number
+          user_id: string
+        }
+        Insert: {
+          asset_id: string
+          filled_at?: string
+          id?: string
+          market_question?: string | null
+          outcome?: string | null
+          poly_order_id?: string | null
+          price: number
+          shares: number
+          side: string
+          usdc_value: number
+          user_id: string
+        }
+        Update: {
+          asset_id?: string
+          filled_at?: string
+          id?: string
+          market_question?: string | null
+          outcome?: string | null
+          poly_order_id?: string | null
+          price?: number
+          shares?: number
+          side?: string
+          usdc_value?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       mm_markets: {
         Row: {
           active: boolean

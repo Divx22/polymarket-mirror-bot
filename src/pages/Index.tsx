@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { MarketMakerPanel } from "@/components/MarketMakerPanel";
+import { MyPositionsPanel } from "@/components/MyPositionsPanel";
 import { LogOut } from "lucide-react";
 
 const Index = () => {
@@ -62,6 +63,7 @@ const Index = () => {
 
       <main className="container py-6 space-y-6">
         <MarketMakerPanel userId={userId} />
+        <MyPositionsPanel userId={userId} />
         <p className="text-[11px] text-muted-foreground text-center pt-2">
           Bot cycles every 30 seconds when enabled. Real limit orders placed on Polymarket — caps enforced server-side.
         </p>
