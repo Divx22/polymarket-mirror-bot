@@ -60,6 +60,8 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
   const [running, setRunning] = useState(false);
   const [killing, setKilling] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [walletPreview, setWalletPreview] = useState<Array<{ asset_id: string; market_question: string | null; outcome: string | null; end_date: string | null; shares: number; current_price: number }>>([]);
+  const [walletPicked, setWalletPicked] = useState<Set<string>>(new Set());
 
   const reload = useCallback(async () => {
     if (!userId) return;
@@ -159,14 +161,42 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
 
   const importFromWallet = async () => {
     setImporting(true);
+    setWalletPreview([]);
+    setWalletPicked(new Set());
     try {
-      const { data, error } = await supabase.functions.invoke("mm-import-wallet", { body: { wallet: walletAddr } });
+      const { data, error } = await supabase.functions.invoke("mm-import-wallet", { body: { wallet: walletAddr, preview: true } });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error ?? "Preview failed");
+      const items = data.preview ?? [];
+      if (items.length === 0) {
+        toast.info("No eligible markets found in that wallet");
+      } else {
+        setWalletPreview(items);
+        setWalletPicked(new Set(items.map((i: any) => i.asset_id)));
+        toast.success(`Found ${items.length} eligible markets — pick which to add`);
+      }
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to load wallet");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const confirmWalletImport = async () => {
+    if (walletPicked.size === 0) return;
+    setImporting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("mm-import-wallet", {
+        body: { wallet: walletAddr, token_ids: Array.from(walletPicked) },
+      });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error ?? "Import failed");
-      toast.success(`Found ${data.found} positions, added ${data.added}, skipped ${data.skipped}`);
+      toast.success(`Added ${data.added} markets`);
+      setWalletPreview([]);
+      setWalletPicked(new Set());
       reload();
     } catch (e: any) {
-      toast.error(e.message ?? "Failed to import wallet");
+      toast.error(e.message ?? "Import failed");
     } finally {
       setImporting(false);
     }
@@ -264,9 +294,63 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
           />
           <Button onClick={importFromWallet} disabled={importing || !walletAddr} size="sm" variant="secondary">
             {importing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
-            Copy wallet's markets
+            Preview wallet's markets
           </Button>
         </div>
+        {walletPreview.length > 0 && (
+          <div className="border border-border rounded-md">
+            <div className="flex items-center justify-between p-2 border-b border-border bg-muted/30">
+              <div className="text-[11px] text-muted-foreground">
+                {walletPicked.size} of {walletPreview.length} selected
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="ghost" onClick={() => setWalletPicked(new Set(walletPreview.map((i) => i.asset_id)))}>
+                  All
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setWalletPicked(new Set())}>
+                  None
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => { setWalletPreview([]); setWalletPicked(new Set()); }}>
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={confirmWalletImport} disabled={importing || walletPicked.size === 0}>
+                  {importing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+                  Add {walletPicked.size}
+                </Button>
+              </div>
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              <table className="w-full text-[11px]">
+                <tbody>
+                  {walletPreview.map((p) => (
+                    <tr key={p.asset_id} className="border-b border-border/40">
+                      <td className="p-2 w-6">
+                        <input
+                          type="checkbox"
+                          checked={walletPicked.has(p.asset_id)}
+                          onChange={() => {
+                            setWalletPicked((s) => {
+                              const n = new Set(s);
+                              n.has(p.asset_id) ? n.delete(p.asset_id) : n.add(p.asset_id);
+                              return n;
+                            });
+                          }}
+                          className="cursor-pointer"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <div className="text-foreground">{p.market_question}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {p.outcome} · ends {p.end_date} · {p.shares.toFixed(0)} shares @ {p.current_price.toFixed(3)}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
         <div>
           <Button onClick={fetchCandidates} disabled={loadingCandidates} size="sm" variant="secondary">
             {loadingCandidates ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
