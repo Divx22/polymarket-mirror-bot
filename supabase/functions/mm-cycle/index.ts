@@ -265,24 +265,26 @@ async function runForUser(admin: any, userId: string) {
       }
     }
 
-    // Post SELL if we have inventory
-    if (!stillHaveAsk && inv > 0) {
-      const sellShares = Math.min(inv, sizeUsdc / targetAsk);
-      if (sellShares * targetAsk >= 1) {
+    // Post laddered SELLs: split inventory equally across rungs, skip rungs we already have
+    if (inv > 0 && ladderPrices.length > 0) {
+      const sharesPerRung = inv / ladderPrices.length;
+      for (const rungPrice of ladderPrices) {
+        if (haveAskAt(rungPrice)) continue;
+        if (sharesPerRung * rungPrice < 1) continue; // below Polymarket $1 min
         try {
-          const signed = await client.createOrder({ tokenID: assetId, price: targetAsk, side: Side.SELL, size: sellShares, feeRateBps: 0 });
+          const signed = await client.createOrder({ tokenID: assetId, price: rungPrice, side: Side.SELL, size: sharesPerRung, feeRateBps: 0 });
           const resp: any = await client.postOrder(signed, OrderType.GTC);
           if (resp?.success && resp?.orderID) {
             await admin.from("mm_open_orders").insert({
               user_id: userId, asset_id: assetId, poly_order_id: String(resp.orderID),
-              side: "SELL", price: targetAsk, size: sellShares,
+              side: "SELL", price: rungPrice, size: sharesPerRung,
             });
             log.orders_placed++;
           } else {
-            log.notes.errors.push({ assetId, stage: "postAsk", error: resp?.errorMsg ?? JSON.stringify(resp) });
+            log.notes.errors.push({ assetId, stage: "postAsk", price: rungPrice, error: resp?.errorMsg ?? JSON.stringify(resp) });
           }
         } catch (e) {
-          log.notes.errors.push({ assetId, stage: "postAsk", error: String((e as any)?.message ?? e) });
+          log.notes.errors.push({ assetId, stage: "postAsk", price: rungPrice, error: String((e as any)?.message ?? e) });
         }
       }
     }
