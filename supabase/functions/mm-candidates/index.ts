@@ -52,39 +52,39 @@ Deno.serve(async (req) => {
       .from("mm_markets").select("asset_id").eq("user_id", user.id);
     const existingSet = new Set((existing ?? []).map((r: any) => String(r.asset_id)));
 
-    // Pull ~80 active markets sorted by volume descending
-    const url = `${GAMMA}/markets?active=true&closed=false&order=volume24hr&ascending=false&limit=80`;
+    // Pull a wider net: many longshot multi-outcome markets live in lower-volume tiers
+    const url = `${GAMMA}/markets?active=true&closed=false&order=volume24hr&ascending=false&limit=200`;
     const r = await fetch(url);
     if (!r.ok) throw new Error(`gamma ${r.status}`);
     const markets = await r.json();
 
-    const minEnd = new Date(Date.now() + minDays * 86400000);
-    // Exclude obviously news-driven / event-shock topics
-    const NEWS_REGEX = /\b(war|peace|ceasefire|invasion|attack|nuclear|missile|coup|regime|alien|ufo|impeach|assassin|hostage|fed|rate cut|cpi|inflation|election|primary|debate|trump|biden|putin|xi|israel|iran|gaza|ukraine|russia|china|hamas|taiwan)\b/i;
+    // Require at least 21 days to expiry — Alex's pattern is long-tail
+    const minMs = Math.max(minDays, 21) * 86400000;
+    const minEnd = new Date(Date.now() + minMs);
     const candidates: any[] = [];
 
     for (const m of markets) {
-      if (candidates.length >= 25) break;
+      if (candidates.length >= 40) break;
       const endDate = m.endDate ? new Date(m.endDate) : null;
       if (!endDate || endDate < minEnd) continue;
-      const q: string = String(m.question ?? "");
-      if (NEWS_REGEX.test(q)) continue;
       let tokens: any[] = [];
       try { tokens = typeof m.clobTokenIds === "string" ? JSON.parse(m.clobTokenIds) : (m.clobTokenIds ?? []); } catch { continue; }
       let outcomes: any[] = [];
       try { outcomes = typeof m.outcomes === "string" ? JSON.parse(m.outcomes) : (m.outcomes ?? []); } catch { outcomes = []; }
       if (!tokens.length) continue;
 
-      // Use first outcome (Yes side) for candidate scoring
       const tokenId = String(tokens[0]);
       if (existingSet.has(tokenId)) continue;
       const book = await getBestBidAsk(tokenId);
       if (!book) continue;
-      // Stricter: mid-priced (0.20–0.80) and spread >= 2 cents
-      const mid = (book.bestBid + book.bestAsk) / 2;
-      if (mid < 0.20 || mid > 0.80) continue;
-      if (book.spread < 0.02) continue;
-      if (book.bestBid <= 0 || book.bestAsk >= 1) continue;
+
+      // Cheap longshot pattern: bid 0.01–0.30, spread ≥ 1 cent, ask still well below 0.50
+      if (book.bestBid < 0.01 || book.bestBid > 0.30) continue;
+      if (book.bestAsk > 0.50) continue;
+      if (book.spread < 0.01) continue;
+
+      // Days until resolution — reward longer
+      const daysLeft = Math.max(1, Math.round((endDate.getTime() - Date.now()) / 86400000));
 
       candidates.push({
         asset_id: tokenId,
@@ -96,15 +96,17 @@ Deno.serve(async (req) => {
         best_bid: book.bestBid,
         best_ask: book.bestAsk,
         spread: book.spread,
-        spread_pct: book.spread / mid,
+        spread_pct: book.spread / Math.max(0.01, (book.bestBid + book.bestAsk) / 2),
+        days_left: daysLeft,
         icon: m.icon ?? null,
       });
     }
 
-    // Score: spread × log(volume) — reward both wide spread and active flow
+    // Score: spread% × √days_left × log(1 + volume)
+    // Rewards wide relative spread, long time decay window, and at least some flow
     candidates.sort((a, b) => {
-      const sa = a.spread * Math.log(1 + a.volume_24h);
-      const sb = b.spread * Math.log(1 + b.volume_24h);
+      const sa = a.spread_pct * Math.sqrt(a.days_left) * Math.log(2 + a.volume_24h);
+      const sb = b.spread_pct * Math.sqrt(b.days_left) * Math.log(2 + b.volume_24h);
       return sb - sa;
     });
 
