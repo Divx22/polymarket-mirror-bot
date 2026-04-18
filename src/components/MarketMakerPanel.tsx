@@ -34,6 +34,7 @@ type Cfg = {
   default_spread_offset_ticks: number;
   default_min_existing_spread_ticks: number;
   min_days_to_expiry: number;
+  quote_mode: "inside" | "join" | "passive";
 };
 
 type Candidate = {
