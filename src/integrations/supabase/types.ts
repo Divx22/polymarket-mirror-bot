@@ -16,33 +16,48 @@ export type Database = {
     Tables: {
       config: {
         Row: {
+          auto_execute: boolean
           created_at: string
+          daily_usdc_limit: number
           enabled: boolean
           id: string
           last_polled_at: string | null
           last_seen_ts: number
+          max_usdc_per_trade: number
+          spent_day: string
           target_wallet: string | null
           updated_at: string
+          usdc_spent_today: number
           user_id: string
         }
         Insert: {
+          auto_execute?: boolean
           created_at?: string
+          daily_usdc_limit?: number
           enabled?: boolean
           id?: string
           last_polled_at?: string | null
           last_seen_ts?: number
+          max_usdc_per_trade?: number
+          spent_day?: string
           target_wallet?: string | null
           updated_at?: string
+          usdc_spent_today?: number
           user_id: string
         }
         Update: {
+          auto_execute?: boolean
           created_at?: string
+          daily_usdc_limit?: number
           enabled?: boolean
           id?: string
           last_polled_at?: string | null
           last_seen_ts?: number
+          max_usdc_per_trade?: number
+          spent_day?: string
           target_wallet?: string | null
           updated_at?: string
+          usdc_spent_today?: number
           user_id?: string
         }
         Relationships: []
@@ -130,6 +145,9 @@ export type Database = {
           asset_id: string
           created_at: string
           detected_trade_id: string | null
+          error: string | null
+          executed_at: string | null
+          executed_tx_hash: string | null
           id: string
           intended_price: number | null
           intended_size: number | null
@@ -146,6 +164,9 @@ export type Database = {
           asset_id: string
           created_at?: string
           detected_trade_id?: string | null
+          error?: string | null
+          executed_at?: string | null
+          executed_tx_hash?: string | null
           id?: string
           intended_price?: number | null
           intended_size?: number | null
@@ -162,6 +183,9 @@ export type Database = {
           asset_id?: string
           created_at?: string
           detected_trade_id?: string | null
+          error?: string | null
+          executed_at?: string | null
+          executed_tx_hash?: string | null
           id?: string
           intended_price?: number | null
           intended_size?: number | null
@@ -183,6 +207,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      poly_credentials: {
+        Row: {
+          api_key: string
+          api_passphrase: string
+          api_secret: string
+          created_at: string
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          api_key: string
+          api_passphrase: string
+          api_secret: string
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          api_key?: string
+          api_passphrase?: string
+          api_secret?: string
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
