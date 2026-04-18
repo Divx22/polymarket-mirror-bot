@@ -59,6 +59,7 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
   const [adding, setAdding] = useState(false);
   const [running, setRunning] = useState(false);
   const [killing, setKilling] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const reload = useCallback(async () => {
     if (!userId) return;
@@ -122,6 +123,32 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
 
   const removeMarket = async (id: string) => {
     await supabase.from("mm_markets").delete().eq("id", id);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  };
+  const toggleSelectAll = () => {
+    setSelected((s) => (s.size === markets.length ? new Set() : new Set(markets.map((m) => m.id))));
+  };
+  const removeSelected = async () => {
+    if (selected.size === 0) return;
+    if (!confirm(`Remove ${selected.size} market(s)?`)) return;
+    const ids = Array.from(selected);
+    const { error } = await supabase.from("mm_markets").delete().in("id", ids);
+    if (error) toast.error(error.message);
+    else { toast.success(`Removed ${ids.length}`); setSelected(new Set()); }
+  };
+  const removeAll = async () => {
+    if (markets.length === 0 || !userId) return;
+    if (!confirm(`Remove ALL ${markets.length} markets?`)) return;
+    const { error } = await supabase.from("mm_markets").delete().eq("user_id", userId);
+    if (error) toast.error(error.message);
+    else { toast.success("Removed all"); setSelected(new Set()); }
   };
 
   const importFromWallet = async () => {
@@ -282,6 +309,18 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
         <Stat label="Spread captured" value={`$${totalSpreadCaptured.toFixed(2)}`} tone={totalSpreadCaptured > 0 ? "buy" : "default"} />
       </div>
 
+      {/* Bulk actions */}
+      {markets.length > 0 && (
+        <div className="flex items-center gap-2 mb-2">
+          <Button onClick={removeSelected} disabled={selected.size === 0} size="sm" variant="destructive">
+            <Trash2 className="h-3 w-3 mr-1" /> Remove selected ({selected.size})
+          </Button>
+          <Button onClick={removeAll} size="sm" variant="outline">
+            Remove all
+          </Button>
+        </div>
+      )}
+
       {/* Live table */}
       {markets.length === 0 ? (
         <div className="text-xs text-muted-foreground py-6 text-center">
@@ -292,6 +331,14 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
           <table className="w-full text-xs">
             <thead className="text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border">
               <tr>
+                <th className="py-2 pr-2 w-8">
+                  <input
+                    type="checkbox"
+                    checked={selected.size === markets.length && markets.length > 0}
+                    onChange={toggleSelectAll}
+                    className="cursor-pointer"
+                  />
+                </th>
                 <th className="text-left py-2 pr-2 font-medium">Market</th>
                 <th className="text-right py-2 px-2 font-medium">Book bid/ask</th>
                 <th className="text-right py-2 px-2 font-medium">My bid/ask</th>
@@ -303,6 +350,14 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
             <tbody>
               {markets.map((m) => (
                 <tr key={m.id} className="border-b border-border/40">
+                  <td className="py-2 pr-2">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(m.id)}
+                      onChange={() => toggleSelect(m.id)}
+                      className="cursor-pointer"
+                    />
+                  </td>
                   <td className="py-2 pr-2 max-w-[260px]">
                     <div className="truncate text-foreground">{m.market_question}</div>
                     <div className="text-[10px] text-muted-foreground">
