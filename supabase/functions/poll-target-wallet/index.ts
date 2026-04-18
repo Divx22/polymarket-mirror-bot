@@ -247,7 +247,7 @@ async function processForUser(
     const intendedSize = size; // 1:1 mirror
     const intendedUsdc = intendedSize * intendedPrice;
 
-    await admin.from("paper_orders").insert({
+    const { data: paperIns } = await admin.from("paper_orders").insert({
       user_id: cfg.user_id,
       detected_trade_id: detIns.id,
       side,
@@ -260,7 +260,35 @@ async function processForUser(
       intended_usdc: intendedUsdc,
       status: "simulated",
       note: mid == null ? "midpoint unavailable; used target's fill price" : null,
-    });
+    }).select().single();
+
+    // Auto-execute if enabled and within caps
+    if (cfg.auto_execute && paperIns?.id) {
+      const today = new Date().toISOString().slice(0, 10);
+      const spent = cfg.spent_day === today ? Number(cfg.usdc_spent_today ?? 0) : 0;
+      const withinPerTrade = intendedUsdc <= Number(cfg.max_usdc_per_trade ?? 0);
+      const withinDaily = spent + intendedUsdc <= Number(cfg.daily_usdc_limit ?? 0);
+      if (withinPerTrade && withinDaily) {
+        try {
+          const r = await fetch(`${SUPABASE_URL}/functions/v1/execute-order`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${SERVICE_ROLE}`,
+            },
+            body: JSON.stringify({ paper_order_id: paperIns.id, user_id: cfg.user_id }),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) console.error("auto-execute failed", j);
+        } catch (e) {
+          console.error("auto-execute exception", e);
+        }
+      } else {
+        await admin.from("paper_orders").update({
+          note: `Auto-execute skipped: ${!withinPerTrade ? "exceeds per-trade cap" : "exceeds daily cap"}`,
+        }).eq("id", paperIns.id);
+      }
+    }
 
     // Cache market metadata
     await admin.from("markets_cache").upsert({
