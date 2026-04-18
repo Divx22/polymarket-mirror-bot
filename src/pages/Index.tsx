@@ -130,10 +130,10 @@ const Index = () => {
         />
         <ConfigCard config={config} onChange={reload} />
         <TradesFeed trades={trades} />
-        <PaperLedger orders={orders} />
+        <PaperLedger orders={orders} onChange={reload} />
         <p className="text-[11px] text-muted-foreground text-center pt-2">
-          Auto-poll runs every 1 minute when enabled. Use "Check now" for an
-          immediate fetch. No live orders are placed.
+          Auto-poll runs every 1 minute when enabled. Live trading places real
+          limit orders on Polymarket — caps enforced server-side.
         </p>
       </main>
     </div>
