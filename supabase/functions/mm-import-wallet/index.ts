@@ -56,8 +56,12 @@ Deno.serve(async (req) => {
     }
 
     const positions = await fetchPositions(wallet);
-    // Dedup by token id
-    const tokenIds = Array.from(new Set(positions.map((p) => String(p.asset ?? p.token_id ?? "")).filter(Boolean)));
+    // Dedup by token id (filter to selected ones if provided)
+    let tokenIds = Array.from(new Set(positions.map((p) => String(p.asset ?? p.token_id ?? "")).filter(Boolean)));
+    if (selectedTokenIds) {
+      const sel = new Set(selectedTokenIds);
+      tokenIds = tokenIds.filter((t) => sel.has(t));
+    }
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -66,6 +70,7 @@ Deno.serve(async (req) => {
     let added = 0;
     let skipped = 0;
     const errors: string[] = [];
+    const previewItems: any[] = [];
 
     for (const tokenId of tokenIds) {
       try {
@@ -82,6 +87,20 @@ Deno.serve(async (req) => {
         try { outcomes = typeof market.outcomes === "string" ? JSON.parse(market.outcomes) : (market.outcomes ?? []); } catch { outcomes = []; }
         const idx = tokens.findIndex((t: any) => String(t) === tokenId);
         const outcome = idx >= 0 ? (outcomes[idx] ?? null) : null;
+        const endDate = market.endDate ? String(market.endDate).slice(0, 10) : null;
+
+        if (previewOnly) {
+          const pos = positions.find((p: any) => String(p.asset ?? p.token_id) === tokenId);
+          previewItems.push({
+            asset_id: tokenId,
+            market_question: market.question ?? null,
+            outcome,
+            end_date: endDate,
+            shares: Number(pos?.size ?? pos?.shares ?? 0),
+            current_price: Number(pos?.curPrice ?? pos?.current_price ?? 0),
+          });
+          continue;
+        }
 
         const row = {
           user_id: user.id,
@@ -89,7 +108,7 @@ Deno.serve(async (req) => {
           condition_id: market.conditionId ?? null,
           market_question: market.question ?? null,
           outcome,
-          end_date: market.endDate ? String(market.endDate).slice(0, 10) : null,
+          end_date: endDate,
           active: true,
         };
         const { error } = await admin.from("mm_markets").upsert(row, { onConflict: "user_id,asset_id" });
@@ -98,6 +117,12 @@ Deno.serve(async (req) => {
         errors.push(String((e as any)?.message ?? e));
         skipped++;
       }
+    }
+
+    if (previewOnly) {
+      return new Response(JSON.stringify({ ok: true, preview: previewItems }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     return new Response(JSON.stringify({ ok: true, found: tokenIds.length, added, skipped, errors: errors.slice(0, 5) }), {
