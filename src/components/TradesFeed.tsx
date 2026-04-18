@@ -72,6 +72,7 @@ export const TradesFeed = ({
               <th className="text-right px-3 py-2 font-medium">Price</th>
               <th className="text-right px-3 py-2 font-medium">Size</th>
               <th className="text-right px-3 py-2 font-medium">USDC</th>
+              <th className="text-right px-3 py-2 font-medium">Order</th>
               <th className="text-right px-3 py-2 font-medium">Tx</th>
               <th className="text-right px-5 py-2 font-medium">Mirror</th>
             </tr>
