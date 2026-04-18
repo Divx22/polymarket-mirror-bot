@@ -16,6 +16,10 @@ type Trade = {
   price: number | null;
   size: number | null;
   usdc_size: number | null;
+  order_id?: string | null;
+  order_original_size?: number | null;
+  order_original_usdc?: number | null;
+  is_partial_fill?: boolean | null;
 };
 
 export const TradesFeed = ({
