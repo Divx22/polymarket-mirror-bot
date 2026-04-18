@@ -54,6 +54,8 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [pasteUrl, setPasteUrl] = useState("");
+  const [walletAddr, setWalletAddr] = useState("0x6480542954b70a674a74bd1a6015dec362dc8dc5");
+  const [importing, setImporting] = useState(false);
   const [adding, setAdding] = useState(false);
   const [running, setRunning] = useState(false);
   const [killing, setKilling] = useState(false);
@@ -116,6 +118,21 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
 
   const removeMarket = async (id: string) => {
     await supabase.from("mm_markets").delete().eq("id", id);
+  };
+
+  const importFromWallet = async () => {
+    setImporting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("mm-import-wallet", { body: { wallet: walletAddr } });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error ?? "Import failed");
+      toast.success(`Found ${data.found} positions, added ${data.added}, skipped ${data.skipped}`);
+      reload();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to import wallet");
+    } finally {
+      setImporting(false);
+    }
   };
 
   const runCycle = async () => {
@@ -199,6 +216,18 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
           />
           <Button onClick={() => addMarket({ url: pasteUrl })} disabled={adding || !pasteUrl} size="sm">
             <Plus className="h-4 w-4 mr-1" /> Add
+          </Button>
+        </div>
+        <div className="flex gap-2">
+          <Input
+            placeholder="Wallet address (0x…) — copy all active markets it holds"
+            value={walletAddr}
+            onChange={(e) => setWalletAddr(e.target.value)}
+            className="text-xs font-mono-num"
+          />
+          <Button onClick={importFromWallet} disabled={importing || !walletAddr} size="sm" variant="secondary">
+            {importing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+            Copy wallet's markets
           </Button>
         </div>
         <div>
