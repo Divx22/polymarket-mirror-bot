@@ -24,6 +24,10 @@ export type Database = {
           last_polled_at: string | null
           last_seen_ts: number
           max_usdc_per_trade: number
+          mirror_mode: string
+          mirror_ratio: number
+          reconcile_interval_min: number
+          signal_threshold_usdc: number
           spent_day: string
           target_wallet: string | null
           updated_at: string
@@ -39,6 +43,10 @@ export type Database = {
           last_polled_at?: string | null
           last_seen_ts?: number
           max_usdc_per_trade?: number
+          mirror_mode?: string
+          mirror_ratio?: number
+          reconcile_interval_min?: number
+          signal_threshold_usdc?: number
           spent_day?: string
           target_wallet?: string | null
           updated_at?: string
@@ -54,6 +62,10 @@ export type Database = {
           last_polled_at?: string | null
           last_seen_ts?: number
           max_usdc_per_trade?: number
+          mirror_mode?: string
+          mirror_ratio?: number
+          reconcile_interval_min?: number
+          signal_threshold_usdc?: number
           spent_day?: string
           target_wallet?: string | null
           updated_at?: string
@@ -245,6 +257,51 @@ export type Database = {
           api_secret?: string
           created_at?: string
           id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      positions: {
+        Row: {
+          asset_id: string
+          created_at: string
+          id: string
+          last_reconciled_at: string | null
+          last_target_price: number | null
+          market_id: string | null
+          market_question: string | null
+          mirror_shares: number
+          outcome: string | null
+          target_shares: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          asset_id: string
+          created_at?: string
+          id?: string
+          last_reconciled_at?: string | null
+          last_target_price?: number | null
+          market_id?: string | null
+          market_question?: string | null
+          mirror_shares?: number
+          outcome?: string | null
+          target_shares?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          asset_id?: string
+          created_at?: string
+          id?: string
+          last_reconciled_at?: string | null
+          last_target_price?: number | null
+          market_id?: string | null
+          market_question?: string | null
+          mirror_shares?: number
+          outcome?: string | null
+          target_shares?: number
           updated_at?: string
           user_id?: string
         }
