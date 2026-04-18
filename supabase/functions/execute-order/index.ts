@@ -163,8 +163,12 @@ async function paperOrderFromDetected(
   const fullUsdc = Number(trade.usdc_size ?? 0);
   const price = Number(trade.price ?? 0);
   if (!price) throw new Error("trade has no price");
-  // Scale down to cap if needed
-  const intendedUsdc = Math.min(fullUsdc || cap, cap);
+  // Polymarket min order size is $1. Cap above, floor at $1.
+  const MIN_USDC = 1;
+  if (cap < MIN_USDC) {
+    throw new Error(`max_usdc_per_trade ($${cap}) is below Polymarket minimum ($${MIN_USDC}) — raise it in Config`);
+  }
+  const intendedUsdc = Math.max(MIN_USDC, Math.min(fullUsdc || cap, cap));
   const intendedSize = intendedUsdc / price;
 
   const { data: inserted, error: iErr } = await admin
