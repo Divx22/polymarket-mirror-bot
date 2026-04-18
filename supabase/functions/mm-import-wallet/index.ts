@@ -45,6 +45,10 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const wallet = String(body.wallet ?? "").trim().toLowerCase();
+    const previewOnly = body.preview === true;
+    const selectedTokenIds: string[] | null = Array.isArray(body.token_ids) && body.token_ids.length
+      ? body.token_ids.map((x: any) => String(x))
+      : null;
     if (!/^0x[a-f0-9]{40}$/.test(wallet)) {
       return new Response(JSON.stringify({ ok: false, error: "Provide a valid wallet address" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
