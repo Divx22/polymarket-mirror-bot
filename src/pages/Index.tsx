@@ -39,13 +39,13 @@ const Index = () => {
         .select("*")
         .eq("user_id", userId)
         .order("trade_ts", { ascending: false })
-        .limit(100),
+        .limit(25),
       supabase
         .from("paper_orders")
         .select("*")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
-        .limit(100),
+        .limit(25),
     ]);
     setConfig(c.data);
     setTrades(t.data ?? []);
