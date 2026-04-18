@@ -81,28 +81,33 @@ async function fetchGoldskyFills(wallet: string) {
 const marketMetaCache = new Map<string, any>();
 async function fetchMarketMeta(assetId: string) {
   if (marketMetaCache.has(assetId)) return marketMetaCache.get(assetId);
+  let meta = { conditionId: null as string | null, title: null as string | null, outcome: null as string | null };
   try {
-    const r = await fetch(`${CLOB_API}/markets/${assetId}`);
+    const r = await fetch(
+      `https://gamma-api.polymarket.com/markets?clob_token_ids=${assetId}`,
+    );
     if (r.ok) {
-      const j = await r.json();
-      const meta = {
-        conditionId: j.condition_id ?? null,
-        title: j.question ?? null,
-        outcome: null as string | null,
-      };
-      // find outcome name matching token id
-      const tokens = j.tokens ?? [];
-      const tk = tokens.find((t: any) => String(t.token_id) === String(assetId));
-      if (tk) meta.outcome = tk.outcome ?? null;
-      marketMetaCache.set(assetId, meta);
-      return meta;
+      const arr = await r.json();
+      const m = Array.isArray(arr) ? arr[0] : null;
+      if (m) {
+        meta.conditionId = m.conditionId ?? null;
+        meta.title = m.question ?? null;
+        // outcomes & clobTokenIds are JSON-encoded strings on gamma
+        try {
+          const outs = typeof m.outcomes === "string" ? JSON.parse(m.outcomes) : m.outcomes;
+          const tids = typeof m.clobTokenIds === "string" ? JSON.parse(m.clobTokenIds) : m.clobTokenIds;
+          if (Array.isArray(outs) && Array.isArray(tids)) {
+            const idx = tids.findIndex((t: any) => String(t) === String(assetId));
+            if (idx >= 0) meta.outcome = outs[idx] ?? null;
+          }
+        } catch { /* ignore */ }
+      }
     }
   } catch (e) {
     console.error("market meta err", e);
   }
-  const empty = { conditionId: null, title: null, outcome: null };
-  marketMetaCache.set(assetId, empty);
-  return empty;
+  marketMetaCache.set(assetId, meta);
+  return meta;
 }
 
 // Convert a Goldsky fill to a normalized Trade for the wallet.
