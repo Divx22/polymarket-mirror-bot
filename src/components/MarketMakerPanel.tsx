@@ -83,8 +83,12 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
 
   const updateCfg = async (patch: Partial<Cfg>) => {
     if (!cfg) return;
+    setCfg({ ...cfg, ...patch });
     const { error } = await supabase.from("mm_config").update(patch).eq("id", cfg.id);
-    if (error) toast.error(error.message);
+    if (error) {
+      toast.error(error.message);
+      reload();
+    }
   };
 
   const fetchCandidates = async () => {
