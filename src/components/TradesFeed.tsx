@@ -111,6 +111,27 @@ export const TradesFeed = ({
                 <td className="px-3 py-2.5 text-right font-mono-num">
                   {fmtUsd(t.usdc_size)}
                 </td>
+                <td className="px-3 py-2.5 text-right font-mono-num text-xs">
+                  {t.order_original_usdc != null ? (
+                    <span
+                      title={t.order_id ?? ""}
+                      className="inline-flex items-center gap-1.5"
+                    >
+                      <span className="text-muted-foreground">
+                        {fmtUsd(t.usdc_size)}
+                      </span>
+                      <span className="text-muted-foreground/60">/</span>
+                      <span>{fmtUsd(t.order_original_usdc)}</span>
+                      {t.is_partial_fill && (
+                        <span className="ml-1 px-1.5 py-0.5 rounded bg-surface-2 text-[9px] uppercase tracking-wider text-muted-foreground">
+                          partial
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground/50">—</span>
+                  )}
+                </td>
                 <td className="px-3 py-2.5 text-right">
                   <a
                     href={`https://polygonscan.com/tx/${t.tx_hash}`}
