@@ -265,11 +265,23 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
       )}
 
       {/* Settings */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
         <SettingNum label="Size / side ($)" value={cfg.default_size_usdc} onChange={(v) => updateCfg({ default_size_usdc: v })} step={0.5} />
         <SettingNum label="Max inv / mkt ($)" value={cfg.default_max_inventory_usdc} onChange={(v) => updateCfg({ default_max_inventory_usdc: v })} step={1} />
         <SettingNum label="Total cap ($)" value={cfg.total_capital_cap_usdc} onChange={(v) => updateCfg({ total_capital_cap_usdc: v })} step={5} />
         <SettingNum label="Min spread (ticks)" value={cfg.default_min_existing_spread_ticks} onChange={(v) => updateCfg({ default_min_existing_spread_ticks: v })} step={1} />
+        <div>
+          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Quote mode</Label>
+          <select
+            value={cfg.quote_mode}
+            onChange={(e) => updateCfg({ quote_mode: e.target.value as Cfg["quote_mode"] })}
+            className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-xs"
+          >
+            <option value="join">join (at best)</option>
+            <option value="inside">inside (1 tick in)</option>
+            <option value="passive">passive (1 tick out)</option>
+          </select>
+        </div>
       </div>
 
       {/* Add markets */}
