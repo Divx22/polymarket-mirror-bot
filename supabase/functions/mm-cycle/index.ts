@@ -119,6 +119,10 @@ async function runForUser(admin: any, userId: string) {
     const book = await getBook(assetId);
     if (!book) {
       log.notes.skipped.push({ assetId, reason: "no book" });
+      await admin.from("mm_markets").update({
+        last_cycle_at: new Date().toISOString(),
+        last_error: "no order book returned",
+      }).eq("id", mkt.id);
       continue;
     }
 
