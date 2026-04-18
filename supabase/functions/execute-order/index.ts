@@ -1,7 +1,9 @@
 // Executes a paper_order as a real GTC limit order on Polymarket CLOB.
 // Uses the user's Polymarket proxy wallet (signatureType = POLY_PROXY).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { ClobClient, Side, OrderType, SignatureType } from "npm:@polymarket/clob-client@4.21.0";
+import { ClobClient, Side, OrderType } from "npm:@polymarket/clob-client@4.21.0";
+// Polymarket signature types: EOA=0, POLY_PROXY=1, POLY_GNOSIS_SAFE=2
+const POLY_PROXY_SIG = 1;
 import { Wallet } from "npm:ethers@5.7.2";
 
 const corsHeaders = {
@@ -79,7 +81,7 @@ async function execute(admin: ReturnType<typeof createClient>, userId: string, p
     CHAIN_ID,
     signer,
     creds,
-    SignatureType.POLY_PROXY,
+    POLY_PROXY_SIG,
     POLY_FUNDER_ADDRESS,
   );
 
