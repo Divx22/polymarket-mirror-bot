@@ -122,7 +122,9 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
   };
 
   const removeMarket = async (id: string) => {
-    await supabase.from("mm_markets").delete().eq("id", id);
+    setMarkets((ms) => ms.filter((m) => m.id !== id));
+    const { error } = await supabase.from("mm_markets").delete().eq("id", id);
+    if (error) { toast.error(error.message); reload(); }
   };
 
   const toggleSelect = (id: string) => {
@@ -139,16 +141,20 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
     if (selected.size === 0) return;
     if (!confirm(`Remove ${selected.size} market(s)?`)) return;
     const ids = Array.from(selected);
+    setMarkets((ms) => ms.filter((m) => !selected.has(m.id)));
+    setSelected(new Set());
     const { error } = await supabase.from("mm_markets").delete().in("id", ids);
-    if (error) toast.error(error.message);
-    else { toast.success(`Removed ${ids.length}`); setSelected(new Set()); }
+    if (error) { toast.error(error.message); reload(); }
+    else toast.success(`Removed ${ids.length}`);
   };
   const removeAll = async () => {
     if (markets.length === 0 || !userId) return;
     if (!confirm(`Remove ALL ${markets.length} markets?`)) return;
+    setMarkets([]);
+    setSelected(new Set());
     const { error } = await supabase.from("mm_markets").delete().eq("user_id", userId);
-    if (error) toast.error(error.message);
-    else { toast.success("Removed all"); setSelected(new Set()); }
+    if (error) { toast.error(error.message); reload(); }
+    else toast.success("Removed all");
   };
 
   const importFromWallet = async () => {
