@@ -99,7 +99,7 @@ export const PositionsPanel = ({
 
       {visible.length === 0 ? (
         <div className="text-xs text-muted-foreground py-6 text-center">
-          No positions yet. Run a poll, then a reconcile to populate.
+          Click Reconcile now to populate from the target's live portfolio.
         </div>
       ) : (
         <div className="overflow-x-auto">
