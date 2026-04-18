@@ -60,6 +60,8 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
   const [running, setRunning] = useState(false);
   const [killing, setKilling] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [walletPreview, setWalletPreview] = useState<Array<{ asset_id: string; market_question: string | null; outcome: string | null; end_date: string | null; shares: number; current_price: number }>>([]);
+  const [walletPicked, setWalletPicked] = useState<Set<string>>(new Set());
 
   const reload = useCallback(async () => {
     if (!userId) return;
