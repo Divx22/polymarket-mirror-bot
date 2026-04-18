@@ -204,7 +204,7 @@ async function processForUser(
     const side = String(t.side).toUpperCase();
     const size = Number(t.size);
     const price = Number(t.price);
-    const usdc = size * price;
+    const usdc = Number((t as any)._usdc ?? size * price);
 
     const onchain = await fetchTxInfo(t.transactionHash);
 
