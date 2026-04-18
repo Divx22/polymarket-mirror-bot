@@ -4,7 +4,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { ConfigCard } from "@/components/ConfigCard";
 import { TradesFeed } from "@/components/TradesFeed";
-import { PaperLedger } from "@/components/PaperLedger";
 import { StatsRow } from "@/components/StatsRow";
 import { PnLPanel } from "@/components/PnLPanel";
 import { LogOut } from "lucide-react";
@@ -131,8 +130,7 @@ const Index = () => {
         />
         <PnLPanel />
         <ConfigCard config={config} onChange={reload} />
-        <TradesFeed trades={trades} />
-        <PaperLedger orders={orders} onChange={reload} />
+        <TradesFeed trades={trades} onChange={reload} />
         <p className="text-[11px] text-muted-foreground text-center pt-2">
           Auto-poll runs every 1 minute when enabled. Live trading places real
           limit orders on Polymarket — caps enforced server-side.
