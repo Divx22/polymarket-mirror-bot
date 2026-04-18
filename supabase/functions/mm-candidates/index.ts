@@ -59,12 +59,16 @@ Deno.serve(async (req) => {
     const markets = await r.json();
 
     const minEnd = new Date(Date.now() + minDays * 86400000);
+    // Exclude obviously news-driven / event-shock topics
+    const NEWS_REGEX = /\b(war|peace|ceasefire|invasion|attack|nuclear|missile|coup|regime|alien|ufo|impeach|assassin|hostage|fed|rate cut|cpi|inflation|election|primary|debate|trump|biden|putin|xi|israel|iran|gaza|ukraine|russia|china|hamas|taiwan)\b/i;
     const candidates: any[] = [];
 
     for (const m of markets) {
       if (candidates.length >= 25) break;
       const endDate = m.endDate ? new Date(m.endDate) : null;
       if (!endDate || endDate < minEnd) continue;
+      const q: string = String(m.question ?? "");
+      if (NEWS_REGEX.test(q)) continue;
       let tokens: any[] = [];
       try { tokens = typeof m.clobTokenIds === "string" ? JSON.parse(m.clobTokenIds) : (m.clobTokenIds ?? []); } catch { continue; }
       let outcomes: any[] = [];
@@ -76,9 +80,10 @@ Deno.serve(async (req) => {
       if (existingSet.has(tokenId)) continue;
       const book = await getBestBidAsk(tokenId);
       if (!book) continue;
-      // Want spread >= 2 ticks (a tick is $0.001 in cheap markets, $0.01 mid)
-      // Filter: spread >= 0.002 AND best_bid > 0 AND best_ask < 1
-      if (book.spread < 0.002) continue;
+      // Stricter: mid-priced (0.20–0.80) and spread >= 2 cents
+      const mid = (book.bestBid + book.bestAsk) / 2;
+      if (mid < 0.20 || mid > 0.80) continue;
+      if (book.spread < 0.02) continue;
       if (book.bestBid <= 0 || book.bestAsk >= 1) continue;
 
       candidates.push({
@@ -91,7 +96,7 @@ Deno.serve(async (req) => {
         best_bid: book.bestBid,
         best_ask: book.bestAsk,
         spread: book.spread,
-        spread_pct: book.spread / ((book.bestBid + book.bestAsk) / 2),
+        spread_pct: book.spread / mid,
         icon: m.icon ?? null,
       });
     }
