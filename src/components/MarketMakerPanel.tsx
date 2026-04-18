@@ -59,6 +59,7 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
   const [adding, setAdding] = useState(false);
   const [running, setRunning] = useState(false);
   const [killing, setKilling] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const reload = useCallback(async () => {
     if (!userId) return;
