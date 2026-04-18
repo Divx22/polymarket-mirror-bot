@@ -52,12 +52,121 @@ type Trade = {
   outcomeIndex?: number;
 };
 
-async function fetchTrades(wallet: string): Promise<Trade[]> {
-  const url = `${DATA_API}/trades?user=${wallet}&limit=50`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`data-api ${r.status}: ${await r.text()}`);
-  const data = await r.json();
-  return Array.isArray(data) ? data : data.data ?? [];
+const GOLDSKY_URL =
+  "https://api.goldsky.com/api/public/project_cl6mb8i9h0003e201j6li0diw/subgraphs/orderbook-subgraph/0.0.1/gn";
+
+// Fetch decoded fills from Goldsky (low-latency on-chain index).
+// Includes events where wallet is maker OR taker.
+async function fetchGoldskyFills(wallet: string) {
+  const q = `{
+    asMaker: orderFilledEvents(first: 50, orderBy: timestamp, orderDirection: desc, where: {maker: "${wallet}"}) {
+      id transactionHash timestamp maker taker makerAssetId takerAssetId makerAmountFilled takerAmountFilled
+    }
+    asTaker: orderFilledEvents(first: 50, orderBy: timestamp, orderDirection: desc, where: {taker: "${wallet}"}) {
+      id transactionHash timestamp maker taker makerAssetId takerAssetId makerAmountFilled takerAmountFilled
+    }
+  }`;
+  const r = await fetch(GOLDSKY_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query: q }),
+  });
+  if (!r.ok) throw new Error(`goldsky ${r.status}: ${await r.text()}`);
+  const j = await r.json();
+  if (j.errors) throw new Error(`goldsky errors: ${JSON.stringify(j.errors)}`);
+  return [...(j.data?.asMaker ?? []), ...(j.data?.asTaker ?? [])];
+}
+
+// Cache for asset_id -> { conditionId, title, outcome }
+const marketMetaCache = new Map<string, any>();
+async function fetchMarketMeta(assetId: string) {
+  if (marketMetaCache.has(assetId)) return marketMetaCache.get(assetId);
+  try {
+    const r = await fetch(`${CLOB_API}/markets/${assetId}`);
+    if (r.ok) {
+      const j = await r.json();
+      const meta = {
+        conditionId: j.condition_id ?? null,
+        title: j.question ?? null,
+        outcome: null as string | null,
+      };
+      // find outcome name matching token id
+      const tokens = j.tokens ?? [];
+      const tk = tokens.find((t: any) => String(t.token_id) === String(assetId));
+      if (tk) meta.outcome = tk.outcome ?? null;
+      marketMetaCache.set(assetId, meta);
+      return meta;
+    }
+  } catch (e) {
+    console.error("market meta err", e);
+  }
+  const empty = { conditionId: null, title: null, outcome: null };
+  marketMetaCache.set(assetId, empty);
+  return empty;
+}
+
+// Convert a Goldsky fill to a normalized Trade for the wallet.
+// USDC asset id is "0". If wallet is maker selling tokens for USDC -> SELL.
+// If wallet is maker buying tokens with USDC -> BUY. Same logic mirrored for taker.
+function normalizeFill(f: any, wallet: string) {
+  const isMaker = f.maker.toLowerCase() === wallet;
+  const myGives = isMaker ? f.makerAssetId : f.takerAssetId;
+  const myGivesAmt = isMaker ? f.makerAmountFilled : f.takerAmountFilled;
+  const myGets = isMaker ? f.takerAssetId : f.makerAssetId;
+  const myGetsAmt = isMaker ? f.takerAmountFilled : f.makerAmountFilled;
+
+  // USDC is asset "0", 6 decimals. Outcome shares are 6 decimals too on Polygon CTF.
+  const USDC = "0";
+  let side: "BUY" | "SELL";
+  let asset: string;
+  let shares: number;
+  let usdc: number;
+
+  if (myGives === USDC && myGets !== USDC) {
+    side = "BUY";
+    asset = myGets;
+    shares = Number(myGetsAmt) / 1e6;
+    usdc = Number(myGivesAmt) / 1e6;
+  } else if (myGets === USDC && myGives !== USDC) {
+    side = "SELL";
+    asset = myGives;
+    shares = Number(myGivesAmt) / 1e6;
+    usdc = Number(myGetsAmt) / 1e6;
+  } else {
+    return null; // token-for-token swap, ignore
+  }
+  const price = shares > 0 ? usdc / shares : 0;
+  return {
+    transactionHash: f.transactionHash,
+    timestamp: Number(f.timestamp),
+    side,
+    size: shares,
+    price,
+    asset,
+    _usdc: usdc,
+    _eventId: f.id,
+  };
+}
+
+async function fetchTrades(wallet: string) {
+  const fills = await fetchGoldskyFills(wallet);
+  // Dedupe by event id (asMaker/asTaker may overlap if wallet trades with itself)
+  const seen = new Set<string>();
+  const norm = [];
+  for (const f of fills) {
+    if (seen.has(f.id)) continue;
+    seen.add(f.id);
+    const n = normalizeFill(f, wallet);
+    if (n) norm.push(n);
+  }
+  // Enrich with market metadata
+  for (const t of norm) {
+    const meta = await fetchMarketMeta(t.asset);
+    (t as any).conditionId = meta.conditionId;
+    (t as any).title = meta.title;
+    (t as any).outcome = meta.outcome;
+  }
+  return norm;
 }
 
 async function fetchMidpoint(tokenId: string): Promise<number | null> {
@@ -95,7 +204,7 @@ async function processForUser(
     const side = String(t.side).toUpperCase();
     const size = Number(t.size);
     const price = Number(t.price);
-    const usdc = size * price;
+    const usdc = Number((t as any)._usdc ?? size * price);
 
     const onchain = await fetchTxInfo(t.transactionHash);
 
