@@ -169,6 +169,37 @@ async function processForUser(
     })
     .eq("user_id", cfg.user_id);
 
+  // Keep only the 25 most recent trades & orders to avoid clutter
+  const { data: keepTrades } = await admin
+    .from("detected_trades")
+    .select("id")
+    .eq("user_id", cfg.user_id)
+    .order("trade_ts", { ascending: false })
+    .limit(25);
+  const keepIds = (keepTrades ?? []).map((r: any) => r.id);
+  if (keepIds.length > 0) {
+    await admin
+      .from("detected_trades")
+      .delete()
+      .eq("user_id", cfg.user_id)
+      .not("id", "in", `(${keepIds.join(",")})`);
+  }
+
+  const { data: keepOrders } = await admin
+    .from("paper_orders")
+    .select("id")
+    .eq("user_id", cfg.user_id)
+    .order("created_at", { ascending: false })
+    .limit(25);
+  const keepOrderIds = (keepOrders ?? []).map((r: any) => r.id);
+  if (keepOrderIds.length > 0) {
+    await admin
+      .from("paper_orders")
+      .delete()
+      .eq("user_id", cfg.user_id)
+      .not("id", "in", `(${keepOrderIds.join(",")})`);
+  }
+
   return { wallet, inserted, total: trades.length };
 }
 
