@@ -209,11 +209,24 @@ async function runForUser(admin: any, userId: string) {
       }
     }
 
-    // ---- Cancel any remaining open orders that aren't at target price
+    // Pre-compute the sell ladder so we know which SELL prices are valid this cycle
+    const ladderRungs = Math.max(1, Number(cfg.sell_ladder_rungs ?? 4));
+    const ladderSpacing = Math.max(1, Number(cfg.sell_ladder_spacing_ticks ?? 2));
+    const ladderPrices: number[] = [];
+    for (let i = 0; i < ladderRungs; i++) {
+      const p = roundTick(targetAsk + i * ladderSpacing * TICK);
+      if (p < 1) ladderPrices.push(p);
+    }
+    const isOnLadder = (price: number) =>
+      ladderPrices.some((lp) => Math.abs(lp - price) < TICK / 2);
+
+    // ---- Cancel any remaining open orders not at a valid target
     for (const o of prior) {
-      if (!polyOpenIds.has(String(o.poly_order_id))) continue; // already gone
-      const targetPrice = o.side === "BUY" ? targetBid : targetAsk;
-      if (Math.abs(Number(o.price) - targetPrice) < TICK / 2) continue; // already correct
+      if (!polyOpenIds.has(String(o.poly_order_id))) continue;
+      const ok = o.side === "BUY"
+        ? Math.abs(Number(o.price) - targetBid) < TICK / 2
+        : isOnLadder(Number(o.price));
+      if (ok) continue;
       try {
         await client.cancelOrder({ orderID: o.poly_order_id });
         await admin.from("mm_open_orders").delete().eq("id", o.id);
@@ -230,10 +243,11 @@ async function runForUser(admin: any, userId: string) {
       (o) => o.side === "BUY" && polyOpenIds.has(String(o.poly_order_id)) &&
         Math.abs(Number(o.price) - targetBid) < TICK / 2,
     );
-    const stillHaveAsk = (openByAsset.get(assetId) ?? []).some(
-      (o) => o.side === "SELL" && polyOpenIds.has(String(o.poly_order_id)) &&
-        Math.abs(Number(o.price) - targetAsk) < TICK / 2,
+    const existingAsks = (openByAsset.get(assetId) ?? []).filter(
+      (o) => o.side === "SELL" && polyOpenIds.has(String(o.poly_order_id)),
     );
+    const haveAskAt = (price: number) =>
+      existingAsks.some((o) => Math.abs(Number(o.price) - price) < TICK / 2);
 
     // Post BUY if inventory headroom AND under global cap
     if (!stillHaveBid && invUsdc < maxInv && totalCapital + sizeUsdc <= Number(cfg.total_capital_cap_usdc)) {
@@ -256,24 +270,26 @@ async function runForUser(admin: any, userId: string) {
       }
     }
 
-    // Post SELL if we have inventory
-    if (!stillHaveAsk && inv > 0) {
-      const sellShares = Math.min(inv, sizeUsdc / targetAsk);
-      if (sellShares * targetAsk >= 1) {
+    // Post laddered SELLs: split inventory equally across rungs, skip rungs we already have
+    if (inv > 0 && ladderPrices.length > 0) {
+      const sharesPerRung = inv / ladderPrices.length;
+      for (const rungPrice of ladderPrices) {
+        if (haveAskAt(rungPrice)) continue;
+        if (sharesPerRung * rungPrice < 1) continue; // below Polymarket $1 min
         try {
-          const signed = await client.createOrder({ tokenID: assetId, price: targetAsk, side: Side.SELL, size: sellShares, feeRateBps: 0 });
+          const signed = await client.createOrder({ tokenID: assetId, price: rungPrice, side: Side.SELL, size: sharesPerRung, feeRateBps: 0 });
           const resp: any = await client.postOrder(signed, OrderType.GTC);
           if (resp?.success && resp?.orderID) {
             await admin.from("mm_open_orders").insert({
               user_id: userId, asset_id: assetId, poly_order_id: String(resp.orderID),
-              side: "SELL", price: targetAsk, size: sellShares,
+              side: "SELL", price: rungPrice, size: sharesPerRung,
             });
             log.orders_placed++;
           } else {
-            log.notes.errors.push({ assetId, stage: "postAsk", error: resp?.errorMsg ?? JSON.stringify(resp) });
+            log.notes.errors.push({ assetId, stage: "postAsk", price: rungPrice, error: resp?.errorMsg ?? JSON.stringify(resp) });
           }
         } catch (e) {
-          log.notes.errors.push({ assetId, stage: "postAsk", error: String((e as any)?.message ?? e) });
+          log.notes.errors.push({ assetId, stage: "postAsk", price: rungPrice, error: String((e as any)?.message ?? e) });
         }
       }
     }

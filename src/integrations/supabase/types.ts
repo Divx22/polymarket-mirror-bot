@@ -175,6 +175,8 @@ export type Database = {
           id: string
           min_days_to_expiry: number
           quote_mode: string
+          sell_ladder_rungs: number
+          sell_ladder_spacing_ticks: number
           total_capital_cap_usdc: number
           updated_at: string
           user_id: string
@@ -189,6 +191,8 @@ export type Database = {
           id?: string
           min_days_to_expiry?: number
           quote_mode?: string
+          sell_ladder_rungs?: number
+          sell_ladder_spacing_ticks?: number
           total_capital_cap_usdc?: number
           updated_at?: string
           user_id: string
@@ -203,6 +207,8 @@ export type Database = {
           id?: string
           min_days_to_expiry?: number
           quote_mode?: string
+          sell_ladder_rungs?: number
+          sell_ladder_spacing_ticks?: number
           total_capital_cap_usdc?: number
           updated_at?: string
           user_id?: string
