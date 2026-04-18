@@ -230,9 +230,9 @@ export const ConfigCard = ({
           Mirror Strategy
         </h3>
         <p className="text-xs text-muted-foreground mb-3">
-          <strong className="text-foreground">Position</strong> mode reconciles your holdings to a scaled copy of the target's portfolio every 2 minutes (recommended). <strong className="text-foreground">Signal</strong> mirrors only large marketable orders. <strong className="text-foreground">Fills</strong> = legacy 1:1 per-fill copy.
+          <strong className="text-foreground">Position</strong> mode reconciles your holdings to a scaled copy of the target's portfolio every 2 minutes (recommended). <strong className="text-foreground">Signal</strong> mirrors only large marketable orders.
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className={`grid grid-cols-1 gap-3 ${mirrorMode === "signal" ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
           <div>
             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
               Mode
@@ -245,7 +245,6 @@ export const ConfigCard = ({
                 <SelectItem value="off">Off</SelectItem>
                 <SelectItem value="position">Position (recommended)</SelectItem>
                 <SelectItem value="signal">Signal-only</SelectItem>
-                <SelectItem value="fills">Fills (legacy)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -264,20 +263,22 @@ export const ConfigCard = ({
               className="font-mono-num mt-1"
             />
           </div>
-          <div>
-            <Label htmlFor="signal-threshold" className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Signal threshold (USDC)
-            </Label>
-            <Input
-              id="signal-threshold"
-              type="number"
-              min="1"
-              step="1"
-              value={signalThreshold}
-              onChange={(e) => setSignalThreshold(e.target.value)}
-              className="font-mono-num mt-1"
-            />
-          </div>
+          {mirrorMode === "signal" && (
+            <div>
+              <Label htmlFor="signal-threshold" className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                Signal threshold (USDC)
+              </Label>
+              <Input
+                id="signal-threshold"
+                type="number"
+                min="1"
+                step="1"
+                value={signalThreshold}
+                onChange={(e) => setSignalThreshold(e.target.value)}
+                className="font-mono-num mt-1"
+              />
+            </div>
+          )}
         </div>
       </div>
 
