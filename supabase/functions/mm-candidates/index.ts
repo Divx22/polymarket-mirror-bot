@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
     const candidates: any[] = [];
 
     for (const m of markets) {
-      if (candidates.length >= 40) break;
+      if (candidates.length >= 60) break;
       const endDate = m.endDate ? new Date(m.endDate) : null;
       if (!endDate || endDate < minEnd) continue;
       let tokens: any[] = [];
@@ -73,33 +73,38 @@ Deno.serve(async (req) => {
       try { outcomes = typeof m.outcomes === "string" ? JSON.parse(m.outcomes) : (m.outcomes ?? []); } catch { outcomes = []; }
       if (!tokens.length) continue;
 
-      const tokenId = String(tokens[0]);
-      if (existingSet.has(tokenId)) continue;
-      const book = await getBestBidAsk(tokenId);
-      if (!book) continue;
-
-      // Cheap longshot pattern: bid 0.01–0.30, spread ≥ 1 cent, ask still well below 0.50
-      if (book.bestBid < 0.01 || book.bestBid > 0.30) continue;
-      if (book.bestAsk > 0.50) continue;
-      if (book.spread < 0.01) continue;
-
-      // Days until resolution — reward longer
       const daysLeft = Math.max(1, Math.round((endDate.getTime() - Date.now()) / 86400000));
 
-      candidates.push({
-        asset_id: tokenId,
-        condition_id: m.conditionId,
-        market_question: m.question,
-        outcome: outcomes[0] ?? "Yes",
-        end_date: m.endDate?.slice(0, 10) ?? null,
-        volume_24h: Number(m.volume24hr ?? 0),
-        best_bid: book.bestBid,
-        best_ask: book.bestAsk,
-        spread: book.spread,
-        spread_pct: book.spread / Math.max(0.01, (book.bestBid + book.bestAsk) / 2),
-        days_left: daysLeft,
-        icon: m.icon ?? null,
-      });
+      // Iterate EVERY outcome (not just tokens[0]) — for multi-outcome races (F1, Seoul mayor,
+      // Eurovision, French election) each driver/candidate is a separate longshot to quote.
+      for (let i = 0; i < tokens.length; i++) {
+        if (candidates.length >= 60) break;
+        const tokenId = String(tokens[i]);
+        if (existingSet.has(tokenId)) continue;
+        const book = await getBestBidAsk(tokenId);
+        if (!book) continue;
+
+        // Sub-cent longshot pattern (tripping's playbook):
+        // bid 0.002–0.10, spread ≥ 1 tick (0.001), skip favorites
+        if (book.bestBid < 0.002 || book.bestBid > 0.10) continue;
+        if (book.bestAsk > 0.20) continue;
+        if (book.spread < 0.001) continue;
+
+        candidates.push({
+          asset_id: tokenId,
+          condition_id: m.conditionId,
+          market_question: m.question,
+          outcome: outcomes[i] ?? `Outcome ${i+1}`,
+          end_date: m.endDate?.slice(0, 10) ?? null,
+          volume_24h: Number(m.volume24hr ?? 0),
+          best_bid: book.bestBid,
+          best_ask: book.bestAsk,
+          spread: book.spread,
+          spread_pct: book.spread / Math.max(0.005, (book.bestBid + book.bestAsk) / 2),
+          days_left: daysLeft,
+          icon: m.icon ?? null,
+        });
+      }
     }
 
     // Score: spread% × √days_left × log(1 + volume)
