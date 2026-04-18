@@ -224,6 +224,63 @@ export const ConfigCard = ({
         </div>
       </div>
 
+      {/* Mirror strategy */}
+      <div className="mt-5 pt-4 border-t border-border">
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+          Mirror Strategy
+        </h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          <strong className="text-foreground">Position</strong> mode reconciles your holdings to a scaled copy of the target's portfolio every 2 minutes (recommended). <strong className="text-foreground">Signal</strong> mirrors only large marketable orders. <strong className="text-foreground">Fills</strong> = legacy 1:1 per-fill copy.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Mode
+            </Label>
+            <Select value={mirrorMode} onValueChange={setMirrorMode}>
+              <SelectTrigger className="mt-1 h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="off">Off</SelectItem>
+                <SelectItem value="position">Position (recommended)</SelectItem>
+                <SelectItem value="signal">Signal-only</SelectItem>
+                <SelectItem value="fills">Fills (legacy)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="mirror-ratio" className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Ratio (0–1)
+            </Label>
+            <Input
+              id="mirror-ratio"
+              type="number"
+              min="0.0001"
+              max="1"
+              step="0.0001"
+              value={mirrorRatio}
+              onChange={(e) => setMirrorRatio(e.target.value)}
+              className="font-mono-num mt-1"
+            />
+          </div>
+          <div>
+            <Label htmlFor="signal-threshold" className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Signal threshold (USDC)
+            </Label>
+            <Input
+              id="signal-threshold"
+              type="number"
+              min="1"
+              step="1"
+              value={signalThreshold}
+              onChange={(e) => setSignalThreshold(e.target.value)}
+              className="font-mono-num mt-1"
+            />
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-5 pt-4 border-t border-border text-xs">
         <Stat label="Wallet" value={shortAddr(config?.target_wallet)} />
         <Stat

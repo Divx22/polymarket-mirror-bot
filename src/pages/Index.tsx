@@ -6,6 +6,7 @@ import { ConfigCard } from "@/components/ConfigCard";
 import { TradesFeed } from "@/components/TradesFeed";
 import { StatsRow } from "@/components/StatsRow";
 import { PnLPanel } from "@/components/PnLPanel";
+import { PositionsPanel } from "@/components/PositionsPanel";
 import { LogOut } from "lucide-react";
 
 const Index = () => {
@@ -130,6 +131,7 @@ const Index = () => {
         />
         <PnLPanel />
         <ConfigCard config={config} onChange={reload} />
+        <PositionsPanel userId={userId} mirrorRatio={Number(config?.mirror_ratio ?? 0.02)} />
         <TradesFeed trades={trades} onChange={reload} />
         <p className="text-[11px] text-muted-foreground text-center pt-2">
           Auto-poll runs every 1 minute when enabled. Live trading places real
