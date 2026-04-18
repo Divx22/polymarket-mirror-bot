@@ -1,12 +1,14 @@
-// Position-delta mirroring engine.
-// For each (user, asset_id) pair:
-//   1. Recompute target_shares from cumulative detected_trades (BUY +size, SELL -size).
-//   2. desired_mirror = target_shares * config.mirror_ratio
-//   3. delta = desired_mirror - current mirror_shares
-//   4. If |delta * current_price| >= $1 and within caps, place a marketable
-//      FOK order (BUY if delta>0, SELL if delta<0) and update mirror_shares.
+// Position-delta mirroring engine — GROUND TRUTH version.
+// Source of target's positions: Polymarket Data API /positions?user=<wallet>
+// (replaces the old "sum detected_trades" approximation, which missed
+// pre-poll history, redemptions, merges, and transfers).
 //
-// Designed to be triggered by pg_cron every N minutes, or manually.
+// For each asset the target wallet holds:
+//   desired_mirror = target.size * config.mirror_ratio
+//   delta = desired_mirror - our mirror_shares
+//   if |delta * curPrice| >= $1 and within caps → place marketable FOK order.
+//
+// Also sells down any mirror position whose target has dropped to 0.
 import "npm:tslib@2.6.2";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { ClobClient, Side, OrderType } from "npm:@polymarket/clob-client@4.21.0";
@@ -14,6 +16,7 @@ import { Wallet } from "npm:ethers@5.7.2";
 
 const POLY_PROXY_SIG = 1;
 const CLOB_HOST = "https://clob.polymarket.com";
+const DATA_API = "https://data-api.polymarket.com";
 const CHAIN_ID = 137;
 const MIN_USDC = 1;
 
@@ -27,16 +30,25 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const POLY_PRIVATE_KEY = Deno.env.get("POLY_PRIVATE_KEY")!;
 const POLY_FUNDER_ADDRESS = Deno.env.get("POLY_FUNDER_ADDRESS")!;
 
-async function fetchMidPrice(assetId: string): Promise<number | null> {
-  try {
-    const r = await fetch(`${CLOB_HOST}/midpoint?token_id=${assetId}`);
-    if (!r.ok) return null;
-    const j = await r.json();
-    const m = Number(j?.mid ?? j?.midpoint);
-    return Number.isFinite(m) && m > 0 ? m : null;
-  } catch {
-    return null;
-  }
+type TargetPosition = {
+  asset: string;
+  size: number;
+  avgPrice: number;
+  curPrice: number;
+  currentValue: number;
+  cashPnl: number;
+  percentPnl: number;
+  conditionId: string;
+  title: string;
+  outcome: string;
+};
+
+async function fetchTargetPositions(wallet: string): Promise<TargetPosition[]> {
+  const url = `${DATA_API}/positions?user=${wallet.toLowerCase()}&sizeThreshold=0.01&limit=500`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`positions API ${r.status}`);
+  const j = await r.json();
+  return Array.isArray(j) ? j : [];
 }
 
 async function getOrCreateCreds(admin: any, userId: string) {
@@ -73,27 +85,29 @@ async function reconcileUser(admin: any, userId: string) {
   const ratio = Number(cfg.mirror_ratio ?? 0);
   if (!(ratio > 0)) return { ...result, skipped: ["mirror_ratio <= 0"] };
 
-  // 1. Recompute target_shares per asset from cumulative fills.
-  const { data: trades } = await admin
-    .from("detected_trades")
-    .select("asset_id, side, size, price, market_id, market_question, outcome")
+  // GROUND TRUTH: fetch target's actual open positions
+  let targetPositions: TargetPosition[];
+  try {
+    targetPositions = await fetchTargetPositions(cfg.target_wallet);
+  } catch (e: any) {
+    return { ...result, errors: [{ stage: "fetchPositions", error: String(e?.message ?? e) }] };
+  }
+
+  const targetByAsset = new Map<string, TargetPosition>();
+  for (const p of targetPositions) targetByAsset.set(String(p.asset), p);
+
+  // Pull our existing mirror positions so we can also down-size the ones
+  // the target has fully exited (and aren't in the API response anymore).
+  const { data: existingMirror } = await admin
+    .from("positions")
+    .select("asset_id, mirror_shares, market_id, market_question, outcome, last_target_price")
     .eq("user_id", userId);
 
-  const agg = new Map<string, {
-    shares: number; lastPrice: number; market_id: any; market_question: any; outcome: any;
-  }>();
-  for (const t of trades ?? []) {
-    const key = String(t.asset_id);
-    const sz = Number(t.size ?? 0);
-    if (!sz) continue;
-    const sign = String(t.side).toUpperCase() === "BUY" ? 1 : -1;
-    const cur = agg.get(key) ?? {
-      shares: 0, lastPrice: Number(t.price ?? 0),
-      market_id: t.market_id, market_question: t.market_question, outcome: t.outcome,
-    };
-    cur.shares += sign * sz;
-    if (t.price) cur.lastPrice = Number(t.price);
-    agg.set(key, cur);
+  // Union of assets we need to consider
+  const assetSet = new Set<string>();
+  for (const p of targetPositions) assetSet.add(String(p.asset));
+  for (const row of existingMirror ?? []) {
+    if (Math.abs(Number(row.mirror_shares ?? 0)) > 1e-6) assetSet.add(String(row.asset_id));
   }
 
   // Daily-cap budget tracking
@@ -111,39 +125,32 @@ async function reconcileUser(admin: any, userId: string) {
     return client;
   };
 
-  for (const [assetId, info] of agg.entries()) {
+  for (const assetId of assetSet) {
     result.scanned++;
-    const targetShares = info.shares;
+    const tp = targetByAsset.get(assetId);
+    const targetShares = tp ? Number(tp.size) : 0;
     const desiredMirror = targetShares * ratio;
 
-    const { data: pos } = await admin
-      .from("positions")
-      .select("mirror_shares")
-      .eq("user_id", userId)
-      .eq("asset_id", assetId)
-      .maybeSingle();
-    const currentMirror = Number(pos?.mirror_shares ?? 0);
+    const existing = (existingMirror ?? []).find((r: any) => String(r.asset_id) === assetId);
+    const currentMirror = Number(existing?.mirror_shares ?? 0);
     const delta = desiredMirror - currentMirror;
-
-    // Refresh price (best estimate of marketable cost)
-    const mid = await fetchMidPrice(assetId);
-    const price = mid ?? info.lastPrice;
-    const usdcDelta = Math.abs(delta) * price;
+    const price = tp?.curPrice ?? Number(existing?.last_target_price ?? 0) ?? 0;
+    const usdcDelta = Math.abs(delta) * (price || 0);
 
     // Persist target snapshot regardless of whether we trade
     await admin.from("positions").upsert({
       user_id: userId,
       asset_id: assetId,
-      market_id: info.market_id,
-      market_question: info.market_question,
-      outcome: info.outcome,
+      market_id: tp?.conditionId ?? existing?.market_id ?? null,
+      market_question: tp?.title ?? existing?.market_question ?? null,
+      outcome: tp?.outcome ?? existing?.outcome ?? null,
       target_shares: targetShares,
       mirror_shares: currentMirror,
-      last_target_price: price,
+      last_target_price: price || null,
       last_reconciled_at: new Date().toISOString(),
     }, { onConflict: "user_id,asset_id" });
 
-    if (usdcDelta < MIN_USDC) {
+    if (!price || usdcDelta < MIN_USDC) {
       result.skipped.push({ assetId, reason: `delta $${usdcDelta.toFixed(3)} < $1` });
       continue;
     }
@@ -152,7 +159,6 @@ async function reconcileUser(admin: any, userId: string) {
       continue;
     }
 
-    // Cap to per-trade max
     let orderUsdc = Math.min(usdcDelta, perTradeCap);
     if (spent + orderUsdc > dailyCap) {
       orderUsdc = Math.max(0, dailyCap - spent);
@@ -161,13 +167,13 @@ async function reconcileUser(admin: any, userId: string) {
       result.skipped.push({ assetId, reason: "would breach daily cap" });
       continue;
     }
-    const orderSize = orderUsdc / price;
+    let orderSize = orderUsdc / price;
     const side = delta > 0 ? Side.BUY : Side.SELL;
 
-    // SELL needs existing inventory — clamp to what we hold
     if (side === Side.SELL && orderSize > currentMirror) {
-      const cappedSize = Math.max(0, currentMirror);
-      if (cappedSize * price < MIN_USDC) {
+      orderSize = Math.max(0, currentMirror);
+      orderUsdc = orderSize * price;
+      if (orderUsdc < MIN_USDC) {
         result.skipped.push({ assetId, reason: "no inventory to sell" });
         continue;
       }
@@ -190,9 +196,9 @@ async function reconcileUser(admin: any, userId: string) {
           user_id: userId,
           side: side === Side.BUY ? "BUY" : "SELL",
           asset_id: assetId,
-          market_id: info.market_id,
-          market_question: info.market_question,
-          outcome: info.outcome,
+          market_id: tp?.conditionId ?? null,
+          market_question: tp?.title ?? null,
+          outcome: tp?.outcome ?? null,
           intended_price: price,
           intended_size: orderSize,
           intended_usdc: orderUsdc,
@@ -217,9 +223,9 @@ async function reconcileUser(admin: any, userId: string) {
         user_id: userId,
         side: side === Side.BUY ? "BUY" : "SELL",
         asset_id: assetId,
-        market_id: info.market_id,
-        market_question: info.market_question,
-        outcome: info.outcome,
+        market_id: tp?.conditionId ?? null,
+        market_question: tp?.title ?? null,
+        outcome: tp?.outcome ?? null,
         intended_price: price,
         intended_size: orderSize,
         intended_usdc: orderUsdc,
@@ -254,7 +260,6 @@ Deno.serve(async (req) => {
     if (body.user_id) {
       userIds = [body.user_id];
     } else {
-      // Cron-mode: reconcile every user with mirror_mode = 'position'
       const { data } = await admin
         .from("config")
         .select("user_id")
