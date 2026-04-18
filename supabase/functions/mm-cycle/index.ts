@@ -42,6 +42,23 @@ async function getBook(assetId: string) {
   return { bestBid: Math.max(...bids), bestAsk: Math.min(...asks) };
 }
 
+// Fetch real holdings from Polymarket — single source of truth for inventory.
+async function getPolyPositions(): Promise<Map<string, { shares: number; avgPrice: number }>> {
+  const map = new Map<string, { shares: number; avgPrice: number }>();
+  try {
+    const r = await fetch(`https://data-api.polymarket.com/positions?user=${POLY_FUNDER_ADDRESS}&limit=500`);
+    if (!r.ok) return map;
+    const list: any[] = await r.json();
+    for (const p of list) {
+      map.set(String(p.asset), {
+        shares: Number(p.size ?? 0),
+        avgPrice: Number(p.avgPrice ?? 0),
+      });
+    }
+  } catch (_) { /* swallow — fallback is empty map */ }
+  return map;
+}
+
 async function getOrCreateCreds(admin: any, userId: string) {
   const { data: existing } = await admin
     .from("poly_credentials")
