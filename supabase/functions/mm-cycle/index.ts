@@ -152,17 +152,27 @@ async function runForUser(admin: any, userId: string) {
     }
 
     const mid = (book.bestBid + book.bestAsk) / 2;
-    if (book.bestAsk - book.bestBid < minExistingSpread) {
-      log.notes.skipped.push({ assetId, reason: `spread ${(book.bestAsk - book.bestBid).toFixed(4)} too tight` });
-      await admin.from("mm_markets").update({
-        last_book_best_bid: book.bestBid, last_book_best_ask: book.bestAsk,
-        last_cycle_at: new Date().toISOString(), last_error: null,
-      }).eq("id", mkt.id);
-      continue;
-    }
+    const quoteMode = String(cfg.quote_mode ?? "join");
 
-    const targetBid = Math.min(roundTick(book.bestBid + offsetTicks * TICK), mid - TICK);
-    const targetAsk = Math.max(roundTick(book.bestAsk - offsetTicks * TICK), mid + TICK);
+    let targetBid: number;
+    let targetAsk: number;
+    if (quoteMode === "inside") {
+      // Original: quote one tick inside the spread; requires room
+      if (book.bestAsk - book.bestBid < minExistingSpread) {
+        log.notes.skipped.push({ assetId, reason: `spread ${(book.bestAsk - book.bestBid).toFixed(4)} too tight for inside mode` });
+        continue;
+      }
+      targetBid = Math.min(roundTick(book.bestBid + offsetTicks * TICK), mid - TICK);
+      targetAsk = Math.max(roundTick(book.bestAsk - offsetTicks * TICK), mid + TICK);
+    } else if (quoteMode === "passive") {
+      // One tick worse than best — sit outside, capture more if filled
+      targetBid = roundTick(Math.max(TICK, book.bestBid - TICK));
+      targetAsk = roundTick(book.bestAsk + TICK);
+    } else {
+      // "join" — quote at the best bid/ask
+      targetBid = roundTick(book.bestBid);
+      targetAsk = roundTick(book.bestAsk);
+    }
 
     // ---- Detect fills from disappeared open orders
     const prior = openByAsset.get(assetId) ?? [];

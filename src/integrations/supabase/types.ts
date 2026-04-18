@@ -174,6 +174,7 @@ export type Database = {
           enabled: boolean
           id: string
           min_days_to_expiry: number
+          quote_mode: string
           total_capital_cap_usdc: number
           updated_at: string
           user_id: string
@@ -187,6 +188,7 @@ export type Database = {
           enabled?: boolean
           id?: string
           min_days_to_expiry?: number
+          quote_mode?: string
           total_capital_cap_usdc?: number
           updated_at?: string
           user_id: string
@@ -200,6 +202,7 @@ export type Database = {
           enabled?: boolean
           id?: string
           min_days_to_expiry?: number
+          quote_mode?: string
           total_capital_cap_usdc?: number
           updated_at?: string
           user_id?: string
