@@ -71,13 +71,38 @@ async function runForUser(admin: any, userId: string) {
 
   const { data: cfg } = await admin
     .from("mm_config").select("*").eq("user_id", userId).maybeSingle();
+
+  const { data: markets } = await admin
+    .from("mm_markets").select("*").eq("user_id", userId).eq("active", true);
+
+  // Always refresh book snapshots so the UI shows live bid/ask
+  // even when the bot is disabled or the market gets skipped below.
+  if (markets?.length) {
+    await Promise.all(markets.map(async (mk: any) => {
+      const b = await getBook(String(mk.asset_id));
+      if (b) {
+        await admin.from("mm_markets").update({
+          last_book_best_bid: b.bestBid,
+          last_book_best_ask: b.bestAsk,
+          last_cycle_at: new Date().toISOString(),
+          last_error: null,
+        }).eq("id", mk.id);
+        // mutate in-memory so the loop below doesn't re-fetch unnecessarily
+        mk.last_book_best_bid = b.bestBid;
+        mk.last_book_best_ask = b.bestAsk;
+      } else {
+        await admin.from("mm_markets").update({
+          last_cycle_at: new Date().toISOString(),
+          last_error: "no order book returned",
+        }).eq("id", mk.id);
+      }
+    }));
+  }
+
   if (!cfg || !cfg.enabled) {
     log.notes.skipped.push("mm disabled");
     return log;
   }
-
-  const { data: markets } = await admin
-    .from("mm_markets").select("*").eq("user_id", userId).eq("active", true);
   if (!markets?.length) {
     log.notes.skipped.push("no active markets");
     return log;
