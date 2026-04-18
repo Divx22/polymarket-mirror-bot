@@ -1,6 +1,10 @@
+import { useState } from "react";
 import { SideBadge } from "./SideBadge";
 import { fmtPrice, fmtNum, fmtUsd, fmtRelative, shortHash } from "@/lib/format";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 type Trade = {
   id: string;
@@ -14,7 +18,35 @@ type Trade = {
   usdc_size: number | null;
 };
 
-export const TradesFeed = ({ trades }: { trades: Trade[] }) => {
+export const TradesFeed = ({
+  trades,
+  onChange,
+}: {
+  trades: Trade[];
+  onChange?: () => void;
+}) => {
+  const [executing, setExecuting] = useState<string | null>(null);
+
+  const mirror = async (tradeId: string) => {
+    setExecuting(tradeId);
+    try {
+      const { data, error } = await supabase.functions.invoke("execute-order", {
+        body: { detected_trade_id: tradeId },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error ?? "Execution failed");
+      toast.success(`Order ${data.status}`, {
+        description: data.txHash ? `tx ${data.txHash.slice(0, 10)}…` : undefined,
+      });
+      onChange?.();
+    } catch (e: any) {
+      toast.error(e.message ?? "Execute failed");
+      onChange?.();
+    } finally {
+      setExecuting(null);
+    }
+  };
+
   return (
     <section className="bg-card border border-border rounded-lg overflow-hidden">
       <header className="px-5 py-3 border-b border-border flex items-center justify-between">
@@ -36,13 +68,14 @@ export const TradesFeed = ({ trades }: { trades: Trade[] }) => {
               <th className="text-right px-3 py-2 font-medium">Price</th>
               <th className="text-right px-3 py-2 font-medium">Size</th>
               <th className="text-right px-3 py-2 font-medium">USDC</th>
-              <th className="text-right px-5 py-2 font-medium">Tx</th>
+              <th className="text-right px-3 py-2 font-medium">Tx</th>
+              <th className="text-right px-5 py-2 font-medium">Mirror</th>
             </tr>
           </thead>
           <tbody>
             {trades.length === 0 && (
               <tr>
-                <td colSpan={8} className="text-center py-12 text-muted-foreground">
+                <td colSpan={9} className="text-center py-12 text-muted-foreground">
                   No trades detected yet. Set a target wallet and click "Check now".
                 </td>
               </tr>
@@ -73,7 +106,7 @@ export const TradesFeed = ({ trades }: { trades: Trade[] }) => {
                 <td className="px-3 py-2.5 text-right font-mono-num">
                   {fmtUsd(t.usdc_size)}
                 </td>
-                <td className="px-5 py-2.5 text-right">
+                <td className="px-3 py-2.5 text-right">
                   <a
                     href={`https://polygonscan.com/tx/${t.tx_hash}`}
                     target="_blank"
@@ -83,6 +116,20 @@ export const TradesFeed = ({ trades }: { trades: Trade[] }) => {
                     {shortHash(t.tx_hash)}
                     <ExternalLink className="h-3 w-3" />
                   </a>
+                </td>
+                <td className="px-5 py-2.5 text-right">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={executing === t.id}
+                    onClick={() => mirror(t.id)}
+                  >
+                    {executing === t.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      "Mirror"
+                    )}
+                  </Button>
                 </td>
               </tr>
             ))}

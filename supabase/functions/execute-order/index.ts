@@ -124,12 +124,77 @@ async function execute(admin: ReturnType<typeof createClient>, userId: string, p
   return { ok: true, status, txHash, orderId: resp.orderID };
 }
 
+async function paperOrderFromDetected(
+  admin: ReturnType<typeof createClient>,
+  userId: string,
+  detectedTradeId: string,
+): Promise<string> {
+  // Re-use existing simulated paper order if already created
+  const { data: existing } = await admin
+    .from("paper_orders")
+    .select("id, status")
+    .eq("user_id", userId)
+    .eq("detected_trade_id", detectedTradeId)
+    .maybeSingle();
+  if (existing) {
+    if (existing.status !== "simulated") {
+      throw new Error(`already ${existing.status}`);
+    }
+    return existing.id as string;
+  }
+
+  const { data: trade, error } = await admin
+    .from("detected_trades")
+    .select("*")
+    .eq("id", detectedTradeId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error || !trade) throw new Error("detected trade not found");
+
+  const { data: cfg } = await admin
+    .from("config")
+    .select("max_usdc_per_trade")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const cap = Number(cfg?.max_usdc_per_trade ?? 5);
+  const fullUsdc = Number(trade.usdc_size ?? 0);
+  const price = Number(trade.price ?? 0);
+  if (!price) throw new Error("trade has no price");
+  // Scale down to cap if needed
+  const intendedUsdc = Math.min(fullUsdc || cap, cap);
+  const intendedSize = intendedUsdc / price;
+
+  const { data: inserted, error: iErr } = await admin
+    .from("paper_orders")
+    .insert({
+      user_id: userId,
+      detected_trade_id: detectedTradeId,
+      side: trade.side,
+      asset_id: trade.asset_id,
+      market_id: trade.market_id,
+      market_question: trade.market_question,
+      outcome: trade.outcome,
+      intended_price: price,
+      intended_size: intendedSize,
+      intended_usdc: intendedUsdc,
+      status: "simulated",
+      note: "manual mirror",
+    })
+    .select("id")
+    .single();
+  if (iErr) throw iErr;
+  return inserted.id as string;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
     const body = await req.json().catch(() => ({}));
-    const paperOrderId: string | undefined = body.paper_order_id;
-    if (!paperOrderId) throw new Error("paper_order_id required");
+    let paperOrderId: string | undefined = body.paper_order_id;
+    const detectedTradeId: string | undefined = body.detected_trade_id;
+    if (!paperOrderId && !detectedTradeId) {
+      throw new Error("paper_order_id or detected_trade_id required");
+    }
 
     let userId: string | undefined = body.user_id;
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
@@ -146,7 +211,11 @@ Deno.serve(async (req) => {
     }
     if (!userId) throw new Error("user_id required (or auth token)");
 
-    const result = await execute(admin, userId, paperOrderId);
+    if (!paperOrderId && detectedTradeId) {
+      paperOrderId = await paperOrderFromDetected(admin, userId, detectedTradeId);
+    }
+
+    const result = await execute(admin, userId, paperOrderId!);
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
