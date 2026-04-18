@@ -35,6 +35,8 @@ type Cfg = {
   default_min_existing_spread_ticks: number;
   min_days_to_expiry: number;
   quote_mode: "inside" | "join" | "passive";
+  sell_ladder_rungs: number;
+  sell_ladder_spacing_ticks: number;
 };
 
 type Candidate = {
