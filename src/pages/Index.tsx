@@ -6,6 +6,7 @@ import { ConfigCard } from "@/components/ConfigCard";
 import { TradesFeed } from "@/components/TradesFeed";
 import { PaperLedger } from "@/components/PaperLedger";
 import { StatsRow } from "@/components/StatsRow";
+import { PnLPanel } from "@/components/PnLPanel";
 import { LogOut } from "lucide-react";
 
 const Index = () => {
@@ -128,6 +129,7 @@ const Index = () => {
           volumeToday={volumeToday}
           totalTrades={trades.length}
         />
+        <PnLPanel />
         <ConfigCard config={config} onChange={reload} />
         <TradesFeed trades={trades} />
         <PaperLedger orders={orders} onChange={reload} />
