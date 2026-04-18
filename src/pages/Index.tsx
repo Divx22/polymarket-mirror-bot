@@ -7,6 +7,7 @@ import { TradesFeed } from "@/components/TradesFeed";
 import { StatsRow } from "@/components/StatsRow";
 import { PnLPanel } from "@/components/PnLPanel";
 import { PositionsPanel } from "@/components/PositionsPanel";
+import { TargetPortfolio } from "@/components/TargetPortfolio";
 import { LogOut } from "lucide-react";
 
 const Index = () => {
@@ -131,6 +132,7 @@ const Index = () => {
         />
         <PnLPanel />
         <ConfigCard config={config} onChange={reload} />
+        <TargetPortfolio targetWallet={config?.target_wallet ?? null} />
         <PositionsPanel userId={userId} mirrorRatio={Number(config?.mirror_ratio ?? 0.02)} />
         <TradesFeed trades={trades} onChange={reload} />
         <p className="text-[11px] text-muted-foreground text-center pt-2">
