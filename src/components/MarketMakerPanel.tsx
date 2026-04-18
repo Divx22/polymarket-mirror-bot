@@ -267,7 +267,7 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
       )}
 
       {/* Settings */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         <SettingNum label="Size / side ($)" value={cfg.default_size_usdc} onChange={(v) => updateCfg({ default_size_usdc: v })} step={0.5} />
         <SettingNum label="Max inv / mkt ($)" value={cfg.default_max_inventory_usdc} onChange={(v) => updateCfg({ default_max_inventory_usdc: v })} step={1} />
         <SettingNum label="Total cap ($)" value={cfg.total_capital_cap_usdc} onChange={(v) => updateCfg({ total_capital_cap_usdc: v })} step={5} />
@@ -284,6 +284,8 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
             <option value="passive">passive (1 tick out)</option>
           </select>
         </div>
+        <SettingNum label="Sell ladder rungs" value={cfg.sell_ladder_rungs} onChange={(v) => updateCfg({ sell_ladder_rungs: v })} step={1} />
+        <SettingNum label="Ladder spacing (ticks)" value={cfg.sell_ladder_spacing_ticks} onChange={(v) => updateCfg({ sell_ladder_spacing_ticks: v })} step={1} />
       </div>
 
       {/* Add markets */}
