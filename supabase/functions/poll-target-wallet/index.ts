@@ -110,6 +110,58 @@ async function fetchMarketMeta(assetId: string) {
   return meta;
 }
 
+// Cache: order_id -> { original_size, original_usdc }
+const orderMetaCache = new Map<string, { size: number; usdc: number } | null>();
+
+// Try to fetch the original posted order size from Polymarket Data API.
+// Returns null when the order isn't found (AMM/sweep matches, very old orders, etc).
+async function fetchOrderMeta(orderId: string, fallbackPrice: number) {
+  if (!orderId) return null;
+  if (orderMetaCache.has(orderId)) return orderMetaCache.get(orderId) ?? null;
+  try {
+    const r = await fetch(`https://data-api.polymarket.com/order/${orderId}`);
+    if (!r.ok) {
+      orderMetaCache.set(orderId, null);
+      return null;
+    }
+    const j = await r.json();
+    // Polymarket order shape: { size, price, ... } where size is in shares
+    const size = Number(j.size ?? j.original_size ?? 0);
+    const price = Number(j.price ?? fallbackPrice);
+    if (!Number.isFinite(size) || size <= 0) {
+      orderMetaCache.set(orderId, null);
+      return null;
+    }
+    const meta = { size, usdc: size * price };
+    orderMetaCache.set(orderId, meta);
+    return meta;
+  } catch (e) {
+    console.error("fetchOrderMeta err", orderId, e);
+    orderMetaCache.set(orderId, null);
+    return null;
+  }
+}
+
+// Polymarket Data API trades, indexed by tx_hash for quick lookup of order_id.
+async function fetchPolyTradesByTx(wallet: string) {
+  const map = new Map<string, any[]>(); // tx_hash -> trades[]
+  try {
+    const r = await fetch(`https://data-api.polymarket.com/trades?user=${wallet}&limit=100`);
+    if (!r.ok) return map;
+    const arr = await r.json();
+    if (!Array.isArray(arr)) return map;
+    for (const t of arr) {
+      const tx = String(t.transactionHash ?? t.transaction_hash ?? "").toLowerCase();
+      if (!tx) continue;
+      if (!map.has(tx)) map.set(tx, []);
+      map.get(tx)!.push(t);
+    }
+  } catch (e) {
+    console.error("fetchPolyTradesByTx err", e);
+  }
+  return map;
+}
+
 // Convert a Goldsky fill to a normalized Trade for the wallet.
 // USDC asset id is "0". If wallet is maker selling tokens for USDC -> SELL.
 // If wallet is maker buying tokens with USDC -> BUY. Same logic mirrored for taker.
