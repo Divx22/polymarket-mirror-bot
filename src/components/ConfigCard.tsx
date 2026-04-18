@@ -4,6 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { fmtRelative, shortAddr } from "@/lib/format";
 import { RefreshCw, AlertTriangle } from "lucide-react";
@@ -20,6 +27,9 @@ type Config = {
   daily_usdc_limit: number;
   usdc_spent_today: number;
   spent_day: string;
+  mirror_mode?: string;
+  mirror_ratio?: number;
+  signal_threshold_usdc?: number;
 };
 
 export const ConfigCard = ({
@@ -34,6 +44,11 @@ export const ConfigCard = ({
   const [autoExecute, setAutoExecute] = useState(config?.auto_execute ?? false);
   const [maxPerTrade, setMaxPerTrade] = useState(String(config?.max_usdc_per_trade ?? 5));
   const [dailyLimit, setDailyLimit] = useState(String(config?.daily_usdc_limit ?? 50));
+  const [mirrorMode, setMirrorMode] = useState(config?.mirror_mode ?? "off");
+  const [mirrorRatio, setMirrorRatio] = useState(String(config?.mirror_ratio ?? 0.02));
+  const [signalThreshold, setSignalThreshold] = useState(
+    String(config?.signal_threshold_usdc ?? 50),
+  );
   const [saving, setSaving] = useState(false);
   const [polling, setPolling] = useState(false);
 
@@ -43,7 +58,10 @@ export const ConfigCard = ({
     setAutoExecute(config?.auto_execute ?? false);
     setMaxPerTrade(String(config?.max_usdc_per_trade ?? 5));
     setDailyLimit(String(config?.daily_usdc_limit ?? 50));
-  }, [config?.id, config?.target_wallet, config?.enabled, config?.auto_execute, config?.max_usdc_per_trade, config?.daily_usdc_limit]);
+    setMirrorMode(config?.mirror_mode ?? "off");
+    setMirrorRatio(String(config?.mirror_ratio ?? 0.02));
+    setSignalThreshold(String(config?.signal_threshold_usdc ?? 50));
+  }, [config?.id, config?.target_wallet, config?.enabled, config?.auto_execute, config?.max_usdc_per_trade, config?.daily_usdc_limit, config?.mirror_mode, config?.mirror_ratio, config?.signal_threshold_usdc]);
 
   const today = new Date().toISOString().slice(0, 10);
   const spentToday = config?.spent_day === today ? Number(config?.usdc_spent_today ?? 0) : 0;
@@ -59,8 +77,15 @@ export const ConfigCard = ({
     }
     const maxN = Number(maxPerTrade);
     const dailyN = Number(dailyLimit);
+    const ratioN = Number(mirrorRatio);
+    const sigN = Number(signalThreshold);
     if (!Number.isFinite(maxN) || maxN <= 0 || !Number.isFinite(dailyN) || dailyN <= 0) {
       toast.error("Caps must be positive numbers");
+      setSaving(false);
+      return;
+    }
+    if (!Number.isFinite(ratioN) || ratioN <= 0 || ratioN > 1) {
+      toast.error("Mirror ratio must be between 0 and 1");
       setSaving(false);
       return;
     }
@@ -72,6 +97,9 @@ export const ConfigCard = ({
         auto_execute: autoExecute,
         max_usdc_per_trade: maxN,
         daily_usdc_limit: dailyN,
+        mirror_mode: mirrorMode,
+        mirror_ratio: ratioN,
+        signal_threshold_usdc: sigN,
       })
       .eq("id", config.id);
     setSaving(false);
