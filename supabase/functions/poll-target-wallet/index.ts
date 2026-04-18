@@ -294,7 +294,11 @@ async function processForUser(
         price,
         size,
         usdc_size: usdc,
-        raw: { ...t, onchain } as any,
+        order_id: orderId,
+        order_original_size: orderMeta?.size ?? null,
+        order_original_usdc: orderMeta?.usdc ?? null,
+        is_partial_fill: isPartial,
+        raw: { ...t, onchain, polyMatch } as any,
       })
       .select()
       .single();
