@@ -251,6 +251,9 @@ async function processForUser(
   // Sort ascending so we insert in chronological order
   trades.sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
 
+  // Pre-fetch Polymarket Data API trades indexed by tx_hash for order_id lookup
+  const polyByTx = await fetchPolyTradesByTx(wallet);
+
   let inserted = 0;
   let maxTs = lastSeenTs;
 
@@ -264,6 +267,18 @@ async function processForUser(
     const usdc = Number((t as any)._usdc ?? size * price);
 
     const onchain = await fetchTxInfo(t.transactionHash);
+
+    // Try to match this fill to a Polymarket Data API trade to get order_id
+    const candidates = polyByTx.get(String(t.transactionHash).toLowerCase()) ?? [];
+    // Pick the candidate matching this asset+side (best-effort)
+    const polyMatch = candidates.find(
+      (c: any) =>
+        String(c.asset ?? c.token_id ?? c.tokenId ?? "") === String(t.asset) &&
+        String(c.side ?? "").toUpperCase() === side,
+    ) ?? candidates[0] ?? null;
+    const orderId: string | null = polyMatch?.order_id ?? polyMatch?.orderId ?? polyMatch?.orderHash ?? null;
+    const orderMeta = orderId ? await fetchOrderMeta(orderId, price) : null;
+    const isPartial = orderMeta ? orderMeta.size > size + 1e-6 : null;
 
     const { data: detIns, error: detErr } = await admin
       .from("detected_trades")
