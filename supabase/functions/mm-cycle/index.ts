@@ -182,19 +182,29 @@ async function runForUser(admin: any, userId: string) {
     let avg = Number(mkt.inventory_avg_price ?? 0);
     for (const o of prior) {
       if (!polyOpenIds.has(String(o.poly_order_id))) {
-        // Assume fully filled (worst case overcounts; cycle-level reconcile via /positions could refine)
         const filledShares = Number(o.size);
+        const fillPrice = Number(o.price);
         log.fills_detected++;
         if (o.side === "BUY") {
           const newInv = inv + filledShares;
-          avg = newInv > 0 ? (inv * avg + filledShares * Number(o.price)) / newInv : 0;
+          avg = newInv > 0 ? (inv * avg + filledShares * fillPrice) / newInv : 0;
           inv = newInv;
           invDelta += filledShares;
         } else {
-          const sellPrice = Number(o.price);
-          spreadCaptured += filledShares * (sellPrice - avg);
+          spreadCaptured += filledShares * (fillPrice - avg);
           inv = Math.max(0, inv - filledShares);
         }
+        await admin.from("mm_fills").insert({
+          user_id: userId,
+          asset_id: assetId,
+          market_question: mkt.market_question,
+          outcome: mkt.outcome,
+          side: o.side,
+          price: fillPrice,
+          shares: filledShares,
+          usdc_value: filledShares * fillPrice,
+          poly_order_id: String(o.poly_order_id),
+        });
         await admin.from("mm_open_orders").delete().eq("id", o.id);
       }
     }
