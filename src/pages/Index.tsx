@@ -1,100 +1,39 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { ConfigCard } from "@/components/ConfigCard";
-import { TradesFeed } from "@/components/TradesFeed";
-import { StatsRow } from "@/components/StatsRow";
-import { PnLPanel } from "@/components/PnLPanel";
-import { PositionsPanel } from "@/components/PositionsPanel";
-import { TargetPortfolio } from "@/components/TargetPortfolio";
 import { MarketMakerPanel } from "@/components/MarketMakerPanel";
 import { LogOut } from "lucide-react";
 
 const Index = () => {
   const nav = useNavigate();
   const [userId, setUserId] = useState<string | null>(null);
-  const [config, setConfig] = useState<any>(null);
-  const [trades, setTrades] = useState<any[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    document.title = "Polymarket Copy-Trader — Dry Run";
+    document.title = "Polymarket Market Maker";
 
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
       if (!session) nav("/auth", { replace: true });
-      else setUserId(session.user.id);
+      else {
+        setUserId(session.user.id);
+        setLoading(false);
+      }
     });
     supabase.auth.getSession().then(({ data }) => {
       if (!data.session) nav("/auth", { replace: true });
-      else setUserId(data.session.user.id);
+      else {
+        setUserId(data.session.user.id);
+        setLoading(false);
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, [nav]);
-
-  const reload = useCallback(async () => {
-    if (!userId) return;
-    const [c, t, o] = await Promise.all([
-      supabase.from("config").select("*").eq("user_id", userId).maybeSingle(),
-      supabase
-        .from("detected_trades")
-        .select("*")
-        .eq("user_id", userId)
-        .order("trade_ts", { ascending: false })
-        .limit(25),
-      supabase
-        .from("paper_orders")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(25),
-    ]);
-    setConfig(c.data);
-    setTrades(t.data ?? []);
-    setOrders(o.data ?? []);
-    setLoading(false);
-  }, [userId]);
-
-  useEffect(() => {
-    if (!userId) return;
-    reload();
-    const ch = supabase
-      .channel(`user-${userId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "detected_trades", filter: `user_id=eq.${userId}` },
-        () => reload(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "paper_orders", filter: `user_id=eq.${userId}` },
-        () => reload(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "config", filter: `user_id=eq.${userId}` },
-        () => reload(),
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(ch);
-    };
-  }, [userId, reload]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
     nav("/auth", { replace: true });
   };
-
-  const dayAgo = Date.now() / 1000 - 86400;
-  const tradesToday = trades.filter((t) => t.trade_ts >= dayAgo).length;
-  const ordersToday = orders.filter(
-    (o) => new Date(o.created_at).getTime() / 1000 >= dayAgo,
-  ).length;
-  const volumeToday = orders
-    .filter((o) => new Date(o.created_at).getTime() / 1000 >= dayAgo)
-    .reduce((s, o) => s + Number(o.intended_usdc ?? 0), 0);
 
   if (loading) {
     return (
@@ -111,10 +50,7 @@ const Index = () => {
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-primary animate-pulse-soft" />
             <h1 className="text-sm font-semibold tracking-wide">
-              Polymarket Mirror{" "}
-              <span className="text-muted-foreground font-normal">
-                · dry-run
-              </span>
+              Polymarket Market Maker
             </h1>
           </div>
           <Button variant="ghost" size="sm" onClick={signOut}>
@@ -125,21 +61,9 @@ const Index = () => {
       </header>
 
       <main className="container py-6 space-y-6">
-        <StatsRow
-          tradesToday={tradesToday}
-          ordersToday={ordersToday}
-          volumeToday={volumeToday}
-          totalTrades={trades.length}
-        />
-        <PnLPanel />
-        <ConfigCard config={config} onChange={reload} />
         <MarketMakerPanel userId={userId} />
-        <TargetPortfolio targetWallet={config?.target_wallet ?? null} />
-        <PositionsPanel userId={userId} mirrorRatio={Number(config?.mirror_ratio ?? 0.02)} />
-        <TradesFeed trades={trades} onChange={reload} />
         <p className="text-[11px] text-muted-foreground text-center pt-2">
-          Auto-poll runs every 1 minute when enabled. Live trading places real
-          limit orders on Polymarket — caps enforced server-side.
+          Bot cycles every 30 seconds when enabled. Real limit orders placed on Polymarket — caps enforced server-side.
         </p>
       </main>
     </div>
