@@ -125,6 +125,32 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
     await supabase.from("mm_markets").delete().eq("id", id);
   };
 
+  const toggleSelect = (id: string) => {
+    setSelected((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  };
+  const toggleSelectAll = () => {
+    setSelected((s) => (s.size === markets.length ? new Set() : new Set(markets.map((m) => m.id))));
+  };
+  const removeSelected = async () => {
+    if (selected.size === 0) return;
+    if (!confirm(`Remove ${selected.size} market(s)?`)) return;
+    const ids = Array.from(selected);
+    const { error } = await supabase.from("mm_markets").delete().in("id", ids);
+    if (error) toast.error(error.message);
+    else { toast.success(`Removed ${ids.length}`); setSelected(new Set()); }
+  };
+  const removeAll = async () => {
+    if (markets.length === 0 || !userId) return;
+    if (!confirm(`Remove ALL ${markets.length} markets?`)) return;
+    const { error } = await supabase.from("mm_markets").delete().eq("user_id", userId);
+    if (error) toast.error(error.message);
+    else { toast.success("Removed all"); setSelected(new Set()); }
+  };
+
   const importFromWallet = async () => {
     setImporting(true);
     try {
