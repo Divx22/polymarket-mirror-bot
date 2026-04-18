@@ -164,6 +164,192 @@ export type Database = {
         }
         Relationships: []
       }
+      mm_config: {
+        Row: {
+          created_at: string
+          default_max_inventory_usdc: number
+          default_min_existing_spread_ticks: number
+          default_size_usdc: number
+          default_spread_offset_ticks: number
+          enabled: boolean
+          id: string
+          min_days_to_expiry: number
+          total_capital_cap_usdc: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          default_max_inventory_usdc?: number
+          default_min_existing_spread_ticks?: number
+          default_size_usdc?: number
+          default_spread_offset_ticks?: number
+          enabled?: boolean
+          id?: string
+          min_days_to_expiry?: number
+          total_capital_cap_usdc?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          default_max_inventory_usdc?: number
+          default_min_existing_spread_ticks?: number
+          default_size_usdc?: number
+          default_spread_offset_ticks?: number
+          enabled?: boolean
+          id?: string
+          min_days_to_expiry?: number
+          total_capital_cap_usdc?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      mm_cycles: {
+        Row: {
+          fills_detected: number
+          id: string
+          markets_processed: number
+          notes: Json | null
+          orders_cancelled: number
+          orders_placed: number
+          ran_at: string
+          total_capital_at_risk_usdc: number
+          user_id: string
+        }
+        Insert: {
+          fills_detected?: number
+          id?: string
+          markets_processed?: number
+          notes?: Json | null
+          orders_cancelled?: number
+          orders_placed?: number
+          ran_at?: string
+          total_capital_at_risk_usdc?: number
+          user_id: string
+        }
+        Update: {
+          fills_detected?: number
+          id?: string
+          markets_processed?: number
+          notes?: Json | null
+          orders_cancelled?: number
+          orders_placed?: number
+          ran_at?: string
+          total_capital_at_risk_usdc?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      mm_markets: {
+        Row: {
+          active: boolean
+          asset_id: string
+          condition_id: string | null
+          created_at: string
+          end_date: string | null
+          id: string
+          inventory_avg_price: number
+          inventory_shares: number
+          last_ask_price: number | null
+          last_bid_price: number | null
+          last_book_best_ask: number | null
+          last_book_best_bid: number | null
+          last_cycle_at: string | null
+          last_error: string | null
+          market_question: string | null
+          max_inventory_usdc_override: number | null
+          outcome: string | null
+          size_usdc_override: number | null
+          spread_captured_usdc: number
+          spread_offset_ticks_override: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          asset_id: string
+          condition_id?: string | null
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          inventory_avg_price?: number
+          inventory_shares?: number
+          last_ask_price?: number | null
+          last_bid_price?: number | null
+          last_book_best_ask?: number | null
+          last_book_best_bid?: number | null
+          last_cycle_at?: string | null
+          last_error?: string | null
+          market_question?: string | null
+          max_inventory_usdc_override?: number | null
+          outcome?: string | null
+          size_usdc_override?: number | null
+          spread_captured_usdc?: number
+          spread_offset_ticks_override?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          asset_id?: string
+          condition_id?: string | null
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          inventory_avg_price?: number
+          inventory_shares?: number
+          last_ask_price?: number | null
+          last_bid_price?: number | null
+          last_book_best_ask?: number | null
+          last_book_best_bid?: number | null
+          last_cycle_at?: string | null
+          last_error?: string | null
+          market_question?: string | null
+          max_inventory_usdc_override?: number | null
+          outcome?: string | null
+          size_usdc_override?: number | null
+          spread_captured_usdc?: number
+          spread_offset_ticks_override?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      mm_open_orders: {
+        Row: {
+          asset_id: string
+          created_at: string
+          id: string
+          poly_order_id: string
+          price: number
+          side: string
+          size: number
+          user_id: string
+        }
+        Insert: {
+          asset_id: string
+          created_at?: string
+          id?: string
+          poly_order_id: string
+          price: number
+          side: string
+          size: number
+          user_id: string
+        }
+        Update: {
+          asset_id?: string
+          created_at?: string
+          id?: string
+          poly_order_id?: string
+          price?: number
+          side?: string
+          size?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       paper_orders: {
         Row: {
           asset_id: string
