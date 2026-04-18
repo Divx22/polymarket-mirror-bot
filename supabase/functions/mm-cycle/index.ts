@@ -209,11 +209,24 @@ async function runForUser(admin: any, userId: string) {
       }
     }
 
-    // ---- Cancel any remaining open orders that aren't at target price
+    // Pre-compute the sell ladder so we know which SELL prices are valid this cycle
+    const ladderRungs = Math.max(1, Number(cfg.sell_ladder_rungs ?? 4));
+    const ladderSpacing = Math.max(1, Number(cfg.sell_ladder_spacing_ticks ?? 2));
+    const ladderPrices: number[] = [];
+    for (let i = 0; i < ladderRungs; i++) {
+      const p = roundTick(targetAsk + i * ladderSpacing * TICK);
+      if (p < 1) ladderPrices.push(p);
+    }
+    const isOnLadder = (price: number) =>
+      ladderPrices.some((lp) => Math.abs(lp - price) < TICK / 2);
+
+    // ---- Cancel any remaining open orders not at a valid target
     for (const o of prior) {
-      if (!polyOpenIds.has(String(o.poly_order_id))) continue; // already gone
-      const targetPrice = o.side === "BUY" ? targetBid : targetAsk;
-      if (Math.abs(Number(o.price) - targetPrice) < TICK / 2) continue; // already correct
+      if (!polyOpenIds.has(String(o.poly_order_id))) continue;
+      const ok = o.side === "BUY"
+        ? Math.abs(Number(o.price) - targetBid) < TICK / 2
+        : isOnLadder(Number(o.price));
+      if (ok) continue;
       try {
         await client.cancelOrder({ orderID: o.poly_order_id });
         await admin.from("mm_open_orders").delete().eq("id", o.id);
