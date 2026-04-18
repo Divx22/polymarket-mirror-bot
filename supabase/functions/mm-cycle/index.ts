@@ -243,14 +243,6 @@ async function runForUser(admin: any, userId: string) {
       (o) => o.side === "BUY" && polyOpenIds.has(String(o.poly_order_id)) &&
         Math.abs(Number(o.price) - targetBid) < TICK / 2,
     );
-    // Build the sell ladder: N rungs starting at targetAsk, spaced by ladderSpacing ticks
-    const ladderRungs = Math.max(1, Number(cfg.sell_ladder_rungs ?? 4));
-    const ladderSpacing = Math.max(1, Number(cfg.sell_ladder_spacing_ticks ?? 2));
-    const ladderPrices: number[] = [];
-    for (let i = 0; i < ladderRungs; i++) {
-      const p = roundTick(targetAsk + i * ladderSpacing * TICK);
-      if (p < 1) ladderPrices.push(p);
-    }
     const existingAsks = (openByAsset.get(assetId) ?? []).filter(
       (o) => o.side === "SELL" && polyOpenIds.has(String(o.poly_order_id)),
     );
