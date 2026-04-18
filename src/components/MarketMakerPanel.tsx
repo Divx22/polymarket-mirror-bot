@@ -294,9 +294,63 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
           />
           <Button onClick={importFromWallet} disabled={importing || !walletAddr} size="sm" variant="secondary">
             {importing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
-            Copy wallet's markets
+            Preview wallet's markets
           </Button>
         </div>
+        {walletPreview.length > 0 && (
+          <div className="border border-border rounded-md">
+            <div className="flex items-center justify-between p-2 border-b border-border bg-muted/30">
+              <div className="text-[11px] text-muted-foreground">
+                {walletPicked.size} of {walletPreview.length} selected
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="ghost" onClick={() => setWalletPicked(new Set(walletPreview.map((i) => i.asset_id)))}>
+                  All
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setWalletPicked(new Set())}>
+                  None
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => { setWalletPreview([]); setWalletPicked(new Set()); }}>
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={confirmWalletImport} disabled={importing || walletPicked.size === 0}>
+                  {importing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+                  Add {walletPicked.size}
+                </Button>
+              </div>
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              <table className="w-full text-[11px]">
+                <tbody>
+                  {walletPreview.map((p) => (
+                    <tr key={p.asset_id} className="border-b border-border/40">
+                      <td className="p-2 w-6">
+                        <input
+                          type="checkbox"
+                          checked={walletPicked.has(p.asset_id)}
+                          onChange={() => {
+                            setWalletPicked((s) => {
+                              const n = new Set(s);
+                              n.has(p.asset_id) ? n.delete(p.asset_id) : n.add(p.asset_id);
+                              return n;
+                            });
+                          }}
+                          className="cursor-pointer"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <div className="text-foreground">{p.market_question}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {p.outcome} · ends {p.end_date} · {p.shares.toFixed(0)} shares @ {p.current_price.toFixed(3)}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
         <div>
           <Button onClick={fetchCandidates} disabled={loadingCandidates} size="sm" variant="secondary">
             {loadingCandidates ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
