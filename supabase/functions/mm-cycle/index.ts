@@ -141,6 +141,15 @@ async function runForUser(admin: any, userId: string) {
   // ===== Single source of truth: real Polymarket positions =====
   const polyPositions = await getPolyPositions();
 
+  // Re-fetch open orders from Polymarket so we know what to cancel/keep
+  let polyOpenIds = new Set<string>();
+  try {
+    const polyOpen: any = await client.getOpenOrders();
+    const list = Array.isArray(polyOpen) ? polyOpen : (polyOpen?.data ?? []);
+    polyOpenIds = new Set(list.map((o: any) => String(o.id ?? o.orderID ?? o.order_id)));
+  } catch (e) {
+    log.notes.errors.push({ stage: "getOpenOrders", error: String((e as any)?.message ?? e) });
+  }
 
   let totalCapital = 0;
 
@@ -168,7 +177,6 @@ async function runForUser(admin: any, userId: string) {
     let targetBid: number;
     let targetAsk: number;
     if (quoteMode === "inside") {
-      // Original: quote one tick inside the spread; requires room
       if (book.bestAsk - book.bestBid < minExistingSpread) {
         log.notes.skipped.push({ assetId, reason: `spread ${(book.bestAsk - book.bestBid).toFixed(4)} too tight for inside mode` });
         continue;
@@ -176,51 +184,58 @@ async function runForUser(admin: any, userId: string) {
       targetBid = Math.min(roundTick(book.bestBid + offsetTicks * TICK), mid - TICK);
       targetAsk = Math.max(roundTick(book.bestAsk - offsetTicks * TICK), mid + TICK);
     } else if (quoteMode === "passive") {
-      // One tick worse than best — sit outside, capture more if filled
       targetBid = roundTick(Math.max(TICK, book.bestBid - TICK));
       targetAsk = roundTick(book.bestAsk + TICK);
     } else {
-      // "join" — quote at the best bid/ask
       targetBid = roundTick(book.bestBid);
       targetAsk = roundTick(book.bestAsk);
     }
 
-    // ---- Detect fills from disappeared open orders
+    // ===== TRUTH-FROM-POLYMARKET inventory sync =====
+    // Use real Polymarket position as authoritative inventory & avg price.
+    // Detect fills by comparing prior DB inventory to current real inventory.
     const prior = openByAsset.get(assetId) ?? [];
-    let invDelta = 0;
+    const polyPos = polyPositions.get(assetId) ?? { shares: 0, avgPrice: 0 };
+    const dbPriorInv = Number(mkt.inventory_shares ?? 0);
+    const dbPriorAvg = Number(mkt.inventory_avg_price ?? 0);
+    const inv = polyPos.shares;
+    const avg = polyPos.avgPrice || dbPriorAvg;
+
+    // Infer fill direction from delta. Buy fills = inventory grew, Sell fills = shrunk.
     let spreadCaptured = 0;
-    let inv = Number(mkt.inventory_shares ?? 0);
-    let avg = Number(mkt.inventory_avg_price ?? 0);
+    const delta = inv - dbPriorInv;
+    if (Math.abs(delta) > 0.0001) {
+      log.fills_detected++;
+      if (delta > 0) {
+        // BUY filled — best estimate of fill price is our last targetBid
+        await admin.from("mm_fills").insert({
+          user_id: userId, asset_id: assetId,
+          market_question: mkt.market_question, outcome: mkt.outcome,
+          side: "BUY", price: targetBid, shares: delta, usdc_value: delta * targetBid,
+          poly_order_id: null,
+        });
+      } else {
+        const soldShares = -delta;
+        // SELL filled — fill price ≈ our last targetAsk; capture spread = (ask − avg) × shares
+        const fillPrice = targetAsk;
+        spreadCaptured = soldShares * (fillPrice - dbPriorAvg);
+        await admin.from("mm_fills").insert({
+          user_id: userId, asset_id: assetId,
+          market_question: mkt.market_question, outcome: mkt.outcome,
+          side: "SELL", price: fillPrice, shares: soldShares, usdc_value: soldShares * fillPrice,
+          poly_order_id: null,
+        });
+      }
+    }
+
+    // Clean up DB rows for orders no longer open on Polymarket
     for (const o of prior) {
       if (!polyOpenIds.has(String(o.poly_order_id))) {
-        const filledShares = Number(o.size);
-        const fillPrice = Number(o.price);
-        log.fills_detected++;
-        if (o.side === "BUY") {
-          const newInv = inv + filledShares;
-          avg = newInv > 0 ? (inv * avg + filledShares * fillPrice) / newInv : 0;
-          inv = newInv;
-          invDelta += filledShares;
-        } else {
-          spreadCaptured += filledShares * (fillPrice - avg);
-          inv = Math.max(0, inv - filledShares);
-        }
-        await admin.from("mm_fills").insert({
-          user_id: userId,
-          asset_id: assetId,
-          market_question: mkt.market_question,
-          outcome: mkt.outcome,
-          side: o.side,
-          price: fillPrice,
-          shares: filledShares,
-          usdc_value: filledShares * fillPrice,
-          poly_order_id: String(o.poly_order_id),
-        });
         await admin.from("mm_open_orders").delete().eq("id", o.id);
       }
     }
 
-    // Pre-compute the sell ladder so we know which SELL prices are valid this cycle
+    // Pre-compute the sell ladder
     const ladderRungs = Math.max(1, Number(cfg.sell_ladder_rungs ?? 4));
     const ladderSpacing = Math.max(1, Number(cfg.sell_ladder_spacing_ticks ?? 2));
     const ladderPrices: number[] = [];
@@ -231,7 +246,7 @@ async function runForUser(admin: any, userId: string) {
     const isOnLadder = (price: number) =>
       ladderPrices.some((lp) => Math.abs(lp - price) < TICK / 2);
 
-    // ---- Cancel any remaining open orders not at a valid target
+    // Cancel any remaining open orders not at a valid target
     for (const o of prior) {
       if (!polyOpenIds.has(String(o.poly_order_id))) continue;
       const ok = o.side === "BUY"
