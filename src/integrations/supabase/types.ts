@@ -67,8 +67,12 @@ export type Database = {
           asset_id: string
           created_at: string
           id: string
+          is_partial_fill: boolean | null
           market_id: string | null
           market_question: string | null
+          order_id: string | null
+          order_original_size: number | null
+          order_original_usdc: number | null
           outcome: string | null
           price: number | null
           raw: Json | null
@@ -83,8 +87,12 @@ export type Database = {
           asset_id: string
           created_at?: string
           id?: string
+          is_partial_fill?: boolean | null
           market_id?: string | null
           market_question?: string | null
+          order_id?: string | null
+          order_original_size?: number | null
+          order_original_usdc?: number | null
           outcome?: string | null
           price?: number | null
           raw?: Json | null
@@ -99,8 +107,12 @@ export type Database = {
           asset_id?: string
           created_at?: string
           id?: string
+          is_partial_fill?: boolean | null
           market_id?: string | null
           market_question?: string | null
+          order_id?: string | null
+          order_original_size?: number | null
+          order_original_usdc?: number | null
           outcome?: string | null
           price?: number | null
           raw?: Json | null
