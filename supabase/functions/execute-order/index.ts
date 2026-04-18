@@ -1,5 +1,6 @@
 // Executes a paper_order as a real GTC limit order on Polymarket CLOB.
 // Uses the user's Polymarket proxy wallet (signatureType = POLY_PROXY).
+import "npm:tslib@2.6.2";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { ClobClient, Side, OrderType } from "npm:@polymarket/clob-client@4.21.0";
 // Polymarket signature types: EOA=0, POLY_PROXY=1, POLY_GNOSIS_SAFE=2
