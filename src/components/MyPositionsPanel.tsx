@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtRelative } from "@/lib/format";
+import { CopyLinkButton } from "./CopyLinkButton";
 
 type Market = {
   id: string;
@@ -98,7 +99,10 @@ export const MyPositionsPanel = ({ userId }: { userId: string | null }) => {
                 return (
                   <tr key={p.id} className="border-b border-border/40">
                     <td className="py-2 pr-2 max-w-[260px]">
-                      <div className="truncate text-foreground">{p.market_question ?? p.asset_id}</div>
+                      <div className="flex items-center gap-1">
+                        <div className="truncate text-foreground flex-1">{p.market_question ?? p.asset_id}</div>
+                        <CopyLinkButton assetId={p.asset_id} />
+                      </div>
                       {p.outcome && <div className="text-[10px] text-muted-foreground">{p.outcome}</div>}
                     </td>
                     <td className="text-right font-mono-num py-2 px-2">{p.inventory_shares.toFixed(2)}</td>
@@ -134,7 +138,10 @@ export const MyPositionsPanel = ({ userId }: { userId: string | null }) => {
                       <span className={`text-[10px] uppercase font-semibold ${f.side === "BUY" ? "text-buy" : "text-sell"}`}>{f.side}</span>
                     </td>
                     <td className="p-2 max-w-[260px]">
-                      <div className="truncate text-foreground">{f.market_question ?? f.asset_id}</div>
+                      <div className="flex items-center gap-1">
+                        <div className="truncate text-foreground flex-1">{f.market_question ?? f.asset_id}</div>
+                        <CopyLinkButton assetId={f.asset_id} />
+                      </div>
                       <div className="text-[10px] text-muted-foreground">{f.outcome}</div>
                     </td>
                     <td className="p-2 text-right font-mono-num">{Number(f.shares).toFixed(2)} @ {Number(f.price).toFixed(3)}</td>
