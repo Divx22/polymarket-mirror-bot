@@ -235,8 +235,10 @@ async function runForUser(admin: any, userId: string) {
       }
     }
 
-    // Pre-compute the sell ladder
-    const ladderRungs = Math.max(1, Number(cfg.sell_ladder_rungs ?? 4));
+    // On tight 1-tick books: single sell at the join price for fast fills.
+    // On wider books: build the configured sell ladder above targetAsk.
+    const tightBook = bookSpread < 2 * TICK;
+    const ladderRungs = tightBook ? 1 : Math.max(1, Number(cfg.sell_ladder_rungs ?? 4));
     const ladderSpacing = Math.max(1, Number(cfg.sell_ladder_spacing_ticks ?? 2));
     const ladderPrices: number[] = [];
     for (let i = 0; i < ladderRungs; i++) {
