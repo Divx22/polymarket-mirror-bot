@@ -290,23 +290,34 @@ async function runForUser(admin: any, userId: string) {
     const isLadderAsk = (price: number) => ladderPrices.some((lp) => eqPrice(lp.price, price));
     const isTargetBid = (price: number) => eqPrice(price, targetBid);
 
-    // ===== CANCEL stale orders =====
+    // ===== CANCEL stale orders (skipped if geo-blocked) =====
     const prior = openByAsset.get(assetId) ?? [];
-    for (const o of prior) {
-      if (!polyOpenIds.has(String(o.poly_order_id))) {
-        await admin.from("mm_open_orders").delete().eq("id", o.id);
-        continue;
-      }
-      const keep = o.side === "BUY"
-        ? isTargetBid(Number(o.price))
-        : (isFlipAsk(Number(o.price)) || isLadderAsk(Number(o.price)));
-      if (keep) continue;
-      try {
-        await client.cancelOrder({ orderID: o.poly_order_id });
-        await admin.from("mm_open_orders").delete().eq("id", o.id);
-        log.orders_cancelled++;
-      } catch (e) {
-        log.notes.errors.push({ assetId, stage: "cancel", error: String((e as any)?.message ?? e) });
+    if (geoBlocked) {
+      log.notes.skipped.push({ assetId, reason: "geo-blocked, skipping cancels" });
+    } else {
+      for (const o of prior) {
+        if (!polyOpenIds.has(String(o.poly_order_id))) {
+          await admin.from("mm_open_orders").delete().eq("id", o.id);
+          continue;
+        }
+        const keep = o.side === "BUY"
+          ? isTargetBid(Number(o.price))
+          : (isFlipAsk(Number(o.price)) || isLadderAsk(Number(o.price)));
+        if (keep) continue;
+        try {
+          await client.cancelOrder({ orderID: o.poly_order_id });
+          await admin.from("mm_open_orders").delete().eq("id", o.id);
+          log.orders_cancelled++;
+        } catch (e) {
+          const msg = String((e as any)?.message ?? e);
+          log.notes.errors.push({ assetId, stage: "cancel", error: msg });
+          if (/region|restricted|geo|blocked/i.test(msg)) {
+            geoBlocked = true;
+            log.notes.geo_blocked = true;
+            log.notes.skipped.push("GEO-BLOCKED mid-cycle: aborting further cancels");
+            break;
+          }
+        }
       }
     }
 
