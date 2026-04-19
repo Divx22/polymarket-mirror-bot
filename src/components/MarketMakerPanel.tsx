@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Loader2, Plus, Power, Search, Trash2, AlertTriangle } from "lucide-react";
+import { CopyLinkButton } from "./CopyLinkButton";
 
 type Market = {
   id: string;
@@ -356,7 +357,10 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
                         />
                       </td>
                       <td className="p-2">
-                        <div className="text-foreground">{p.market_question}</div>
+                        <div className="flex items-center gap-1">
+                          <div className="text-foreground flex-1">{p.market_question}</div>
+                          <CopyLinkButton assetId={p.asset_id} />
+                        </div>
                         <div className="text-[10px] text-muted-foreground">
                           {p.outcome} · ends {p.end_date} · {p.shares.toFixed(0)} shares @ {p.current_price.toFixed(3)}
                         </div>
@@ -389,7 +393,10 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
                   {candidates.map((c) => (
                     <tr key={c.asset_id} className="border-b border-border/40">
                       <td className="p-2 max-w-[280px]">
-                        <div className="truncate text-foreground">{c.market_question}</div>
+                        <div className="flex items-center gap-1">
+                          <div className="truncate text-foreground flex-1">{c.market_question}</div>
+                          <CopyLinkButton assetId={c.asset_id} />
+                        </div>
                         <div className="text-[10px] text-muted-foreground">{c.outcome} · ends {c.end_date}</div>
                       </td>
                       <td className="text-right font-mono-num p-2">{c.best_bid.toFixed(3)} / {c.best_ask.toFixed(3)}</td>

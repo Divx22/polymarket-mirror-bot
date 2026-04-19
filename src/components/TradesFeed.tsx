@@ -5,9 +5,11 @@ import { ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { CopyLinkButton } from "./CopyLinkButton";
 
 type Trade = {
   id: string;
+  asset_id: string;
   tx_hash: string;
   trade_ts: number;
   side: string;
@@ -96,8 +98,11 @@ export const TradesFeed = ({
                 <td className="px-3 py-2.5">
                   <SideBadge side={t.side} />
                 </td>
-                <td className="px-3 py-2.5 max-w-[280px] truncate">
-                  {t.market_question ?? "—"}
+                <td className="px-3 py-2.5 max-w-[280px]">
+                  <div className="flex items-center gap-1">
+                    <span className="truncate">{t.market_question ?? "—"}</span>
+                    <CopyLinkButton assetId={t.asset_id} />
+                  </div>
                 </td>
                 <td className="px-3 py-2.5 text-muted-foreground">
                   {t.outcome ?? "—"}
