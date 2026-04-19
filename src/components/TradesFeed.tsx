@@ -101,7 +101,7 @@ export const TradesFeed = ({
                 <td className="px-3 py-2.5 max-w-[280px]">
                   <div className="flex items-center gap-1">
                     <span className="truncate">{t.market_question ?? "—"}</span>
-                    <CopyLinkButton assetId={t.asset_id} />
+                    <CopyLinkButton text={t.market_question} />
                   </div>
                 </td>
                 <td className="px-3 py-2.5 text-muted-foreground">

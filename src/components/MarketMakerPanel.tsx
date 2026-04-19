@@ -359,7 +359,7 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
                       <td className="p-2">
                         <div className="flex items-center gap-1">
                           <div className="text-foreground flex-1">{p.market_question}</div>
-                          <CopyLinkButton assetId={p.asset_id} />
+                          <CopyLinkButton text={p.market_question} />
                         </div>
                         <div className="text-[10px] text-muted-foreground">
                           {p.outcome} · ends {p.end_date} · {p.shares.toFixed(0)} shares @ {p.current_price.toFixed(3)}
@@ -395,7 +395,7 @@ export const MarketMakerPanel = ({ userId }: { userId: string | null }) => {
                       <td className="p-2 max-w-[280px]">
                         <div className="flex items-center gap-1">
                           <div className="truncate text-foreground flex-1">{c.market_question}</div>
-                          <CopyLinkButton assetId={c.asset_id} />
+                          <CopyLinkButton text={c.market_question} />
                         </div>
                         <div className="text-[10px] text-muted-foreground">{c.outcome} · ends {c.end_date}</div>
                       </td>
