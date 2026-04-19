@@ -125,7 +125,10 @@ export const MyPositionsPanel = ({ userId }: { userId: string | null }) => {
               <tbody>
                 {fills.map((f) => (
                   <tr key={f.id} className="border-b border-border/40">
-                    <td className="p-2 text-muted-foreground font-mono-num w-20">{fmtRelative(new Date(f.filled_at).getTime())}</td>
+                    <td className="p-2 font-mono-num w-24 whitespace-nowrap" title={new Date(f.filled_at).toLocaleString()}>
+                      <div className="text-foreground">{fmtRelative(new Date(f.filled_at).getTime() / 1000)}</div>
+                      <div className="text-[9px] text-muted-foreground">{new Date(f.filled_at).toLocaleTimeString()}</div>
+                    </td>
                     <td className="p-2 w-12">
                       <span className={`text-[10px] uppercase font-semibold ${f.side === "BUY" ? "text-buy" : "text-sell"}`}>{f.side}</span>
                     </td>
