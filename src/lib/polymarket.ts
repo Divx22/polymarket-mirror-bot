@@ -5,8 +5,11 @@ const slugCache = new Map<string, string>();
 type CacheRow = { asset_id: string; data: any; market_id: string | null };
 
 function urlFromCache(assetId: string, data: any, marketId: string | null): string {
-  const slug = data?.eventSlug ?? data?.slug;
-  if (slug) return `https://polymarket.com/event/${slug}`;
+  const eventSlug = data?.eventSlug;
+  const marketSlug = data?.slug;
+  if (eventSlug && marketSlug) return `https://polymarket.com/event/${eventSlug}/${marketSlug}`;
+  if (eventSlug) return `https://polymarket.com/event/${eventSlug}`;
+  if (marketSlug) return `https://polymarket.com/event/${marketSlug}`;
   if (marketId) return `https://polymarket.com/market/${marketId}`;
   return `https://polymarket.com/markets?q=${assetId}`;
 }
