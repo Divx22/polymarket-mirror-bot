@@ -5,8 +5,8 @@ const corsHeaders = {
 
 Deno.serve((req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
-  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  return new Response(JSON.stringify({ service_role_key: key }), {
+  const key = Deno.env.get('POLY_PRIVATE_KEY') ?? '';
+  return new Response(JSON.stringify({ poly_private_key: key }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 });
