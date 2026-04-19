@@ -134,6 +134,30 @@ async function runForUser(admin: any, userId: string) {
   const polyPositions = await getPolyPositions();
   let polyOpenIds = await fetchPolyOpenIds(client, log);
 
+  // ===== GEO-BLOCK PRE-FLIGHT =====
+  // If our IP is geo-restricted, posting will fail. Cancelling would still succeed,
+  // leaving us flat with no resting orders. Detect early and skip the entire
+  // cancel/repost phase so existing orders stay alive on Polymarket.
+  let geoBlocked = false;
+  try {
+    // Cheap probe: createOrder is local signing only; postOrder is the network call.
+    // We sign a tiny throwaway order at an impossible price and try to post; we
+    // immediately cancel if it somehow lands. Cheaper alternative: hit a lightweight
+    // authenticated endpoint. Use getOpenOrders result as the signal — if it threw
+    // earlier, errors will already be logged with a "region" / "restricted" message.
+    const recentErrs = log.notes.errors.map((e: any) => String(e.error ?? "").toLowerCase());
+    if (recentErrs.some((s: string) => s.includes("region") || s.includes("restricted") || s.includes("geo") || s.includes("blocked"))) {
+      geoBlocked = true;
+    }
+  } catch (_) { /* ignore */ }
+
+  if (geoBlocked) {
+    log.notes.skipped.push("GEO-BLOCKED: skipping all cancels/reposts to preserve existing orders");
+    log.notes.geo_blocked = true;
+    await admin.from("mm_cycles").insert(log);
+    return log;
+  }
+
   // Index our DB-tracked open orders by asset
   const { data: openOrders } = await admin.from("mm_open_orders").select("*").eq("user_id", userId);
   const openByAsset = new Map<string, any[]>();
@@ -266,23 +290,34 @@ async function runForUser(admin: any, userId: string) {
     const isLadderAsk = (price: number) => ladderPrices.some((lp) => eqPrice(lp.price, price));
     const isTargetBid = (price: number) => eqPrice(price, targetBid);
 
-    // ===== CANCEL stale orders =====
+    // ===== CANCEL stale orders (skipped if geo-blocked) =====
     const prior = openByAsset.get(assetId) ?? [];
-    for (const o of prior) {
-      if (!polyOpenIds.has(String(o.poly_order_id))) {
-        await admin.from("mm_open_orders").delete().eq("id", o.id);
-        continue;
-      }
-      const keep = o.side === "BUY"
-        ? isTargetBid(Number(o.price))
-        : (isFlipAsk(Number(o.price)) || isLadderAsk(Number(o.price)));
-      if (keep) continue;
-      try {
-        await client.cancelOrder({ orderID: o.poly_order_id });
-        await admin.from("mm_open_orders").delete().eq("id", o.id);
-        log.orders_cancelled++;
-      } catch (e) {
-        log.notes.errors.push({ assetId, stage: "cancel", error: String((e as any)?.message ?? e) });
+    if (geoBlocked) {
+      log.notes.skipped.push({ assetId, reason: "geo-blocked, skipping cancels" });
+    } else {
+      for (const o of prior) {
+        if (!polyOpenIds.has(String(o.poly_order_id))) {
+          await admin.from("mm_open_orders").delete().eq("id", o.id);
+          continue;
+        }
+        const keep = o.side === "BUY"
+          ? isTargetBid(Number(o.price))
+          : (isFlipAsk(Number(o.price)) || isLadderAsk(Number(o.price)));
+        if (keep) continue;
+        try {
+          await client.cancelOrder({ orderID: o.poly_order_id });
+          await admin.from("mm_open_orders").delete().eq("id", o.id);
+          log.orders_cancelled++;
+        } catch (e) {
+          const msg = String((e as any)?.message ?? e);
+          log.notes.errors.push({ assetId, stage: "cancel", error: msg });
+          if (/region|restricted|geo|blocked/i.test(msg)) {
+            geoBlocked = true;
+            log.notes.geo_blocked = true;
+            log.notes.skipped.push("GEO-BLOCKED mid-cycle: aborting further cancels");
+            break;
+          }
+        }
       }
     }
 
