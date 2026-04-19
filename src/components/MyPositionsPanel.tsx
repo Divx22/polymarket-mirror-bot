@@ -101,7 +101,7 @@ export const MyPositionsPanel = ({ userId }: { userId: string | null }) => {
                     <td className="py-2 pr-2 max-w-[260px]">
                       <div className="flex items-center gap-1">
                         <div className="truncate text-foreground flex-1">{p.market_question ?? p.asset_id}</div>
-                        <CopyLinkButton assetId={p.asset_id} />
+                        <CopyLinkButton text={p.market_question ?? p.asset_id} />
                       </div>
                       {p.outcome && <div className="text-[10px] text-muted-foreground">{p.outcome}</div>}
                     </td>
@@ -140,7 +140,7 @@ export const MyPositionsPanel = ({ userId }: { userId: string | null }) => {
                     <td className="p-2 max-w-[260px]">
                       <div className="flex items-center gap-1">
                         <div className="truncate text-foreground flex-1">{f.market_question ?? f.asset_id}</div>
-                        <CopyLinkButton assetId={f.asset_id} />
+                        <CopyLinkButton text={f.market_question ?? f.asset_id} />
                       </div>
                       <div className="text-[10px] text-muted-foreground">{f.outcome}</div>
                     </td>
