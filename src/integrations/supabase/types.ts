@@ -172,9 +172,15 @@ export type Database = {
           default_size_usdc: number
           default_spread_offset_ticks: number
           enabled: boolean
+          flip_pct: number
           id: string
+          inventory_ladder_pcts: number[]
+          inventory_ladder_ticks: number[]
+          inventory_pct: number
+          max_inventory_per_market_usdc: number
           min_days_to_expiry: number
           quote_mode: string
+          repost_partial_fills: boolean
           sell_ladder_rungs: number
           sell_ladder_spacing_ticks: number
           total_capital_cap_usdc: number
@@ -188,9 +194,15 @@ export type Database = {
           default_size_usdc?: number
           default_spread_offset_ticks?: number
           enabled?: boolean
+          flip_pct?: number
           id?: string
+          inventory_ladder_pcts?: number[]
+          inventory_ladder_ticks?: number[]
+          inventory_pct?: number
+          max_inventory_per_market_usdc?: number
           min_days_to_expiry?: number
           quote_mode?: string
+          repost_partial_fills?: boolean
           sell_ladder_rungs?: number
           sell_ladder_spacing_ticks?: number
           total_capital_cap_usdc?: number
@@ -204,9 +216,15 @@ export type Database = {
           default_size_usdc?: number
           default_spread_offset_ticks?: number
           enabled?: boolean
+          flip_pct?: number
           id?: string
+          inventory_ladder_pcts?: number[]
+          inventory_ladder_ticks?: number[]
+          inventory_pct?: number
+          max_inventory_per_market_usdc?: number
           min_days_to_expiry?: number
           quote_mode?: string
+          repost_partial_fills?: boolean
           sell_ladder_rungs?: number
           sell_ladder_spacing_ticks?: number
           total_capital_cap_usdc?: number
@@ -254,6 +272,7 @@ export type Database = {
       mm_fills: {
         Row: {
           asset_id: string
+          category: string
           filled_at: string
           id: string
           market_question: string | null
@@ -267,6 +286,7 @@ export type Database = {
         }
         Insert: {
           asset_id: string
+          category?: string
           filled_at?: string
           id?: string
           market_question?: string | null
@@ -280,6 +300,7 @@ export type Database = {
         }
         Update: {
           asset_id?: string
+          category?: string
           filled_at?: string
           id?: string
           market_question?: string | null
@@ -300,8 +321,15 @@ export type Database = {
           condition_id: string | null
           created_at: string
           end_date: string | null
+          flip_bucket_shares: number
+          flip_pct_override: number | null
+          flip_profit_usdc: number
           id: string
+          inventory_avg_cost: number
           inventory_avg_price: number
+          inventory_bucket_shares: number
+          inventory_pct_override: number | null
+          inventory_profit_usdc: number
           inventory_shares: number
           last_ask_price: number | null
           last_bid_price: number | null
@@ -310,6 +338,7 @@ export type Database = {
           last_cycle_at: string | null
           last_error: string | null
           market_question: string | null
+          max_inventory_per_market_usdc_override: number | null
           max_inventory_usdc_override: number | null
           outcome: string | null
           size_usdc_override: number | null
@@ -324,8 +353,15 @@ export type Database = {
           condition_id?: string | null
           created_at?: string
           end_date?: string | null
+          flip_bucket_shares?: number
+          flip_pct_override?: number | null
+          flip_profit_usdc?: number
           id?: string
+          inventory_avg_cost?: number
           inventory_avg_price?: number
+          inventory_bucket_shares?: number
+          inventory_pct_override?: number | null
+          inventory_profit_usdc?: number
           inventory_shares?: number
           last_ask_price?: number | null
           last_bid_price?: number | null
@@ -334,6 +370,7 @@ export type Database = {
           last_cycle_at?: string | null
           last_error?: string | null
           market_question?: string | null
+          max_inventory_per_market_usdc_override?: number | null
           max_inventory_usdc_override?: number | null
           outcome?: string | null
           size_usdc_override?: number | null
@@ -348,8 +385,15 @@ export type Database = {
           condition_id?: string | null
           created_at?: string
           end_date?: string | null
+          flip_bucket_shares?: number
+          flip_pct_override?: number | null
+          flip_profit_usdc?: number
           id?: string
+          inventory_avg_cost?: number
           inventory_avg_price?: number
+          inventory_bucket_shares?: number
+          inventory_pct_override?: number | null
+          inventory_profit_usdc?: number
           inventory_shares?: number
           last_ask_price?: number | null
           last_bid_price?: number | null
@@ -358,6 +402,7 @@ export type Database = {
           last_cycle_at?: string | null
           last_error?: string | null
           market_question?: string | null
+          max_inventory_per_market_usdc_override?: number | null
           max_inventory_usdc_override?: number | null
           outcome?: string | null
           size_usdc_override?: number | null
