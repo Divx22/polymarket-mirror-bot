@@ -176,17 +176,17 @@ async function runForUser(admin: any, userId: string) {
 
     let targetBid: number;
     let targetAsk: number;
-    if (quoteMode === "inside") {
-      if (book.bestAsk - book.bestBid < minExistingSpread) {
-        log.notes.skipped.push({ assetId, reason: `spread ${(book.bestAsk - book.bestBid).toFixed(4)} too tight for inside mode` });
-        continue;
-      }
+    const bookSpread = book.bestAsk - book.bestBid;
+    // Hybrid: inside-quote when book is wide enough, else fall back to JOIN
+    // so we always have a legal price to post (1-tick books have no price between).
+    if (quoteMode === "inside" && bookSpread >= minExistingSpread) {
       targetBid = Math.min(roundTick(book.bestBid + offsetTicks * TICK), mid - TICK);
       targetAsk = Math.max(roundTick(book.bestAsk - offsetTicks * TICK), mid + TICK);
     } else if (quoteMode === "passive") {
       targetBid = roundTick(Math.max(TICK, book.bestBid - TICK));
       targetAsk = roundTick(book.bestAsk + TICK);
     } else {
+      // join mode (also fallback for inside on tight books)
       targetBid = roundTick(book.bestBid);
       targetAsk = roundTick(book.bestAsk);
     }
