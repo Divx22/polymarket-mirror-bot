@@ -67,7 +67,8 @@ export const MyPositionsPanel = ({ userId }: { userId: string | null }) => {
         <p className="text-xs text-muted-foreground mt-1">Inventory accumulated by the bot, marked to current mid. Auto-refreshes every 10s.</p>
       </header>
 
-      <div className="grid grid-cols-3 gap-4 text-xs">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+        <Stat label="Open positions" value={String(positions.length)} />
         <Stat label="Inventory value" value={`$${totalValue.toFixed(2)}`} />
         <Stat label="Unrealized P&L" value={`${totalUnrealized >= 0 ? "+" : ""}$${totalUnrealized.toFixed(2)}`} tone={totalUnrealized >= 0 ? "buy" : "sell"} />
         <Stat label="Spread captured" value={`$${totalCaptured.toFixed(2)}`} tone={totalCaptured > 0 ? "buy" : "default"} />
