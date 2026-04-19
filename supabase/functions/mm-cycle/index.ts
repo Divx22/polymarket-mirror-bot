@@ -134,6 +134,30 @@ async function runForUser(admin: any, userId: string) {
   const polyPositions = await getPolyPositions();
   let polyOpenIds = await fetchPolyOpenIds(client, log);
 
+  // ===== GEO-BLOCK PRE-FLIGHT =====
+  // If our IP is geo-restricted, posting will fail. Cancelling would still succeed,
+  // leaving us flat with no resting orders. Detect early and skip the entire
+  // cancel/repost phase so existing orders stay alive on Polymarket.
+  let geoBlocked = false;
+  try {
+    // Cheap probe: createOrder is local signing only; postOrder is the network call.
+    // We sign a tiny throwaway order at an impossible price and try to post; we
+    // immediately cancel if it somehow lands. Cheaper alternative: hit a lightweight
+    // authenticated endpoint. Use getOpenOrders result as the signal — if it threw
+    // earlier, errors will already be logged with a "region" / "restricted" message.
+    const recentErrs = log.notes.errors.map((e: any) => String(e.error ?? "").toLowerCase());
+    if (recentErrs.some((s: string) => s.includes("region") || s.includes("restricted") || s.includes("geo") || s.includes("blocked"))) {
+      geoBlocked = true;
+    }
+  } catch (_) { /* ignore */ }
+
+  if (geoBlocked) {
+    log.notes.skipped.push("GEO-BLOCKED: skipping all cancels/reposts to preserve existing orders");
+    log.notes.geo_blocked = true;
+    await admin.from("mm_cycles").insert(log);
+    return log;
+  }
+
   // Index our DB-tracked open orders by asset
   const { data: openOrders } = await admin.from("mm_open_orders").select("*").eq("user_id", userId);
   const openByAsset = new Map<string, any[]>();
