@@ -208,13 +208,23 @@ async function runForUser(admin: any, userId: string) {
       }
     }
 
+    // Reconcile only when Polymarket shows MORE shares than our buckets know about
+    // (i.e. an external buy or a missed fill). Never auto-zero buckets just because
+    // Polymarket is flat — the delta-based fill logic above already decremented
+    // flip first, then inventory, in the correct order. Auto-zeroing here would
+    // wipe inventory every time a flip-ask cleared the on-chain balance.
     const bucketSum = flipBucket + invBucket;
-    if (Math.abs(bucketSum - totalShares) > 0.5 && totalShares > 0) {
-      invBucket = Math.max(0, totalShares - flipBucket);
-      if (invBucket > 0 && invAvgCost === 0) invAvgCost = polyPos.avgPrice || targetBid;
-    } else if (totalShares <= 1e-9) {
-      flipBucket = 0; invBucket = 0; invAvgCost = 0;
+    if (totalShares - bucketSum > 0.5) {
+      // Unknown extra shares appeared — attribute to inventory.
+      const extra = totalShares - bucketSum;
+      const newInv = invBucket + extra;
+      const fillP = polyPos.avgPrice || targetBid;
+      invAvgCost = newInv > 0 ? (invAvgCost * invBucket + fillP * extra) / newInv : 0;
+      invBucket = newInv;
     }
+    // Floor tiny negatives from float drift
+    if (flipBucket < 1e-6) flipBucket = 0;
+    if (invBucket < 1e-6) { invBucket = 0; invAvgCost = 0; }
 
     const ladderAnchor = Math.max(invAvgCost || 0, book.bestAsk);
     const ladderPrices: { price: number; pctShares: number }[] = ladderTicks.map((t, i) => ({
