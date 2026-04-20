@@ -80,6 +80,17 @@ export type WeatherSignal = {
   model_favorite_label: string | null;
   model_favorite_prob: number | null;
   favorite_mismatch: boolean | null;
+  distribution?: {
+    sources?: {
+      provider_disagreement?: boolean;
+      disagreements?: { source: string; delta_c: number; value_c: number }[];
+      reference_max_c?: number | null;
+      nbm_max_c?: number | null;
+      visual_crossing_max_c?: number | null;
+      [k: string]: any;
+    };
+    [k: string]: any;
+  } | null;
 };
 
 export const pct = (n: number | null | undefined, dp = 1) =>

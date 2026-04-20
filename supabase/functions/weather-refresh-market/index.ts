@@ -251,6 +251,58 @@ function isUS(lat: number, lon: number): boolean {
          (lat >= 18 && lat <= 23 && lon >= -161 && lon <= -154);
 }
 
+// ---------- NOAA NBM (National Blend of Models) — second US source ----------
+// Independent of Open-Meteo. NWS gridpoints endpoint serves NBM-blended hourly
+// temps for any US lat/lon. Free, no key.
+async function fetchNbmHourly(lat: number, lon: number): Promise<{ validTime: string; tempC: number }[] | null> {
+  try {
+    const headers = { "User-Agent": "polymarket-edge-app (contact@example.com)", Accept: "application/geo+json" };
+    const pointRes = await fetch(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`, { headers });
+    if (!pointRes.ok) return null;
+    const point = await pointRes.json();
+    const gridUrl: string | undefined = point?.properties?.forecastGridData;
+    if (!gridUrl) return null;
+    const gRes = await fetch(gridUrl, { headers });
+    if (!gRes.ok) return null;
+    const gJson = await gRes.json();
+    // temperature.values is an array of { validTime: "2024-...T18:00:00+00:00/PT1H", value: <celsius> }
+    const values: any[] = gJson?.properties?.temperature?.values ?? [];
+    const out: { validTime: string; tempC: number }[] = [];
+    for (const v of values) {
+      const vt: string = v?.validTime ?? "";
+      const [start, durStr] = vt.split("/");
+      if (!start) continue;
+      const tempC = Number(v?.value);
+      if (!Number.isFinite(tempC)) continue;
+      // Expand interval into hourly samples (PT1H, PT3H, etc.)
+      const hours = (() => {
+        const m = /PT(\d+)H/.exec(durStr ?? "PT1H");
+        return m ? Math.max(1, Math.min(24, parseInt(m[1], 10))) : 1;
+      })();
+      const startMs = Date.parse(start);
+      for (let i = 0; i < hours; i++) {
+        out.push({ validTime: new Date(startMs + i * 3600 * 1000).toISOString(), tempC });
+      }
+    }
+    return out;
+  } catch { return null; }
+}
+
+// ---------- Visual Crossing — global sanity-check oracle ----------
+// Free tier: 1000 records/day. Returns hourly temps for next 10 days.
+async function fetchVisualCrossing(lat: number, lon: number, localDay: string): Promise<number | null> {
+  const key = Deno.env.get("VISUAL_CROSSING_API_KEY");
+  if (!key) return null;
+  try {
+    const url = `https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/${lat},${lon}/${localDay}/${localDay}?unitGroup=metric&include=days&elements=tempmax&key=${key}&contentType=json`;
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const tmax = Number(j?.days?.[0]?.tempmax);
+    return Number.isFinite(tmax) ? tmax : null;
+  } catch { return null; }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
@@ -322,13 +374,15 @@ Deno.serve(async (req) => {
     const eventLocalDay = localDay;
     const todayLocal = localYMD(new Date(), timezone);
     const useMetar = eventLocalDay <= todayLocal; // event is today or in the past
-    const [ecmwfEns, gefs, ifsDet, aifsDet, graphcastDet, nwsHours, metars] = await Promise.all([
+    const [ecmwfEns, gefs, ifsDet, aifsDet, graphcastDet, nwsHours, nbmHours, vcMax, metars] = await Promise.all([
       fetchEnsemble(lat, lon, timezone, "ecmwf_ifs025").catch(() => null),
       fetchEnsemble(lat, lon, timezone, "gfs025").catch(() => null),
       fetchOpenMeteoModel("https://api.open-meteo.com/v1/forecast", lat, lon, timezone, "ecmwf_ifs025").catch(() => null),
       fetchOpenMeteoModel("https://api.open-meteo.com/v1/forecast", lat, lon, timezone, "ecmwf_aifs025").catch(() => null),
       fetchOpenMeteoModel("https://api.open-meteo.com/v1/forecast", lat, lon, timezone, "graphcast").catch(() => null),
       usMarket ? fetchNwsHourly(Number(lat), Number(lon)) : Promise.resolve(null),
+      usMarket ? fetchNbmHourly(Number(lat), Number(lon)).catch(() => null) : Promise.resolve(null),
+      fetchVisualCrossing(Number(lat), Number(lon), localDay).catch(() => null),
       useMetar ? fetchMetar(stationCode, 30) : Promise.resolve([] as { time: string; tempC: number }[]),
     ]);
 
@@ -360,6 +414,37 @@ Deno.serve(async (req) => {
       return v != null ? v - biasNws : null;
     })() : null;
     const nwsMax = nwsMaxRaw != null && metarFloor != null ? Math.max(nwsMaxRaw, metarFloor) : nwsMaxRaw;
+
+    // NBM (second independent US source): take daily max from gridpoint hourly temps.
+    const nbmMaxRaw = nbmHours
+      ? (() => {
+          let max = -Infinity;
+          for (const h of nbmHours) {
+            if (localYMD(new Date(h.validTime), timezone) === localDay && h.tempC > max) max = h.tempC;
+          }
+          return Number.isFinite(max) ? max : null;
+        })()
+      : null;
+    const nbmMax = nbmMaxRaw != null && metarFloor != null ? Math.max(nbmMaxRaw, metarFloor) : nbmMaxRaw;
+
+    // Visual Crossing global oracle (already a daily max).
+    const vcDailyMax = vcMax != null && metarFloor != null ? Math.max(vcMax, metarFloor) : vcMax;
+
+    // Provider-disagreement detection: compare reference (NWS or IFS) to the
+    // independent providers (NBM + VC). If any disagrees by >2°C, flag it —
+    // signals correlated-failure risk in our primary pipe.
+    const DISAGREEMENT_THRESHOLD_C = 2.0;
+    const refForDisagreement = nwsMax ?? ifsMax;
+    const disagreements: { source: string; delta_c: number; value_c: number }[] = [];
+    if (refForDisagreement != null) {
+      if (nbmMax != null && Math.abs(nbmMax - refForDisagreement) > DISAGREEMENT_THRESHOLD_C) {
+        disagreements.push({ source: "nbm", delta_c: Number((nbmMax - refForDisagreement).toFixed(2)), value_c: Number(nbmMax.toFixed(2)) });
+      }
+      if (vcDailyMax != null && Math.abs(vcDailyMax - refForDisagreement) > DISAGREEMENT_THRESHOLD_C) {
+        disagreements.push({ source: "visual_crossing", delta_c: Number((vcDailyMax - refForDisagreement).toFixed(2)), value_c: Number(vcDailyMax.toFixed(2)) });
+      }
+    }
+    const providerDisagreement = disagreements.length > 0;
 
     // For agreement: NWS (US) is the gold standard since it's literally the
     // settlement source. For non-US, fall back to deterministic IFS.
@@ -474,6 +559,13 @@ Deno.serve(async (req) => {
       ecmwf_aifs: aifsMax != null,
       graphcast: graphcastMax != null,
       nws: nwsMax != null,
+      nbm: nbmMax != null,
+      visual_crossing: vcDailyMax != null,
+      reference_max_c: refForDisagreement,
+      nbm_max_c: nbmMax,
+      visual_crossing_max_c: vcDailyMax,
+      provider_disagreement: providerDisagreement,
+      disagreements,
       metar_floor_c: metarFloor,
       metar_observation_count: metars?.length ?? 0,
       ensemble_member_count: ensembleValues.length,

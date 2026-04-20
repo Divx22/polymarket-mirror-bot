@@ -165,6 +165,21 @@ const BestCard = ({ pick, bankroll, maxTradePct = 2, onSelect }: { pick: ScoredO
           </span>
         </div>
       )}
+      {signal?.distribution?.sources?.provider_disagreement && (
+        <div className="mb-3 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-300 leading-relaxed flex items-start gap-1.5">
+          <span>⚠</span>
+          <span>
+            <span className="font-semibold text-foreground">Provider disagreement</span> — independent forecast{(signal.distribution.sources.disagreements?.length ?? 0) > 1 ? "s" : ""} differ from primary by &gt;2°C
+            {(signal.distribution.sources.disagreements ?? []).map((d, i) => (
+              <span key={d.source} className="text-foreground">
+                {i === 0 ? ": " : ", "}
+                {d.source === "nbm" ? "NBM" : d.source === "visual_crossing" ? "Visual Crossing" : d.source} {d.delta_c > 0 ? "+" : ""}{d.delta_c.toFixed(1)}°C
+              </span>
+            ))}
+            . Treat edge with caution.
+          </span>
+        </div>
+      )}
       <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
         <div className="flex items-center gap-2 min-w-0">
           <Sparkles className="h-5 w-5 text-emerald-400 shrink-0" />
