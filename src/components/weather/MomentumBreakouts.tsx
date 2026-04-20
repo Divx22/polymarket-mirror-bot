@@ -73,9 +73,10 @@ function priceAt(hist: HistPoint[], targetTs: number): number | null {
 
 export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
   const [scanning, setScanning] = useState(false);
-  const [breakouts, setBreakouts] = useState<Breakout[]>([]);
+  const [breakouts, setBreakouts] = useState<Movement[]>([]);
   const [scannedAt, setScannedAt] = useState<number | null>(null);
   const [progress, setProgress] = useState(0);
+  const [showAll, setShowAll] = useState(false);
 
   const scan = async () => {
     setScanning(true);
@@ -87,12 +88,10 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
       return hours > MIN_HOURS_TO_EVENT;
     });
 
-    const found: Breakout[] = [];
-    const now = Date.now();
-    const targetThen = now - WINDOW_HOURS * 3_600_000;
+    const found: Movement[] = [];
+    const targetThen = Date.now() - WINDOW_HOURS * 3_600_000;
 
     let done = 0;
-    // Process markets in parallel batches of 4 to avoid hammering the API.
     const BATCH = 4;
     for (let i = 0; i < eligible.length; i += BATCH) {
       const batch = eligible.slice(i, i + BATCH);
@@ -100,44 +99,43 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         const outs = (outcomes[m.id] ?? []).filter(o => o.clob_token_id && o.polymarket_price != null);
         if (outs.length < 2) return;
 
-        // Sort by current price desc.
         const sorted = [...outs].sort((a, b) => (b.polymarket_price ?? 0) - (a.polymarket_price ?? 0));
         const leader = sorted[0];
         const runnerUp = sorted[1] ?? null;
         const priceNow = leader.polymarket_price ?? 0;
-        if (priceNow > MAX_ENTRY_PRICE) return;
-
         const gap = priceNow - (runnerUp?.polymarket_price ?? 0);
-        if (gap < GAP_THRESHOLD) return;
 
-        // Need history to compute delta.
         const hist = await fetchHistory(leader.clob_token_id!);
         const priceThen = priceAt(hist, targetThen);
-        if (priceThen == null) return;
+        if (priceThen == null) return; // no history → skip
         const delta = priceNow - priceThen;
-        if (delta < RISE_THRESHOLD) return;
 
-        // Passes — fetch live ask for entry guidance.
-        const liveAsk = await fetchAsk(leader.clob_token_id!);
+        const isBreakout =
+          delta >= RISE_THRESHOLD &&
+          gap >= GAP_THRESHOLD &&
+          priceNow <= MAX_ENTRY_PRICE;
 
-        found.push({ market: m, leader, runnerUp, priceNow, priceThen, delta, gap, liveAsk });
+        const liveAsk = isBreakout ? await fetchAsk(leader.clob_token_id!) : null;
+
+        found.push({ market: m, leader, runnerUp, priceNow, priceThen, delta, gap, liveAsk, isBreakout });
       }));
       done += batch.length;
       setProgress(Math.round((done / eligible.length) * 100));
     }
 
-    found.sort((a, b) => b.delta - a.delta);
+    // Sort by absolute 2h move desc — biggest movers first regardless of direction.
+    found.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
     setBreakouts(found);
     setScannedAt(Date.now());
     setScanning(false);
-    if (found.length === 0) {
-      toast.info("No momentum breakouts right now");
+    const breakoutCount = found.filter(f => f.isBreakout).length;
+    if (breakoutCount > 0) {
+      toast.success(`${breakoutCount} breakout${breakoutCount > 1 ? "s" : ""} detected`);
     } else {
-      toast.success(`${found.length} breakout${found.length > 1 ? "s" : ""} detected`);
+      toast.info(`Scanned ${found.length} market${found.length === 1 ? "" : "s"} — no breakouts`);
     }
   };
 
-  // Auto-scan on mount when markets first load.
   useEffect(() => {
     if (markets.length > 0 && scannedAt == null && !scanning) {
       scan();
@@ -145,26 +143,39 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markets.length]);
 
+  const breakoutCount = breakouts.filter(b => b.isBreakout).length;
+  const visible = showAll ? breakouts : breakouts.filter(b => b.isBreakout);
+
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
       <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-border bg-surface-2/40">
         <div className="flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-blue-400" />
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wider">Momentum Breakouts</div>
+            <div className="text-xs font-semibold uppercase tracking-wider">Momentum (All Markets)</div>
             <div className="text-[10px] text-muted-foreground">
-              Leader rose ≥{Math.round(RISE_THRESHOLD * 100)}¢ in {WINDOW_HOURS}h · gap to #2 ≥{Math.round(GAP_THRESHOLD * 100)}¢ · price ≤{Math.round(MAX_ENTRY_PRICE * 100)}¢
+              Ranked by 2h price change · Breakout = ≥{Math.round(RISE_THRESHOLD * 100)}¢ rise + gap ≥{Math.round(GAP_THRESHOLD * 100)}¢ + entry ≤{Math.round(MAX_ENTRY_PRICE * 100)}¢
             </div>
           </div>
         </div>
-        <button
-          onClick={scan}
-          disabled={scanning}
-          className="inline-flex items-center gap-1.5 rounded border border-border bg-background hover:bg-surface-2 px-2.5 py-1 text-[11px] disabled:opacity-50"
-        >
-          {scanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-          {scanning ? `Scanning ${progress}%` : "Rescan"}
-        </button>
+        <div className="flex items-center gap-2">
+          {breakouts.length > 0 && (
+            <button
+              onClick={() => setShowAll(v => !v)}
+              className="inline-flex items-center gap-1 rounded border border-border bg-background hover:bg-surface-2 px-2.5 py-1 text-[11px]"
+            >
+              {showAll ? `Breakouts only (${breakoutCount})` : `Show all (${breakouts.length})`}
+            </button>
+          )}
+          <button
+            onClick={scan}
+            disabled={scanning}
+            className="inline-flex items-center gap-1.5 rounded border border-border bg-background hover:bg-surface-2 px-2.5 py-1 text-[11px] disabled:opacity-50"
+          >
+            {scanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            {scanning ? `${progress}%` : "Rescan"}
+          </button>
+        </div>
       </div>
 
       {scanning && breakouts.length === 0 && (
@@ -173,15 +184,17 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         </div>
       )}
 
-      {!scanning && breakouts.length === 0 && scannedAt != null && (
+      {!scanning && visible.length === 0 && scannedAt != null && (
         <div className="px-4 py-6 text-center text-xs text-muted-foreground">
-          No breakouts. Leaders are either flat, too expensive, or the field is too tight.
+          {breakouts.length === 0
+            ? "No price history available."
+            : `No breakouts. Click "Show all (${breakouts.length})" to see all movers.`}
         </div>
       )}
 
-      {breakouts.length > 0 && (
+      {visible.length > 0 && (
         <ul className="divide-y divide-border/50">
-          {breakouts.map((b) => (
+          {visible.map((b) => (
             <BreakoutRow key={b.market.id} b={b} onSelect={onSelect} />
           ))}
         </ul>
