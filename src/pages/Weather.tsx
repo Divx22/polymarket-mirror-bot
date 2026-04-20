@@ -2,17 +2,19 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { LogOut, RefreshCw, Loader2, Trash2, ArrowLeft, Sparkles } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { LogOut, RefreshCw, Loader2, Trash2, ArrowLeft, Sparkles, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { AddMarketDialog } from "@/components/weather/AddMarketDialog";
 import { TradeDetailDialog } from "@/components/weather/TradeDetailDialog";
 import { BestTradeSignal } from "@/components/weather/BestTradeSignal";
 import { WeatherScanner } from "@/components/weather/WeatherScanner";
-import { BankrollInput } from "@/components/weather/PositionCalculator";
+import { BankrollInput, MinVolumeInput } from "@/components/weather/PositionCalculator";
 import {
   WeatherMarket, WeatherOutcome, WeatherSignal,
-  pct, edgeColor, confidenceColor,
+  pct, edgeColor, confidenceColor, formatVolume,
 } from "@/lib/weather";
+import { cn } from "@/lib/utils";
 
 const Weather = () => {
   const nav = useNavigate();
@@ -25,6 +27,8 @@ const Weather = () => {
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [detailMarket, setDetailMarket] = useState<WeatherMarket | null>(null);
   const [bankroll, setBankroll] = useState<number>(1000);
+  const [minVolume, setMinVolume] = useState<number>(25000);
+  const [mismatchOnly, setMismatchOnly] = useState(false);
 
   useEffect(() => {
     document.title = "Weather Edge Trader";
@@ -45,9 +49,10 @@ const Weather = () => {
       supabase.from("weather_markets").select("*").eq("active", true).order("event_time"),
       supabase.from("weather_outcomes").select("*").order("display_order"),
       supabase.from("weather_signals").select("*").order("created_at", { ascending: false }),
-      supabase.from("config").select("bankroll_usdc").eq("user_id", userId).maybeSingle(),
+      supabase.from("config").select("bankroll_usdc, min_volume_usd").eq("user_id", userId).maybeSingle(),
     ]);
     if (cfg?.bankroll_usdc != null) setBankroll(Number(cfg.bankroll_usdc));
+    if ((cfg as any)?.min_volume_usd != null) setMinVolume(Number((cfg as any).min_volume_usd));
     setMarkets((ms ?? []) as WeatherMarket[]);
     const grouped: Record<string, WeatherOutcome[]> = {};
     (os ?? []).forEach((o: any) => {
@@ -115,6 +120,31 @@ const Weather = () => {
     return best;
   };
 
+  // Apply volume filter + mismatch toggle, then sort by mismatch → edge → volume.
+  // Rule: only HIDE rows where there's a tradable edge AND volume is too low.
+  // Rows without edge are kept regardless so users see why nothing qualifies.
+  const visibleMarkets = (() => {
+    const filtered = markets.filter((m) => {
+      const best = bestFor(m.id);
+      const vol = Number(m.event_volume_24h ?? 0);
+      const sig = signals[m.id];
+      if (best && vol < minVolume) return false;
+      if (mismatchOnly && !sig?.favorite_mismatch) return false;
+      return true;
+    });
+    return filtered.sort((a, b) => {
+      const sa = signals[a.id];
+      const sb = signals[b.id];
+      const ma = sa?.favorite_mismatch ? 1 : 0;
+      const mb = sb?.favorite_mismatch ? 1 : 0;
+      if (ma !== mb) return mb - ma;
+      const ea = bestFor(a.id)?.edge ?? -Infinity;
+      const eb = bestFor(b.id)?.edge ?? -Infinity;
+      if (ea !== eb) return eb - ea;
+      return Number(b.event_volume_24h ?? 0) - Number(a.event_volume_24h ?? 0);
+    });
+  })();
+
   return (
     <div className="min-h-screen">
       <header className="border-b border-border bg-background/80 backdrop-blur sticky top-0 z-10">
@@ -128,6 +158,12 @@ const Weather = () => {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <BankrollInput userId={userId} bankroll={bankroll} onChange={setBankroll} />
+            <MinVolumeInput userId={userId} minVolume={minVolume} onChange={setMinVolume} />
+            <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2/40 px-2 py-1">
+              <Zap className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Mismatch</span>
+              <Switch checked={mismatchOnly} onCheckedChange={setMismatchOnly} />
+            </div>
             <Button variant="outline" size="sm" onClick={refreshAll} disabled={refreshingAll || markets.length === 0}>
               {refreshingAll ? <Loader2 className="h-3 w-3 animate-spin sm:mr-1" /> : <RefreshCw className="h-3 w-3 sm:mr-1" />}
               <span className="hidden sm:inline">Refresh all</span>
@@ -146,6 +182,8 @@ const Weather = () => {
           outcomes={outcomes}
           signals={signals}
           bankroll={bankroll}
+          minVolume={minVolume}
+          mismatchOnly={mismatchOnly}
           onReload={load}
           onSelect={(m) => setDetailMarket(m)}
         />
@@ -155,18 +193,20 @@ const Weather = () => {
           outcomes={outcomes}
           signals={signals}
           bankroll={bankroll}
+          minVolume={minVolume}
+          mismatchOnly={mismatchOnly}
           onSelect={(m) => setDetailMarket(m)}
         />
 
         <section className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[900px]">
+            <table className="w-full text-sm min-w-[960px]">
               <thead className="text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border">
                 <tr>
                   <th className="text-left px-4 py-2 font-medium">Market</th>
                   <th className="text-left px-3 py-2 font-medium">City</th>
                   <th className="text-left px-3 py-2 font-medium">Event</th>
-                  <th className="text-right px-3 py-2 font-medium">Outcomes</th>
+                  <th className="text-right px-3 py-2 font-medium">Volume</th>
                   <th className="text-left px-3 py-2 font-medium">Best Trade</th>
                   <th className="text-right px-3 py-2 font-medium">Edge</th>
                   <th className="text-right px-3 py-2 font-medium">Size %</th>
@@ -176,17 +216,25 @@ const Weather = () => {
                 </tr>
               </thead>
               <tbody>
-                {markets.length === 0 && (
+                {visibleMarkets.length === 0 && (
                   <tr><td colSpan={10} className="text-center py-12 text-muted-foreground">
-                    No markets yet. Click "Add market" to get started.
+                    {markets.length === 0
+                      ? `No markets yet. Click "Add market" to get started.`
+                      : `No markets match current filters (min vol $${minVolume.toLocaleString()}${mismatchOnly ? ", mismatches only" : ""}).`}
                   </td></tr>
                 )}
-                {markets.map((m) => {
+                {visibleMarkets.map((m) => {
                   const s = signals[m.id];
                   const best = bestFor(m.id);
-                  const outs = outcomes[m.id] ?? [];
+                  const isMismatch = !!s?.favorite_mismatch;
                   return (
-                    <tr key={m.id} className="border-b border-border/50 hover:bg-surface-2/50">
+                    <tr
+                      key={m.id}
+                      className={cn(
+                        "border-b border-border/50 hover:bg-surface-2/50",
+                        isMismatch && "bg-emerald-500/5",
+                      )}
+                    >
                       <td className="px-4 py-2.5 max-w-[260px]">
                         <div className="truncate" title={m.market_question}>{m.market_question}</div>
                         <div className="text-[10px] text-muted-foreground">{m.condition_type}</div>
@@ -195,12 +243,19 @@ const Weather = () => {
                       <td className="px-3 py-2.5 text-muted-foreground text-xs">
                         {new Date(m.event_time).toLocaleString()}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono-num">{outs.length}</td>
+                      <td className="px-3 py-2.5 text-right font-mono-num text-muted-foreground">
+                        {formatVolume(m.event_volume_24h)}
+                      </td>
                       <td className="px-3 py-2.5">
                         {best ? (
-                          <div className="flex items-center gap-1.5 text-emerald-400">
-                            <Sparkles className="h-3 w-3" />
-                            <span className="font-medium">{best.label}</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <Sparkles className="h-3 w-3 text-emerald-400" />
+                            <span className="font-medium text-emerald-400">{best.label}</span>
+                            {isMismatch && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[9px] uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
+                                <Zap className="h-2.5 w-2.5" /> Mismatch
+                              </span>
+                            )}
                           </div>
                         ) : (
                           <span className="text-muted-foreground">—</span>
