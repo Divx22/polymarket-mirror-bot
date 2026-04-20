@@ -180,6 +180,12 @@ const Weather = () => {
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Mismatch</span>
               <Switch checked={mismatchOnly} onCheckedChange={setMismatchOnly} />
             </div>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/momentum">
+                <TrendingUp className="h-3 w-3 sm:mr-1" />
+                <span className="hidden sm:inline">Momentum</span>
+              </Link>
+            </Button>
             <Button variant="outline" size="sm" onClick={refreshAll} disabled={refreshingAll || markets.length === 0}>
               {refreshingAll ? <Loader2 className="h-3 w-3 animate-spin sm:mr-1" /> : <RefreshCw className="h-3 w-3 sm:mr-1" />}
               <span className="hidden sm:inline">Refresh all</span>
