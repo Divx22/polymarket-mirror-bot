@@ -12,12 +12,13 @@ type Props = {
 
 // SIMPLE RULE:
 //   Compare the gap between #1 and #2 outcomes 1 hour ago vs now (same two outcomes).
-//   Only show markets where the CURRENT gap is over GAP_NOW_MIN.
-//   Highlight when the gap WIDENED by more than GAP_WIDEN_MIN over the last hour.
+// RULES (newbie-friendly):
+//   Round 1: current gap between #1 and #2 outcomes must be ≥ GAP_MIN.
+//   Round 2: 1h ago, the SAME two outcomes' gap must ALSO have been ≥ GAP_MIN.
+//   Display the change: positive = widening, 0% = flat, negative = narrowing.
 const WINDOW_HOURS = 1;
-const GAP_NOW_MIN = 0.20;      // current gap must be > 20%
-const GAP_WIDEN_MIN = 0.05;    // ≥5% growth over 1h = "widening"
-const MAX_ENTRY_PRICE = 0.90;  // skip markets with no upside left
+const GAP_MIN = 0.15;          // 15% threshold for both rounds
+const MAX_ENTRY_PRICE = 0.95;  // virtually never enter at >95%
 const MIN_HOURS_TO_EVENT = 0.5;
 
 type HistPoint = { t: number; p: number };
@@ -28,9 +29,8 @@ type Movement = {
   runnerUp: WeatherOutcome;
   leaderNow: number;
   gapNow: number;
-  gapThen: number | null;
-  gapDelta: number;       // gapNow - gapThen
-  isWidening: boolean;
+  gapThen: number;        // qualified — always ≥ GAP_MIN
+  gapDelta: number;       // gapNow - gapThen (positive=widening, negative=narrowing)
 };
 
 async function fetchHistory(tokenId: string): Promise<HistPoint[]> {
@@ -107,39 +107,39 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         const runnerNow = enriched[1].mid;
         const gapNow = leaderNow - runnerNow;
 
-        if (gapNow <= GAP_NOW_MIN) return;
+        // Round 1: current gap must qualify.
+        if (gapNow < GAP_MIN) return;
         if (leaderNow > MAX_ENTRY_PRICE) return;
 
+        // Round 2: same two outcomes' gap 1h ago must also qualify.
         const [leaderHist, runnerHist] = await Promise.all([
           fetchHistory(leader.clob_token_id!),
           fetchHistory(runnerUp.clob_token_id!),
         ]);
         const leaderThen = priceAt(leaderHist, targetThen);
         const runnerThen = priceAt(runnerHist, targetThen);
-        const gapThen = (leaderThen != null && runnerThen != null) ? leaderThen - runnerThen : null;
-        const gapDelta = gapThen != null ? gapNow - gapThen : 0;
-        const isWidening = gapThen != null && gapDelta >= GAP_WIDEN_MIN;
+        if (leaderThen == null || runnerThen == null) return; // no history → can't qualify
+        const gapThen = leaderThen - runnerThen;
+        if (gapThen < GAP_MIN) return; // failed Round 2
 
-        found.push({ market: m, leader, runnerUp, leaderNow, gapNow, gapThen, gapDelta, isWidening });
+        const gapDelta = gapNow - gapThen;
+        found.push({ market: m, leader, runnerUp, leaderNow, gapNow, gapThen, gapDelta });
       }));
       done += batch.length;
       setProgress(Math.round((done / eligible.length) * 100));
     }
 
-    // Widening markets first; then by largest current gap.
-    found.sort((a, b) => {
-      if (a.isWidening !== b.isWidening) return a.isWidening ? -1 : 1;
-      return b.gapNow - a.gapNow;
-    });
+    // Sort by largest positive momentum (widening) first; flat/negative after.
+    found.sort((a, b) => b.gapDelta - a.gapDelta);
 
     setItems(found);
     setScannedAt(Date.now());
     setScanning(false);
-    const wideningCount = found.filter(f => f.isWidening).length;
-    if (wideningCount > 0) {
-      toast.success(`${wideningCount} market${wideningCount > 1 ? "s" : ""} pulling away from #2`);
+    const widening = found.filter(f => f.gapDelta > 0).length;
+    if (found.length > 0) {
+      toast.success(`${found.length} qualified · ${widening} widening`);
     } else {
-      toast.info(`${found.length} market${found.length === 1 ? "" : "s"} with gap >${Math.round(GAP_NOW_MIN * 100)}%`);
+      toast.info(`No markets qualified (need gap ≥${Math.round(GAP_MIN * 100)}% now AND 1h ago)`);
     }
   };
 
