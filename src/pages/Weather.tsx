@@ -8,6 +8,7 @@ import { AddMarketDialog } from "@/components/weather/AddMarketDialog";
 import { TradeDetailDialog } from "@/components/weather/TradeDetailDialog";
 import { BestTradeSignal } from "@/components/weather/BestTradeSignal";
 import { WeatherScanner } from "@/components/weather/WeatherScanner";
+import { BankrollInput } from "@/components/weather/PositionCalculator";
 import {
   WeatherMarket, WeatherOutcome, WeatherSignal,
   pct, edgeColor, confidenceColor,
@@ -23,6 +24,7 @@ const Weather = () => {
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [detailMarket, setDetailMarket] = useState<WeatherMarket | null>(null);
+  const [bankroll, setBankroll] = useState<number>(1000);
 
   useEffect(() => {
     document.title = "Weather Edge Trader";
@@ -39,11 +41,13 @@ const Weather = () => {
 
   const load = useCallback(async () => {
     if (!userId) return;
-    const [{ data: ms }, { data: os }, { data: sigs }] = await Promise.all([
+    const [{ data: ms }, { data: os }, { data: sigs }, { data: cfg }] = await Promise.all([
       supabase.from("weather_markets").select("*").eq("active", true).order("event_time"),
       supabase.from("weather_outcomes").select("*").order("display_order"),
       supabase.from("weather_signals").select("*").order("created_at", { ascending: false }),
+      supabase.from("config").select("bankroll_usdc").eq("user_id", userId).maybeSingle(),
     ]);
+    if (cfg?.bankroll_usdc != null) setBankroll(Number(cfg.bankroll_usdc));
     setMarkets((ms ?? []) as WeatherMarket[]);
     const grouped: Record<string, WeatherOutcome[]> = {};
     (os ?? []).forEach((o: any) => {
