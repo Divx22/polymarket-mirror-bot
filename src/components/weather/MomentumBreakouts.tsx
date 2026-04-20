@@ -17,20 +17,24 @@ type Movement = {
   priceNow: number;       // 0-1
   priceThen: number;      // 0-1, ~2h ago
   delta: number;          // priceNow - priceThen, in price (0-1)
-  gap: number;            // priceNow - runnerUp price, in price (0-1)
-  deltaPct: number;       // (priceNow - priceThen) / priceThen — relative move
+  gap: number;            // current priceNow - runnerUp price (0-1)
+  gapThen: number | null; // gap ~2h ago (0-1) — null if no runner-up history
+  gapDelta: number;       // gap - gapThen (positive = widening)
+  deltaPct: number;       // (priceNow - priceThen) / priceThen — relative move on leader
   liveAsk: number | null; // 0-1
-  isBreakout: boolean;    // passes all thresholds
+  isBreakout: boolean;
+  trigger: "rise" | "gap-widening" | "both" | null;
 };
 
-// Thresholds: leader must have risen ≥25% (relative) in last 2h AND lead #2 by ≥15¢ absolute.
-// Relative % catches fast climbers from any base (e.g. 40¢→55¢ = +37%, or 20¢→30¢ = +50%).
-const RISE_PCT_THRESHOLD = 0.25; // +25% relative move
-const GAP_THRESHOLD = 0.15;       // still absolute — #1 must clearly lead #2
+// Two independent breakout triggers (either fires):
+//   1) RISE: leader's price rose ≥25% relative in last 2h (catches fast climbers from any base)
+//   2) GAP-WIDENING: leader was already ahead AND the gap to #2 grew by ≥8¢ in last 2h
+// Both require: gap-now ≥15¢ absolute, and entry ≤85¢ (no upside otherwise).
+const RISE_PCT_THRESHOLD = 0.25;     // +25% relative move on leader
+const GAP_THRESHOLD = 0.15;          // current gap #1 vs #2
+const GAP_WIDENING_THRESHOLD = 0.08; // gap grew by ≥8¢ over the window
 const WINDOW_HOURS = 2;
-// Don't bother once leader is too expensive — no upside left.
 const MAX_ENTRY_PRICE = 0.85;
-// Skip resolved/about-to-resolve markets (live history would be empty).
 const MIN_HOURS_TO_EVENT = 0.5;
 
 type HistPoint = { t: number; p: number };
@@ -107,24 +111,42 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         const priceNow = leader.polymarket_price ?? 0;
         const gap = priceNow - (runnerUp?.polymarket_price ?? 0);
 
-        const hist = await fetchHistory(leader.clob_token_id!);
+        
+        const [hist, runnerHist] = await Promise.all([
+          fetchHistory(leader.clob_token_id!),
+          runnerUp?.clob_token_id ? fetchHistory(runnerUp.clob_token_id) : Promise.resolve([] as HistPoint[]),
+        ]);
         const priceThen = priceAt(hist, targetThen);
-        if (priceThen == null) return; // no history → skip
+        if (priceThen == null) return;
         const delta = priceNow - priceThen;
         const deltaPct = priceThen > 0.001 ? (priceNow - priceThen) / priceThen : 0;
 
-        const isBreakout =
-          deltaPct >= RISE_PCT_THRESHOLD &&
-          gap >= GAP_THRESHOLD &&
-          priceNow <= MAX_ENTRY_PRICE;
+        const runnerThen = runnerHist.length > 0 ? priceAt(runnerHist, targetThen) : null;
+        const gapThen = runnerThen != null ? priceThen - runnerThen : null;
+        const gapDelta = gapThen != null ? gap - gapThen : 0;
+
+        const passesRise = deltaPct >= RISE_PCT_THRESHOLD;
+        const passesGapWidening = gapThen != null && gapThen > 0 && gapDelta >= GAP_WIDENING_THRESHOLD;
+        const passesGuards = gap >= GAP_THRESHOLD && priceNow <= MAX_ENTRY_PRICE;
+        const isBreakout = passesGuards && (passesRise || passesGapWidening);
+        const trigger: Movement["trigger"] = !isBreakout ? null
+          : passesRise && passesGapWidening ? "both"
+          : passesRise ? "rise" : "gap-widening";
 
         const liveAsk = isBreakout ? await fetchAsk(leader.clob_token_id!) : null;
 
-        found.push({ market: m, leader, runnerUp, priceNow, priceThen, delta, deltaPct, gap, liveAsk, isBreakout });
+        found.push({ market: m, leader, runnerUp, priceNow, priceThen, delta, deltaPct, gap, gapThen, gapDelta, liveAsk, isBreakout, trigger });
       }));
       done += batch.length;
       setProgress(Math.round((done / eligible.length) * 100));
     }
+
+    // Sort: breakouts first, then by max(|deltaPct|, |gapDelta|*5) — both signals weighted similarly
+    found.sort((a, b) => {
+      if (a.isBreakout !== b.isBreakout) return a.isBreakout ? -1 : 1;
+      const score = (m: Movement) => Math.max(Math.abs(m.deltaPct), Math.abs(m.gapDelta) * 5);
+      return score(b) - score(a);
+    });
 
     // Sort by absolute 2h % move desc — biggest relative movers first.
     found.sort((a, b) => Math.abs(b.deltaPct) - Math.abs(a.deltaPct));
@@ -157,7 +179,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider">Momentum (All Markets)</div>
             <div className="text-[10px] text-muted-foreground">
-              Ranked by 2h % change · Breakout = ≥{Math.round(RISE_PCT_THRESHOLD * 100)}% rise + gap ≥{Math.round(GAP_THRESHOLD * 100)}¢ + entry ≤{Math.round(MAX_ENTRY_PRICE * 100)}¢
+              Breakout = (≥{Math.round(RISE_PCT_THRESHOLD * 100)}% rise OR gap widened ≥{Math.round(GAP_WIDENING_THRESHOLD * 100)}¢) + gap ≥{Math.round(GAP_THRESHOLD * 100)}¢ + entry ≤{Math.round(MAX_ENTRY_PRICE * 100)}¢
             </div>
           </div>
         </div>
@@ -243,7 +265,7 @@ const BreakoutRow = ({ b, onSelect }: { b: Movement; onSelect?: (m: WeatherMarke
             <span className={cn("font-semibold", b.isBreakout ? "text-blue-400" : "text-foreground")}>{b.leader.label}</span>
             {b.isBreakout && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded border text-[9px] uppercase tracking-wider bg-blue-500/15 text-blue-400 border-blue-500/30">
-                Breakout
+                {b.trigger === "gap-widening" ? "Gap widening" : b.trigger === "both" ? "Breakout + gap" : "Breakout"}
               </span>
             )}
             <span className="text-xs text-muted-foreground truncate">
@@ -256,7 +278,18 @@ const BreakoutRow = ({ b, onSelect }: { b: Movement; onSelect?: (m: WeatherMarke
               ({isUp ? "+" : "−"}{deltaPctAbs.toFixed(0)}% / {deltaCents.toFixed(0)}¢ in 2h)
             </span>
             {b.runnerUp && (
-              <> · #2 <span className="font-mono-num text-foreground">{b.runnerUp.label} {((b.runnerUp.polymarket_price ?? 0) * 100).toFixed(0)}¢</span> · gap <span className="text-foreground font-mono-num">{(b.gap * 100).toFixed(0)}¢</span></>
+              <> · #2 <span className="font-mono-num text-foreground">{b.runnerUp.label} {((b.runnerUp.polymarket_price ?? 0) * 100).toFixed(0)}¢</span> · gap{" "}
+                {b.gapThen != null ? (
+                  <span className="font-mono-num text-foreground">{(b.gapThen * 100).toFixed(0)}¢ → {(b.gap * 100).toFixed(0)}¢</span>
+                ) : (
+                  <span className="font-mono-num text-foreground">{(b.gap * 100).toFixed(0)}¢</span>
+                )}
+                {b.gapThen != null && Math.abs(b.gapDelta) >= 0.02 && (
+                  <span className={cn("ml-1 font-semibold", b.gapDelta >= 0 ? "text-emerald-400" : "text-red-400")}>
+                    ({b.gapDelta >= 0 ? "+" : "−"}{Math.abs(b.gapDelta * 100).toFixed(0)}¢)
+                  </span>
+                )}
+              </>
             )}
           </div>
         </div>
