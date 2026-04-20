@@ -76,12 +76,7 @@ const Weather = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  // Alert on any outcome where our model says >50% but Polymarket says <50%.
-  useModelEdgeAlerts({
-    markets,
-    outcomes,
-    onClick: (m) => setDetailMarket(m),
-  });
+  // Toast alerts disabled per user request — no popup notifications.
 
   const refresh = async (id: string) => {
     setRefreshing(id);
