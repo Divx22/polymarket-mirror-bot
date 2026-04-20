@@ -265,7 +265,7 @@ const BreakoutRow = ({ b, onSelect }: { b: Movement; onSelect?: (m: WeatherMarke
             <span className={cn("font-semibold", b.isBreakout ? "text-blue-400" : "text-foreground")}>{b.leader.label}</span>
             {b.isBreakout && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded border text-[9px] uppercase tracking-wider bg-blue-500/15 text-blue-400 border-blue-500/30">
-                Breakout
+                {b.trigger === "gap-widening" ? "Gap widening" : b.trigger === "both" ? "Breakout + gap" : "Breakout"}
               </span>
             )}
             <span className="text-xs text-muted-foreground truncate">
@@ -278,7 +278,18 @@ const BreakoutRow = ({ b, onSelect }: { b: Movement; onSelect?: (m: WeatherMarke
               ({isUp ? "+" : "−"}{deltaPctAbs.toFixed(0)}% / {deltaCents.toFixed(0)}¢ in 2h)
             </span>
             {b.runnerUp && (
-              <> · #2 <span className="font-mono-num text-foreground">{b.runnerUp.label} {((b.runnerUp.polymarket_price ?? 0) * 100).toFixed(0)}¢</span> · gap <span className="text-foreground font-mono-num">{(b.gap * 100).toFixed(0)}¢</span></>
+              <> · #2 <span className="font-mono-num text-foreground">{b.runnerUp.label} {((b.runnerUp.polymarket_price ?? 0) * 100).toFixed(0)}¢</span> · gap{" "}
+                {b.gapThen != null ? (
+                  <span className="font-mono-num text-foreground">{(b.gapThen * 100).toFixed(0)}¢ → {(b.gap * 100).toFixed(0)}¢</span>
+                ) : (
+                  <span className="font-mono-num text-foreground">{(b.gap * 100).toFixed(0)}¢</span>
+                )}
+                {b.gapThen != null && Math.abs(b.gapDelta) >= 0.02 && (
+                  <span className={cn("ml-1 font-semibold", b.gapDelta >= 0 ? "text-emerald-400" : "text-red-400")}>
+                    ({b.gapDelta >= 0 ? "+" : "−"}{Math.abs(b.gapDelta * 100).toFixed(0)}¢)
+                  </span>
+                )}
+              </>
             )}
           </div>
         </div>
