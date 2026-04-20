@@ -90,6 +90,19 @@ function priceAt(hist: HistPoint[], targetTs: number): number | null {
   return best.p;
 }
 
+// Momentum-weighted score: 0.4·upside + 0.3·gapNow + 0.3·netDelta + trajectory bonus.
+// Higher = stronger momentum pick.
+const TRAJ_BONUS: Record<Trajectory, number> = {
+  accelerating: 0.05,
+  widening: 0.02,
+  flat: 0,
+  narrowing: -0.05,
+};
+function momentumScore(leaderNow: number, gapNow: number, netDelta: number, trajectory: Trajectory): number {
+  const upside = 1 - leaderNow;
+  return 0.4 * upside + 0.3 * gapNow + 0.3 * netDelta + (TRAJ_BONUS[trajectory] ?? 0);
+}
+
 export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinProp, showThresholdControl = true }: Props) => {
   const [scanning, setScanning] = useState(false);
   const [discovering, setDiscovering] = useState(false);
