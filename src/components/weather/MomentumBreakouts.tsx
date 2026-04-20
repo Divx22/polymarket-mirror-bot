@@ -179,7 +179,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider">Momentum (All Markets)</div>
             <div className="text-[10px] text-muted-foreground">
-              Ranked by 2h % change · Breakout = ≥{Math.round(RISE_PCT_THRESHOLD * 100)}% rise + gap ≥{Math.round(GAP_THRESHOLD * 100)}¢ + entry ≤{Math.round(MAX_ENTRY_PRICE * 100)}¢
+              Breakout = (≥{Math.round(RISE_PCT_THRESHOLD * 100)}% rise OR gap widened ≥{Math.round(GAP_WIDENING_THRESHOLD * 100)}¢) + gap ≥{Math.round(GAP_THRESHOLD * 100)}¢ + entry ≤{Math.round(MAX_ENTRY_PRICE * 100)}¢
             </div>
           </div>
         </div>
