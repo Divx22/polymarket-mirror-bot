@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { AddMarketDialog } from "@/components/weather/AddMarketDialog";
 import { TradeDetailDialog } from "@/components/weather/TradeDetailDialog";
 import { BestTradeSignal } from "@/components/weather/BestTradeSignal";
+import { MomentumBreakouts } from "@/components/weather/MomentumBreakouts";
 import { WeatherScanner } from "@/components/weather/WeatherScanner";
 import { BankrollInput, MinVolumeInput, MaxTradeCapInput } from "@/components/weather/PositionCalculator";
 import { StationOverridePicker } from "@/components/weather/StationOverridePicker";
@@ -211,6 +212,12 @@ const Weather = () => {
           minVolume={minVolume}
           mismatchOnly={mismatchOnly}
           maxTradePct={maxTradePct}
+          onSelect={(m) => setDetailMarket(m)}
+        />
+
+        <MomentumBreakouts
+          markets={markets}
+          outcomes={outcomes}
           onSelect={(m) => setDetailMarket(m)}
         />
 
