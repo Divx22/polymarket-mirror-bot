@@ -205,6 +205,8 @@ const Weather = () => {
           onSelect={(m) => setDetailMarket(m)}
         />
 
+        <ClvPanel />
+
         <section className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[960px]">
