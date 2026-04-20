@@ -256,6 +256,7 @@ const BestCard = ({ pick, bankroll, maxTradePct = 2, onSelect }: { pick: ScoredO
           sizePct={Number(o.suggested_size_percent ?? 0)}
           bid={bid}
           mid={mid}
+          maxTradePct={maxTradePct}
         />
       </div>
     </div>
