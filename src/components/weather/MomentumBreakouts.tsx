@@ -13,6 +13,10 @@ type Props = {
   gapMin?: number;
   /** Allow user to change the threshold via a slider in the panel header. Default true. */
   showThresholdControl?: boolean;
+  /** User's bankroll in USDC (used to suggest stake $). Default 1000. */
+  bankroll?: number;
+  /** Hard cap on suggested stake as % of bankroll. Default 3. */
+  stakeCapPct?: number;
 };
 
 const DEFAULT_GAP_MIN = 0.10;
