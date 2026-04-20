@@ -171,7 +171,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider">Momentum</div>
             <div className="text-[10px] text-muted-foreground">
-              #1 vs #2 gap is ≥{Math.round(GAP_MIN * 100)}% now AND was ≥{Math.round(GAP_MIN * 100)}% an hour ago. Change shown as ± vs 1h ago.
+              Gap #1 vs #2 ≥{Math.round(GAP_MIN * 100)}% at all 3 snapshots (2h, 1h, now). Badge = trajectory.
             </div>
           </div>
         </div>
@@ -193,7 +193,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
 
       {!scanning && items.length === 0 && scannedAt != null && (
         <div className="px-4 py-6 text-center text-xs text-muted-foreground">
-          No markets qualified — need gap ≥{Math.round(GAP_MIN * 100)}% both now and 1h ago.
+          No markets qualified — need gap ≥{Math.round(GAP_MIN * 100)}% at 2h ago, 1h ago, and now.
         </div>
       )}
 
@@ -206,21 +206,44 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
   );
 };
 
+const TRAJ_META: Record<Trajectory, { label: string; badge: string; arrow: string }> = {
+  accelerating: {
+    label: "Accelerating",
+    badge: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+    arrow: "text-emerald-400",
+  },
+  widening: {
+    label: "Widening",
+    badge: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+    arrow: "text-emerald-400",
+  },
+  flat: {
+    label: "Flat",
+    badge: "bg-muted text-muted-foreground border-border",
+    arrow: "text-muted-foreground",
+  },
+  narrowing: {
+    label: "Narrowing",
+    badge: "bg-red-500/15 text-red-400 border-red-500/30",
+    arrow: "text-red-400",
+  },
+};
+
 const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => void }) => {
   const [copied, setCopied] = useState(false);
   const entryPct = (m.leaderNow * 100).toFixed(1);
   const upsidePct = ((1 - m.leaderNow) * 100).toFixed(1);
+  const gap2hPct = (m.gap2h * 100).toFixed(1);
+  const gap1hPct = (m.gap1h * 100).toFixed(1);
   const gapNowPct = (m.gapNow * 100).toFixed(1);
-  const gapThenPct = (m.gapThen * 100).toFixed(1);
-  const gapDeltaPct = (m.gapDelta * 100).toFixed(1);
-  const isFlat = Math.abs(m.gapDelta) < 0.005; // <0.5% rounds to 0
-  const isUp = !isFlat && m.gapDelta > 0;
-  const badgeClass = isFlat
-    ? "bg-muted text-muted-foreground border-border"
-    : isUp
-      ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-      : "bg-red-500/15 text-red-400 border-red-500/30";
-  const badgeLabel = isFlat ? "Flat 0%" : isUp ? `Widening +${gapDeltaPct}%` : `Narrowing ${gapDeltaPct}%`;
+  const netSign = m.netDelta >= 0 ? "+" : "";
+  const netPct = (m.netDelta * 100).toFixed(1);
+  const meta = TRAJ_META[m.trajectory];
+  const nowColor = m.trajectory === "narrowing"
+    ? "text-red-400"
+    : m.trajectory === "flat"
+      ? "text-foreground"
+      : "text-emerald-400";
 
   const copy = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -241,20 +264,25 @@ const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => v
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-foreground">{m.leader.label}</span>
           <span className="text-xs text-muted-foreground">vs {m.runnerUp.label}</span>
-          <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded border text-[9px] uppercase tracking-wider", badgeClass)}>
-            {badgeLabel}
+          <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded border text-[9px] uppercase tracking-wider", meta.badge)}>
+            {meta.label} {netSign}{netPct}%
           </span>
           <span className="text-xs text-muted-foreground truncate">· {m.market.city}</span>
         </div>
         <div className="mt-1.5 inline-flex items-center gap-2 rounded border border-border bg-background/60 px-2.5 py-1.5">
           <div className="flex flex-col items-center">
-            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">1h ago</span>
-            <span className="font-mono-num text-sm font-semibold text-foreground leading-tight">{gapThenPct}%</span>
+            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">2h ago</span>
+            <span className="font-mono-num text-sm font-semibold text-foreground leading-tight">{gap2hPct}%</span>
           </div>
-          <span className={cn("text-base", isFlat ? "text-muted-foreground" : isUp ? "text-emerald-400" : "text-red-400")}>→</span>
+          <span className={cn("text-base", meta.arrow)}>→</span>
+          <div className="flex flex-col items-center">
+            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">1h ago</span>
+            <span className="font-mono-num text-sm font-semibold text-foreground leading-tight">{gap1hPct}%</span>
+          </div>
+          <span className={cn("text-base", meta.arrow)}>→</span>
           <div className="flex flex-col items-center">
             <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Now</span>
-            <span className={cn("font-mono-num text-sm font-bold leading-tight", isFlat ? "text-foreground" : isUp ? "text-emerald-400" : "text-red-400")}>{gapNowPct}%</span>
+            <span className={cn("font-mono-num text-sm font-bold leading-tight", nowColor)}>{gapNowPct}%</span>
           </div>
           <span className="text-[9px] uppercase tracking-wider text-muted-foreground ml-1">Gap #1 vs #2</span>
         </div>
