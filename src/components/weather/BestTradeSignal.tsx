@@ -20,24 +20,34 @@ type Props = {
   outcomes: Record<string, WeatherOutcome[]>;
   signals: Record<string, WeatherSignal>;
   bankroll: number;
+  minVolume?: number;
+  mismatchOnly?: boolean;
   onSelect?: (market: WeatherMarket) => void;
 };
 
 const MIN_EDGE = 0.07;
 
-export const BestTradeSignal = ({ markets, outcomes, signals, bankroll, onSelect }: Props) => {
-  // Flatten all outcomes with their parent market + signal context, filter by edge
+export const BestTradeSignal = ({ markets, outcomes, signals, bankroll, minVolume = 0, mismatchOnly = false, onSelect }: Props) => {
+  // Flatten all outcomes with their parent market + signal context, filter by edge + volume + mismatch
   const scored: ScoredOutcome[] = [];
   for (const m of markets) {
-    const outs = outcomes[m.id] ?? [];
+    const vol = Number(m.event_volume_24h ?? 0);
+    if (vol < minVolume) continue;
     const sig = signals[m.id] ?? null;
+    if (mismatchOnly && !sig?.favorite_mismatch) continue;
+    const outs = outcomes[m.id] ?? [];
     for (const o of outs) {
       if ((o.edge ?? -Infinity) >= MIN_EDGE) {
         scored.push({ outcome: o, market: m, signal: sig });
       }
     }
   }
-  scored.sort((a, b) => (b.outcome.edge ?? -Infinity) - (a.outcome.edge ?? -Infinity));
+  scored.sort((a, b) => {
+    const ma = a.signal?.favorite_mismatch ? 1 : 0;
+    const mb = b.signal?.favorite_mismatch ? 1 : 0;
+    if (ma !== mb) return mb - ma;
+    return (b.outcome.edge ?? -Infinity) - (a.outcome.edge ?? -Infinity);
+  });
 
   if (scored.length === 0) {
     return (
