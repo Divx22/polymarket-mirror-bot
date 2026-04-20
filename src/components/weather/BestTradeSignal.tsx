@@ -34,6 +34,9 @@ export const BestTradeSignal = ({ markets, outcomes, signals, bankroll, minVolum
   for (const m of markets) {
     const vol = Number(m.event_volume_24h ?? 0);
     if (vol < minVolume) continue;
+    // Skip markets within the settlement-risk window — apparent edge here is
+    // almost always a settlement quirk, not real alpha.
+    if (isSettlementRisk(m.event_time)) continue;
     const sig = signals[m.id] ?? null;
     if (mismatchOnly && !sig?.favorite_mismatch) continue;
     const outs = outcomes[m.id] ?? [];
