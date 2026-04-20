@@ -9,9 +9,13 @@ type Props = {
   markets: WeatherMarket[];
   outcomes: Record<string, WeatherOutcome[]>;
   onSelect?: (m: WeatherMarket) => void;
+  /** Minimum gap (0–1) between #1 and #2 outcomes required at "now" AND "1h ago". Default 0.10. */
+  gapMin?: number;
+  /** Allow user to change the threshold via a slider in the panel header. Default true. */
+  showThresholdControl?: boolean;
 };
 
-const GAP_MIN = 0.10;
+const DEFAULT_GAP_MIN = 0.10;
 const MAX_ENTRY_PRICE = 0.95;
 const MIN_HOURS_TO_EVENT = 0.5;
 const FLAT_BAND = 0.01;
