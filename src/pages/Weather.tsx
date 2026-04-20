@@ -293,7 +293,14 @@ const Weather = () => {
                         ) : <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="px-4 py-2.5 text-right">
-                        <div className="inline-flex gap-1">
+                        <div className="inline-flex items-center gap-1">
+                          <StationOverridePicker
+                            marketId={m.id}
+                            city={m.city}
+                            currentCode={m.resolution_station_code}
+                            currentName={m.resolution_station_name}
+                            onChange={load}
+                          />
                           <Button size="sm" variant="ghost" disabled={refreshing === m.id} onClick={() => refresh(m.id)}>
                             {refreshing === m.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                           </Button>
