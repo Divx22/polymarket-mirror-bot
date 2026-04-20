@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { TrendingUp, Loader2, Copy, Check, RefreshCw } from "lucide-react";
+import { TrendingUp, Loader2, Copy, Check, RefreshCw, Globe, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { type WeatherMarket, type WeatherOutcome } from "@/lib/weather";
 import { cn } from "@/lib/utils";
 
@@ -10,32 +11,44 @@ type Props = {
   onSelect?: (m: WeatherMarket) => void;
 };
 
-// RULES:
-//   Qualify: gap (#1 vs #2, same outcomes) is ≥ GAP_MIN at all 3 snapshots: 2h ago, 1h ago, now.
-//   Trajectory based on the two step deltas (d1 = 1h - 2h, d2 = now - 1h):
-//     accelerating  — both d1 and d2 are positive AND d2 ≥ d1 (gap grew faster recently)
-//     widening      — net (now - 2h) > FLAT_BAND (steady up trend)
-//     flat          — |now - 2h| ≤ FLAT_BAND
-//     narrowing     — net (now - 2h) < -FLAT_BAND
 const GAP_MIN = 0.10;
 const MAX_ENTRY_PRICE = 0.95;
 const MIN_HOURS_TO_EVENT = 0.5;
-const FLAT_BAND = 0.01; // ±1% rounds to "flat"
+const FLAT_BAND = 0.01;
 
 type Trajectory = "accelerating" | "widening" | "flat" | "narrowing";
 type HistPoint = { t: number; p: number };
 
 type Movement = {
+  source: "local";
   market: WeatherMarket;
   leader: WeatherOutcome;
   runnerUp: WeatherOutcome;
   leaderNow: number;
-  gap2h: number;     // gap 2h ago
-  gap1h: number;     // gap 1h ago
-  gapNow: number;    // gap now
-  netDelta: number;  // gapNow - gap2h
+  gap2h: number;
+  gap1h: number;
+  gapNow: number;
+  netDelta: number;
   trajectory: Trajectory;
 };
+
+type ExternalMovement = {
+  source: "external";
+  event_title: string;
+  event_slug: string | null;
+  city: string | null;
+  event_time: string | null;
+  polymarket_url: string | null;
+  leader_label: string;
+  runner_label: string;
+  leaderNow: number;
+  gap1h: number;
+  gapNow: number;
+  netDelta: number;
+  trajectory: Trajectory;
+};
+
+type AnyMove = Movement | ExternalMovement;
 
 async function fetchHistory(tokenId: string): Promise<HistPoint[]> {
   const url = `https://clob.polymarket.com/prices-history?market=${tokenId}&interval=1d&fidelity=60`;
@@ -50,7 +63,6 @@ async function fetchHistory(tokenId: string): Promise<HistPoint[]> {
   } catch { return []; }
 }
 
-// Live midpoint from Polymarket — much more accurate than the cached DB price.
 async function fetchMid(tokenId: string): Promise<number | null> {
   try {
     const r = await fetch(`https://clob.polymarket.com/midpoint?token_id=${tokenId}`);
@@ -75,7 +87,9 @@ function priceAt(hist: HistPoint[], targetTs: number): number | null {
 
 export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
   const [scanning, setScanning] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
   const [items, setItems] = useState<Movement[]>([]);
+  const [externals, setExternals] = useState<ExternalMovement[]>([]);
   const [scannedAt, setScannedAt] = useState<number | null>(null);
   const [progress, setProgress] = useState(0);
 
@@ -122,15 +136,14 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         if (leader1h == null || runner1h == null) return;
 
         const gap1h = leader1h - runner1h;
-        if (gap1h < GAP_MIN) return; // qualify on now + 1h ago only
+        if (gap1h < GAP_MIN) return;
 
-        // 2h shown for context; falls back to gap1h if unavailable
         const leader2h = priceAt(leaderHist, target2h);
         const runner2h = priceAt(runnerHist, target2h);
         const gap2h = (leader2h != null && runner2h != null) ? (leader2h - runner2h) : gap1h;
 
-        const d1 = gap1h - gap2h;       // change 2h→1h
-        const d2 = gapNow - gap1h;      // change 1h→now
+        const d1 = gap1h - gap2h;
+        const d2 = gapNow - gap1h;
         const netDelta = gapNow - gap2h;
 
         let trajectory: Trajectory;
@@ -139,24 +152,55 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         else if (netDelta < -FLAT_BAND) trajectory = "narrowing";
         else trajectory = "flat";
 
-        found.push({ market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory });
+        found.push({ source: "local", market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory });
       }));
       done += batch.length;
       setProgress(Math.round((done / eligible.length) * 100));
     }
 
-    // Order: accelerating > widening > flat > narrowing; tiebreak by netDelta.
     const rank: Record<Trajectory, number> = { accelerating: 0, widening: 1, flat: 2, narrowing: 3 };
     found.sort((a, b) => rank[a.trajectory] - rank[b.trajectory] || b.netDelta - a.netDelta);
 
     setItems(found);
     setScannedAt(Date.now());
     setScanning(false);
-    const accel = found.filter(f => f.trajectory === "accelerating").length;
     if (found.length > 0) {
+      const accel = found.filter(f => f.trajectory === "accelerating").length;
       toast.success(`${found.length} qualified · ${accel} accelerating`);
     } else {
-      toast.info(`No markets qualified (need gap ≥${Math.round(GAP_MIN * 100)}% at 2h ago, 1h ago, and now)`);
+      toast.info(`No markets in your scanner qualified`);
+    }
+  };
+
+  const discover = async () => {
+    setDiscovering(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("weather-discover-momentum");
+      if (error) throw error;
+      const results = (data?.results ?? []) as any[];
+      const mapped: ExternalMovement[] = results.map((r) => ({
+        source: "external",
+        event_title: r.event_title,
+        event_slug: r.event_slug,
+        city: r.city,
+        event_time: r.event_time,
+        polymarket_url: r.polymarket_url,
+        leader_label: r.leader_label,
+        runner_label: r.runner_label,
+        leaderNow: r.leader_now,
+        gap1h: r.gap_1h,
+        gapNow: r.gap_now,
+        netDelta: r.net_delta,
+        trajectory: r.trajectory,
+      }));
+      const rank: Record<Trajectory, number> = { accelerating: 0, widening: 1, flat: 2, narrowing: 3 };
+      mapped.sort((a, b) => rank[a.trajectory] - rank[b.trajectory] || b.netDelta - a.netDelta);
+      setExternals(mapped);
+      toast.success(`Discover scanned ${data?.scanned ?? 0} · ${mapped.length} qualified`);
+    } catch (e: any) {
+      toast.error(`Discover failed: ${e?.message ?? e}`);
+    } finally {
+      setDiscovering(false);
     }
   };
 
@@ -177,14 +221,25 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
             </div>
           </div>
         </div>
-        <button
-          onClick={scan}
-          disabled={scanning}
-          className="inline-flex items-center gap-1.5 rounded border border-border bg-background hover:bg-surface-2 px-2.5 py-1 text-[11px] disabled:opacity-50"
-        >
-          {scanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-          {scanning ? `${progress}%` : "Rescan"}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={discover}
+            disabled={discovering}
+            className="inline-flex items-center gap-1.5 rounded border border-border bg-background hover:bg-surface-2 px-2.5 py-1 text-[11px] disabled:opacity-50"
+            title="Scan ALL Polymarket temperature markets (next 48h)"
+          >
+            {discovering ? <Loader2 className="h-3 w-3 animate-spin" /> : <Globe className="h-3 w-3" />}
+            {discovering ? "Discovering…" : "Discover"}
+          </button>
+          <button
+            onClick={scan}
+            disabled={scanning}
+            className="inline-flex items-center gap-1.5 rounded border border-border bg-background hover:bg-surface-2 px-2.5 py-1 text-[11px] disabled:opacity-50"
+          >
+            {scanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            {scanning ? `${progress}%` : "Rescan"}
+          </button>
+        </div>
       </div>
 
       {scanning && items.length === 0 && (
@@ -193,9 +248,9 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         </div>
       )}
 
-      {!scanning && items.length === 0 && scannedAt != null && (
+      {!scanning && items.length === 0 && externals.length === 0 && scannedAt != null && (
         <div className="px-4 py-6 text-center text-xs text-muted-foreground">
-          No markets qualified — need gap ≥{Math.round(GAP_MIN * 100)}% at 2h ago, 1h ago, and now.
+          No markets qualified — try Discover to scan all of Polymarket.
         </div>
       )}
 
@@ -204,31 +259,29 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
           {items.map((m) => <Row key={m.market.id} m={m} onSelect={onSelect} />)}
         </ul>
       )}
+
+      {externals.length > 0 && (
+        <>
+          <div className="px-4 py-1.5 border-t border-border bg-surface-2/60 flex items-center gap-1.5">
+            <Globe className="h-3 w-3 text-blue-400" />
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+              From Polymarket · not in your scanner
+            </span>
+          </div>
+          <ul className="divide-y divide-border/50">
+            {externals.map((m, i) => <ExternalRow key={`${m.event_slug ?? i}`} m={m} />)}
+          </ul>
+        </>
+      )}
     </div>
   );
 };
 
 const TRAJ_META: Record<Trajectory, { label: string; badge: string; arrow: string }> = {
-  accelerating: {
-    label: "Accelerating",
-    badge: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
-    arrow: "text-emerald-400",
-  },
-  widening: {
-    label: "Widening",
-    badge: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-    arrow: "text-emerald-400",
-  },
-  flat: {
-    label: "Flat",
-    badge: "bg-muted text-muted-foreground border-border",
-    arrow: "text-muted-foreground",
-  },
-  narrowing: {
-    label: "Narrowing",
-    badge: "bg-red-500/15 text-red-400 border-red-500/30",
-    arrow: "text-red-400",
-  },
+  accelerating: { label: "Accelerating", badge: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40", arrow: "text-emerald-400" },
+  widening:     { label: "Widening",     badge: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30", arrow: "text-emerald-400" },
+  flat:         { label: "Flat",         badge: "bg-muted text-muted-foreground border-border",             arrow: "text-muted-foreground" },
+  narrowing:    { label: "Narrowing",    badge: "bg-red-500/15 text-red-400 border-red-500/30",             arrow: "text-red-400" },
 };
 
 const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => void }) => {
@@ -241,11 +294,7 @@ const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => v
   const netSign = m.netDelta >= 0 ? "+" : "";
   const netPct = (m.netDelta * 100).toFixed(1);
   const meta = TRAJ_META[m.trajectory] ?? TRAJ_META.flat;
-  const nowColor = m.trajectory === "narrowing"
-    ? "text-red-400"
-    : m.trajectory === "flat"
-      ? "text-foreground"
-      : "text-emerald-400";
+  const nowColor = m.trajectory === "narrowing" ? "text-red-400" : m.trajectory === "flat" ? "text-foreground" : "text-emerald-400";
 
   const copy = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -272,24 +321,67 @@ const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => v
           <span className="text-xs text-muted-foreground truncate">· {m.market.city}</span>
         </div>
         <div className="mt-1.5 inline-flex items-center gap-2 rounded border border-border bg-background/60 px-2.5 py-1.5">
-          <div className="flex flex-col items-center">
-            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">2h ago</span>
-            <span className="font-mono-num text-sm font-semibold text-foreground leading-tight">{gap2hPct}%</span>
-          </div>
+          <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
-          <div className="flex flex-col items-center">
-            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">1h ago</span>
-            <span className="font-mono-num text-sm font-semibold text-foreground leading-tight">{gap1hPct}%</span>
-          </div>
+          <Snap label="1h ago" value={gap1hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
-          <div className="flex flex-col items-center">
-            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Now</span>
-            <span className={cn("font-mono-num text-sm font-bold leading-tight", nowColor)}>{gapNowPct}%</span>
-          </div>
+          <Snap label="Now" value={gapNowPct} bold valueClass={nowColor} />
           <span className="text-[9px] uppercase tracking-wider text-muted-foreground ml-1">Gap #1 vs #2</span>
         </div>
       </div>
-      <div className="flex items-center gap-3 pl-0 sm:pl-0">
+      <div className="flex items-center gap-3">
+        <div className="text-right">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Entry</div>
+          <div className="font-mono-num font-semibold text-foreground">{entryPct}%</div>
+        </div>
+        <div className="text-right">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Upside</div>
+          <div className="font-mono-num font-semibold text-emerald-400">+{upsidePct}%</div>
+        </div>
+        <button onClick={copy} className="inline-flex items-center gap-1 rounded border border-border bg-background hover:bg-surface-2 px-2 py-1 text-[11px]">
+          {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+    </li>
+  );
+};
+
+const ExternalRow = ({ m }: { m: ExternalMovement }) => {
+  const entryPct = (m.leaderNow * 100).toFixed(1);
+  const upsidePct = ((1 - m.leaderNow) * 100).toFixed(1);
+  const gap1hPct = (m.gap1h * 100).toFixed(1);
+  const gapNowPct = (m.gapNow * 100).toFixed(1);
+  const netSign = m.netDelta >= 0 ? "+" : "";
+  const netPct = (m.netDelta * 100).toFixed(1);
+  const meta = TRAJ_META[m.trajectory] ?? TRAJ_META.flat;
+  const nowColor = m.trajectory === "narrowing" ? "text-red-400" : m.trajectory === "flat" ? "text-foreground" : "text-emerald-400";
+
+  const open = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (m.polymarket_url) window.open(m.polymarket_url, "_blank", "noopener,noreferrer");
+  };
+
+  return (
+    <li className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 hover:bg-surface-2/50">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-foreground">{m.leader_label}</span>
+          <span className="text-xs text-muted-foreground">vs {m.runner_label}</span>
+          <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded border text-[9px] uppercase tracking-wider", meta.badge)}>
+            {meta.label} {netSign}{netPct}%
+          </span>
+          {m.city && <span className="text-xs text-muted-foreground truncate">· {m.city}</span>}
+        </div>
+        <div className="mt-1.5 inline-flex items-center gap-2 rounded border border-border bg-background/60 px-2.5 py-1.5">
+          <Snap label="1h ago" value={gap1hPct} />
+          <span className={cn("text-base", meta.arrow)}>→</span>
+          <Snap label="Now" value={gapNowPct} bold valueClass={nowColor} />
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground ml-1">Gap #1 vs #2</span>
+        </div>
+        <div className="mt-1 text-[10px] text-muted-foreground truncate">{m.event_title}</div>
+      </div>
+      <div className="flex items-center gap-3">
         <div className="text-right">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Entry</div>
           <div className="font-mono-num font-semibold text-foreground">{entryPct}%</div>
@@ -299,13 +391,21 @@ const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => v
           <div className="font-mono-num font-semibold text-emerald-400">+{upsidePct}%</div>
         </div>
         <button
-          onClick={copy}
-          className="inline-flex items-center gap-1 rounded border border-border bg-background hover:bg-surface-2 px-2 py-1 text-[11px]"
+          onClick={open}
+          disabled={!m.polymarket_url}
+          className="inline-flex items-center gap-1 rounded border border-border bg-background hover:bg-surface-2 px-2 py-1 text-[11px] disabled:opacity-50"
         >
-          {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-          {copied ? "Copied" : "Copy"}
+          <ExternalLink className="h-3 w-3" />
+          Open
         </button>
       </div>
     </li>
   );
 };
+
+const Snap = ({ label, value, bold, valueClass }: { label: string; value: string; bold?: boolean; valueClass?: string }) => (
+  <div className="flex flex-col items-center">
+    <span className="text-[9px] uppercase tracking-wider text-muted-foreground">{label}</span>
+    <span className={cn("font-mono-num text-sm leading-tight", bold ? "font-bold" : "font-semibold", valueClass ?? "text-foreground")}>{value}%</span>
+  </div>
+);

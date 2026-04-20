@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.mm-cycle]
 verify_jwt = false
+
+[functions.weather-discover-momentum]
+verify_jwt = false
