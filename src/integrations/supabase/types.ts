@@ -17,13 +17,16 @@ export type Database = {
       clv_scores: {
         Row: {
           asset_id: string
-          closing_price: number
-          clv_cents: number
-          detected_trade_id: string
+          closing_price: number | null
+          clv_cents: number | null
+          detected_trade_id: string | null
+          edge_at_entry: number | null
           entry_price: number
           event_time: string | null
           id: string
+          kind: string
           notes: Json | null
+          p_model_at_entry: number | null
           scored_at: string
           shares: number | null
           side: string
@@ -34,13 +37,16 @@ export type Database = {
         }
         Insert: {
           asset_id: string
-          closing_price: number
-          clv_cents: number
-          detected_trade_id: string
+          closing_price?: number | null
+          clv_cents?: number | null
+          detected_trade_id?: string | null
+          edge_at_entry?: number | null
           entry_price: number
           event_time?: string | null
           id?: string
+          kind?: string
           notes?: Json | null
+          p_model_at_entry?: number | null
           scored_at?: string
           shares?: number | null
           side: string
@@ -51,13 +57,16 @@ export type Database = {
         }
         Update: {
           asset_id?: string
-          closing_price?: number
-          clv_cents?: number
-          detected_trade_id?: string
+          closing_price?: number | null
+          clv_cents?: number | null
+          detected_trade_id?: string | null
+          edge_at_entry?: number | null
           entry_price?: number
           event_time?: string | null
           id?: string
+          kind?: string
           notes?: Json | null
+          p_model_at_entry?: number | null
           scored_at?: string
           shares?: number | null
           side?: string

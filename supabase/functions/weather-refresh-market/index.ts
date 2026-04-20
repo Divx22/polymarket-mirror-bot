@@ -613,6 +613,46 @@ Deno.serve(async (req) => {
       ...(eventVolume24h != null ? { event_volume_24h: eventVolume24h } : {}),
     }).eq("id", m.id);
 
+    // ----- Paper-trade auto-logging for calibration -----
+    // For every outcome with positive edge, log one paper entry per UTC day.
+    // Categorized as 'qualified' (the >=7% best pick) or 'sub_threshold' (everything else).
+    // Closing price stays NULL until weather-clv-backfill runs after event_time.
+    // The unique partial index (user_id, weather_outcome_id, day) silently dedupes.
+    try {
+      const MIN_EDGE = 0.07;
+      const paperRows = enriched
+        .filter((x) => x.edge != null && x.edge > 0 && x.price != null)
+        .map((x) => {
+          const isQualified = (x.edge as number) >= MIN_EDGE && x.o.label === bestLabel;
+          return {
+            user_id: m.user_id,
+            detected_trade_id: null,
+            weather_market_id: m.id,
+            weather_outcome_id: x.o.id,
+            asset_id: x.o.clob_token_id ?? `outcome:${x.o.id}`,
+            side: "BUY",
+            entry_price: x.price,
+            closing_price: null,
+            clv_cents: null,
+            edge_at_entry: x.edge,
+            p_model_at_entry: x.pModel,
+            kind: isQualified ? "qualified" : "sub_threshold",
+            event_time: m.event_time,
+            source: "paper_auto",
+            notes: { agreement, confidence_level: confidence },
+          };
+        });
+      if (paperRows.length) {
+        // onConflict via the partial unique index — ignore duplicates for the day
+        await supabase.from("clv_scores").upsert(paperRows, {
+          onConflict: "user_id,weather_outcome_id",
+          ignoreDuplicates: true,
+        });
+      }
+    } catch (e) {
+      console.warn("paper-log failed (non-fatal):", (e as Error).message);
+    }
+
     return new Response(JSON.stringify({
       ok: true,
       agreement,
