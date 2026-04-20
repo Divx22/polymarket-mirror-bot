@@ -175,10 +175,10 @@ const Weather = () => {
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Mismatch</span>
               <Switch checked={mismatchOnly} onCheckedChange={setMismatchOnly} />
             </div>
-            <Button asChild variant="outline" size="sm">
+            <Button asChild variant="default" size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
               <Link to="/momentum">
-                <TrendingUp className="h-3 w-3 sm:mr-1" />
-                <span className="hidden sm:inline">Momentum</span>
+                <TrendingUp className="h-3 w-3 mr-1" />
+                Momentum
               </Link>
             </Button>
             <Button variant="outline" size="sm" onClick={refreshAll} disabled={refreshingAll || markets.length === 0}>
