@@ -23,14 +23,15 @@ type Movement = {
   isBreakout: boolean;    // passes all thresholds
 };
 
-// Thresholds: leader must have risen ≥25% (relative) in last 2h AND lead #2 by ≥15¢ absolute.
-// Relative % catches fast climbers from any base (e.g. 40¢→55¢ = +37%, or 20¢→30¢ = +50%).
-const RISE_PCT_THRESHOLD = 0.25; // +25% relative move
-const GAP_THRESHOLD = 0.15;       // still absolute — #1 must clearly lead #2
+// Two independent breakout triggers (either fires):
+//   1) RISE: leader's price rose ≥25% relative in last 2h (catches fast climbers from any base)
+//   2) GAP-WIDENING: leader was already ahead AND the gap to #2 grew by ≥8¢ in last 2h
+// Both require: gap-now ≥15¢ absolute, and entry ≤85¢ (no upside otherwise).
+const RISE_PCT_THRESHOLD = 0.25;     // +25% relative move on leader
+const GAP_THRESHOLD = 0.15;          // current gap #1 vs #2
+const GAP_WIDENING_THRESHOLD = 0.08; // gap grew by ≥8¢ over the window
 const WINDOW_HOURS = 2;
-// Don't bother once leader is too expensive — no upside left.
 const MAX_ENTRY_PRICE = 0.85;
-// Skip resolved/about-to-resolve markets (live history would be empty).
 const MIN_HOURS_TO_EVENT = 0.5;
 
 type HistPoint = { t: number; p: number };
