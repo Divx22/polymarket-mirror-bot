@@ -293,7 +293,11 @@ const BestCard = ({ pick, bankroll, maxTradePct = 2, onSelect }: { pick: ScoredO
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         <Metric label="Model Prob." value={pct(o.p_model, 1)} />
-        <Metric label="Market Price" value={pct(o.polymarket_price, 1)} />
+        <Metric
+          label={ask != null ? "Live Ask" : "Market Price"}
+          value={ask != null ? `${(ask * 100).toFixed(1)}¢` : pct(o.polymarket_price, 1)}
+          sub={ask != null ? "what you'd pay now" : "last trade (may be stale)"}
+        />
         <Metric
           label="Edge"
           value={pct(o.edge, 1)}
