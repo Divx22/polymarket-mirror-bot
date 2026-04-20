@@ -14,6 +14,7 @@ import { StationOverridePicker } from "@/components/weather/StationOverridePicke
 import {
   WeatherMarket, WeatherOutcome, WeatherSignal,
   pct, edgeColor, confidenceColor, formatVolume, applyMaxTradeCap,
+  isSettlementRisk, hoursToResolution,
 } from "@/lib/weather";
 import { cn } from "@/lib/utils";
 
@@ -246,7 +247,21 @@ const Weather = () => {
                       </td>
                       <td className="px-3 py-2.5 text-muted-foreground">{m.city}</td>
                       <td className="px-3 py-2.5 text-muted-foreground text-xs">
-                        {new Date(m.event_time).toLocaleString()}
+                        <div>{new Date(m.event_time).toLocaleString()}</div>
+                        {(() => {
+                          const risk = isSettlementRisk(m.event_time);
+                          if (!risk) return null;
+                          const h = hoursToResolution(m.event_time);
+                          const label = h == null ? "<6h" : h < 0 ? "resolving" : `${h.toFixed(1)}h left`;
+                          return (
+                            <span
+                              className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] uppercase tracking-wider bg-red-500/15 text-red-400 border-red-500/30"
+                              title="Within 6h of resolution — forecast uncertainty has collapsed; apparent edge is likely a settlement quirk."
+                            >
+                              ⚠ {label}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono-num text-muted-foreground">
                         {formatVolume(m.event_volume_24h)}
