@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AddMarketDialog } from "@/components/weather/AddMarketDialog";
 import { TradeDetailDialog } from "@/components/weather/TradeDetailDialog";
 import { BestTradeSignal } from "@/components/weather/BestTradeSignal";
+import { WeatherScanner } from "@/components/weather/WeatherScanner";
 import {
   WeatherMarket, WeatherOutcome, WeatherSignal,
   pct, edgeColor, confidenceColor,
@@ -135,6 +136,14 @@ const Weather = () => {
       </header>
 
       <main className="container py-6 space-y-4">
+        <WeatherScanner
+          markets={markets}
+          outcomes={outcomes}
+          signals={signals}
+          onReload={load}
+          onSelect={(m) => setDetailMarket(m)}
+        />
+
         <BestTradeSignal
           markets={markets}
           outcomes={outcomes}
