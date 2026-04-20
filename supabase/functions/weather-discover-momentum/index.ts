@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const GAP_MIN = 0.10;
+const DEFAULT_GAP_MIN = 0.10;
 const MAX_ENTRY_PRICE = 0.95;
 const MAX_HOURS = 48;
 const MIN_HOURS = 0.5;
