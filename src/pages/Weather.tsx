@@ -14,7 +14,7 @@ import { BankrollInput, MinVolumeInput, MaxTradeCapInput } from "@/components/we
 import { StationOverridePicker } from "@/components/weather/StationOverridePicker";
 import { ClvPanel } from "@/components/weather/ClvPanel";
 import { BiasPanel } from "@/components/weather/BiasPanel";
-import { useModelEdgeAlerts } from "@/hooks/useModelEdgeAlerts";
+
 import {
   WeatherMarket, WeatherOutcome, WeatherSignal,
   pct, edgeColor, confidenceColor, formatVolume, applyMaxTradeCap,
@@ -76,12 +76,7 @@ const Weather = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  // Alert on any outcome where our model says >50% but Polymarket says <50%.
-  useModelEdgeAlerts({
-    markets,
-    outcomes,
-    onClick: (m) => setDetailMarket(m),
-  });
+  // Toast alerts disabled per user request — no popup notifications.
 
   const refresh = async (id: string) => {
     setRefreshing(id);

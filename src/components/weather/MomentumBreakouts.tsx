@@ -170,12 +170,6 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
     setItems(found);
     setScannedAt(Date.now());
     setScanning(false);
-    if (found.length > 0) {
-      const accel = found.filter(f => f.trajectory === "accelerating").length;
-      toast.success(`${found.length} qualified · ${accel} accelerating`);
-    } else {
-      toast.info(`No markets in your scanner qualified at ≥${Math.round(gapMin * 100)}%`);
-    }
   };
 
   const discover = async () => {
@@ -204,9 +198,8 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
       // Same combined-score sort as local results.
       mapped.sort((a, b) => ((1 - b.leaderNow) * b.gapNow) - ((1 - a.leaderNow) * a.gapNow));
       setExternals(mapped);
-      toast.success(`Discover scanned ${data?.scanned ?? 0} · ${mapped.length} qualified`);
     } catch (e: any) {
-      toast.error(`Discover failed: ${e?.message ?? e}`);
+      console.error("Discover failed", e);
     } finally {
       setDiscovering(false);
     }
@@ -314,10 +307,10 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
 };
 
 const TRAJ_META: Record<Trajectory, { label: string; badge: string; arrow: string }> = {
-  accelerating: { label: "Accelerating", badge: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40", arrow: "text-emerald-400" },
-  widening:     { label: "Widening",     badge: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30", arrow: "text-emerald-400" },
-  flat:         { label: "Flat",         badge: "bg-muted text-muted-foreground border-border",             arrow: "text-muted-foreground" },
-  narrowing:    { label: "Narrowing",    badge: "bg-red-500/15 text-red-400 border-red-500/30",             arrow: "text-red-400" },
+  accelerating: { label: "Accelerating", badge: "bg-emerald-500/25 text-emerald-200 border-emerald-400/60 shadow-[0_0_8px_hsl(142_72%_48%/0.35)]", arrow: "text-emerald-400" },
+  widening:     { label: "Widening",     badge: "bg-emerald-500/20 text-emerald-200 border-emerald-400/50",                                       arrow: "text-emerald-400" },
+  flat:         { label: "Flat",         badge: "bg-amber-500/20 text-amber-200 border-amber-400/50",                                             arrow: "text-amber-300" },
+  narrowing:    { label: "Narrowing",    badge: "bg-red-500/25 text-red-200 border-red-400/60 shadow-[0_0_8px_hsl(0_72%_55%/0.35)]",              arrow: "text-red-400" },
 };
 
 const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => void }) => {
@@ -351,7 +344,7 @@ const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => v
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-foreground">{m.leader.label}</span>
           <span className="text-xs text-muted-foreground">vs {m.runnerUp.label}</span>
-          <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded border text-[9px] uppercase tracking-wider", meta.badge)}>
+          <span className={cn("inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-bold uppercase tracking-wide", meta.badge)}>
             {meta.label} {netSign}{netPct}%
           </span>
           <span className="text-xs text-muted-foreground truncate">· {m.market.city}</span>
@@ -404,7 +397,7 @@ const ExternalRow = ({ m }: { m: ExternalMovement }) => {
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-foreground">{m.leader_label}</span>
           <span className="text-xs text-muted-foreground">vs {m.runner_label}</span>
-          <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded border text-[9px] uppercase tracking-wider", meta.badge)}>
+          <span className={cn("inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-bold uppercase tracking-wide", meta.badge)}>
             {meta.label} {netSign}{netPct}%
           </span>
           {m.city && <span className="text-xs text-muted-foreground truncate">· {m.city}</span>}
