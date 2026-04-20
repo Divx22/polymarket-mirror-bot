@@ -162,6 +162,7 @@ const Weather = () => {
           <div className="flex items-center gap-2 flex-wrap">
             <BankrollInput userId={userId} bankroll={bankroll} onChange={setBankroll} />
             <MinVolumeInput userId={userId} minVolume={minVolume} onChange={setMinVolume} />
+            <MaxTradeCapInput userId={userId} maxPct={maxTradePct} onChange={setMaxTradePct} />
             <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2/40 px-2 py-1">
               <Zap className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Mismatch</span>
