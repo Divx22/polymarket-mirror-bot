@@ -12,6 +12,7 @@ import { WeatherScanner } from "@/components/weather/WeatherScanner";
 import { BankrollInput, MinVolumeInput, MaxTradeCapInput } from "@/components/weather/PositionCalculator";
 import { StationOverridePicker } from "@/components/weather/StationOverridePicker";
 import { ClvPanel } from "@/components/weather/ClvPanel";
+import { BiasPanel } from "@/components/weather/BiasPanel";
 import {
   WeatherMarket, WeatherOutcome, WeatherSignal,
   pct, edgeColor, confidenceColor, formatVolume, applyMaxTradeCap,
@@ -206,6 +207,7 @@ const Weather = () => {
         />
 
         <ClvPanel />
+        <BiasPanel />
 
         <section className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
