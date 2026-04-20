@@ -406,6 +406,19 @@ Deno.serve(async (req) => {
     let bestRawEdge: number | null = null;
     const distribution: any[] = [];
 
+    // Favorite detection
+    let mktFav: { label: string; price: number } | null = null;
+    let modelFav: { label: string; prob: number } | null = null;
+    for (const x of enriched) {
+      if (x.price != null && (mktFav == null || x.price > mktFav.price)) {
+        mktFav = { label: x.o.label, price: x.price };
+      }
+      if (modelFav == null || x.pModel > modelFav.prob) {
+        modelFav = { label: x.o.label, prob: x.pModel };
+      }
+    }
+    const favoriteMismatch = !!(mktFav && modelFav && mktFav.label !== modelFav.label);
+
     for (const x of enriched) {
       const adjEdge = x.edge != null ? x.edge * agreement : null;
       const size = adjEdge != null ? suggestedSize(adjEdge, agreement) : 0;
