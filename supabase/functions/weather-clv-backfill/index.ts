@@ -130,6 +130,7 @@ Deno.serve(async (req) => {
 
     let scored = 0;
     let skipped = 0;
+    let paperScored = 0;
     const errors: Array<{ trade_id: string; reason: string }> = [];
 
     // Group by asset so we only hit Polymarket once per market.
@@ -139,6 +140,9 @@ Deno.serve(async (req) => {
       arr.push(t);
       byAssetTodo.set(t.asset_id, arr);
     }
+
+    // Cache closing prices we fetch so paper-row scoring can reuse them.
+    const closingByAsset = new Map<string, number>();
 
     for (const [assetId, group] of byAssetTodo.entries()) {
       const outcome = byAsset.get(assetId);
@@ -156,10 +160,10 @@ Deno.serve(async (req) => {
         errors.push({ trade_id: group[0].id, reason: "no price history" });
         continue;
       }
+      closingByAsset.set(assetId, closing);
 
       const rows = group.map((t) => {
         const entry = Number(t.price);
-        // BUY: edge if close > entry. SELL: edge if entry > close.
         const dir = t.side?.toUpperCase() === "SELL" ? -1 : 1;
         const clvCents = (closing - entry) * dir * 100;
         return {
@@ -190,8 +194,39 @@ Deno.serve(async (req) => {
       scored += rows.length;
     }
 
+    // ---- Score unscored PAPER rows whose event has passed ----
+    const { data: paperRows } = await supabase
+      .from("clv_scores")
+      .select("id, asset_id, entry_price, side, weather_outcome_id, event_time")
+      .eq("user_id", userId)
+      .is("detected_trade_id", null)
+      .is("closing_price", null)
+      .lt("event_time", nowIso);
+    for (const r of paperRows ?? []) {
+      let closing = closingByAsset.get(r.asset_id);
+      if (closing == null) {
+        const eventTime = new Date(r.event_time as string);
+        const { price } = await fetchClosingPrice(r.asset_id, eventTime);
+        if (price == null) { skipped += 1; continue; }
+        closing = price;
+        closingByAsset.set(r.asset_id, closing);
+      }
+      const entry = Number(r.entry_price);
+      const dir = r.side?.toUpperCase() === "SELL" ? -1 : 1;
+      const clvCents = (closing - entry) * dir * 100;
+      const { error: upErr } = await supabase
+        .from("clv_scores")
+        .update({
+          closing_price: closing,
+          clv_cents: Number(clvCents.toFixed(2)),
+        })
+        .eq("id", r.id);
+      if (upErr) { skipped += 1; continue; }
+      paperScored += 1;
+    }
+
     return new Response(
-      JSON.stringify({ scored, skipped, todo_total: todo.length, errors }),
+      JSON.stringify({ scored, paper_scored: paperScored, skipped, todo_total: todo.length, errors }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
