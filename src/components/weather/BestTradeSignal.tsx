@@ -3,7 +3,7 @@ import { Sparkles, TrendingUp, AlertCircle, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import {
   type WeatherMarket, type WeatherOutcome, type WeatherSignal,
-  pct, edgeColor,
+  pct, edgeColor, isSettlementRisk,
 } from "@/lib/weather";
 import { cn } from "@/lib/utils";
 import { PositionCalculator } from "./PositionCalculator";
