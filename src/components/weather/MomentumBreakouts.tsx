@@ -189,12 +189,24 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
     </div>
   );
 };
+      {visible.length > 0 && (
+        <ul className="divide-y divide-border/50">
+          {visible.map((b) => (
+            <BreakoutRow key={b.market.id} b={b} onSelect={onSelect} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
 
-const BreakoutRow = ({ b, onSelect }: { b: Breakout; onSelect?: (m: WeatherMarket) => void }) => {
+const BreakoutRow = ({ b, onSelect }: { b: Movement; onSelect?: (m: WeatherMarket) => void }) => {
   const [copied, setCopied] = useState(false);
   const entryPrice = b.liveAsk ?? b.priceNow;
   const cents = (entryPrice * 100).toFixed(1);
   const upside = (1 - entryPrice) * 100;
+  const isUp = b.delta >= 0;
+  const deltaCents = Math.abs(b.delta * 100);
 
   const copyPrice = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -211,20 +223,30 @@ const BreakoutRow = ({ b, onSelect }: { b: Breakout; onSelect?: (m: WeatherMarke
   return (
     <li
       onClick={() => onSelect?.(b.market)}
-      className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 hover:bg-surface-2/50 cursor-pointer"
+      className={cn(
+        "flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 hover:bg-surface-2/50 cursor-pointer",
+        !b.isBreakout && "opacity-70",
+      )}
     >
       <div className="flex items-center gap-2 flex-1 min-w-0">
-        <TrendingUp className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+        <TrendingUp className={cn("h-3.5 w-3.5 shrink-0", b.isBreakout ? "text-blue-400" : "text-muted-foreground")} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-blue-400">{b.leader.label}</span>
+            <span className={cn("font-semibold", b.isBreakout ? "text-blue-400" : "text-foreground")}>{b.leader.label}</span>
+            {b.isBreakout && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded border text-[9px] uppercase tracking-wider bg-blue-500/15 text-blue-400 border-blue-500/30">
+                Breakout
+              </span>
+            )}
             <span className="text-xs text-muted-foreground truncate">
               {b.market.city} · {b.market.market_question}
             </span>
           </div>
           <div className="text-[11px] text-muted-foreground mt-0.5">
-            Rose <span className="font-mono-num text-foreground">{(b.priceThen * 100).toFixed(0)}¢ → {(b.priceNow * 100).toFixed(0)}¢</span>
-            <span className="text-emerald-400 font-semibold"> (+{(b.delta * 100).toFixed(0)}¢ / 2h)</span>
+            <span className="font-mono-num text-foreground">{(b.priceThen * 100).toFixed(0)}¢ → {(b.priceNow * 100).toFixed(0)}¢</span>
+            <span className={cn("font-semibold ml-1", isUp ? "text-emerald-400" : "text-red-400")}>
+              ({isUp ? "+" : "−"}{deltaCents.toFixed(0)}¢ / 2h)
+            </span>
             {b.runnerUp && (
               <> · #2 <span className="font-mono-num text-foreground">{b.runnerUp.label} {((b.runnerUp.polymarket_price ?? 0) * 100).toFixed(0)}¢</span> · gap <span className="text-foreground font-mono-num">{(b.gap * 100).toFixed(0)}¢</span></>
             )}
@@ -234,7 +256,7 @@ const BreakoutRow = ({ b, onSelect }: { b: Breakout; onSelect?: (m: WeatherMarke
       <div className="flex items-center gap-3 pl-5 sm:pl-0">
         <div className="text-right">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Entry</div>
-          <div className="font-mono-num font-semibold text-blue-400">{cents}¢</div>
+          <div className={cn("font-mono-num font-semibold", b.isBreakout ? "text-blue-400" : "text-foreground")}>{cents}¢</div>
         </div>
         <div className="text-right">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Upside</div>
@@ -251,3 +273,4 @@ const BreakoutRow = ({ b, onSelect }: { b: Breakout; onSelect?: (m: WeatherMarke
     </li>
   );
 };
+
