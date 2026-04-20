@@ -299,7 +299,6 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
       )}
 
       {(() => {
-        const score = (leaderNow: number, gapNow: number) => ((1 - leaderNow) + gapNow) / 2;
         const localSlugs = new Set(
           items.map((it) => it.market.polymarket_event_slug).filter(Boolean) as string[],
         );
@@ -312,11 +311,11 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
         const merged: Merged[] = [
           ...items.map((it): Merged => ({
             kind: "local", key: `l-${it.market.id}`,
-            sortScore: score(it.leaderNow, it.gapNow), data: it,
+            sortScore: momentumScore(it.leaderNow, it.gapNow, it.netDelta, it.trajectory), data: it,
           })),
           ...dedupedExternals.map((e, i): Merged => ({
             kind: "ext", key: `e-${e.event_slug ?? i}`,
-            sortScore: score(e.leaderNow, e.gapNow), data: e,
+            sortScore: momentumScore(e.leaderNow, e.gapNow, e.netDelta, e.trajectory), data: e,
           })),
         ].sort((a, b) => b.sortScore - a.sortScore);
 
