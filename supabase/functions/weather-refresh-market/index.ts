@@ -251,6 +251,58 @@ function isUS(lat: number, lon: number): boolean {
          (lat >= 18 && lat <= 23 && lon >= -161 && lon <= -154);
 }
 
+// ---------- NOAA NBM (National Blend of Models) — second US source ----------
+// Independent of Open-Meteo. NWS gridpoints endpoint serves NBM-blended hourly
+// temps for any US lat/lon. Free, no key.
+async function fetchNbmHourly(lat: number, lon: number): Promise<{ validTime: string; tempC: number }[] | null> {
+  try {
+    const headers = { "User-Agent": "polymarket-edge-app (contact@example.com)", Accept: "application/geo+json" };
+    const pointRes = await fetch(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`, { headers });
+    if (!pointRes.ok) return null;
+    const point = await pointRes.json();
+    const gridUrl: string | undefined = point?.properties?.forecastGridData;
+    if (!gridUrl) return null;
+    const gRes = await fetch(gridUrl, { headers });
+    if (!gRes.ok) return null;
+    const gJson = await gRes.json();
+    // temperature.values is an array of { validTime: "2024-...T18:00:00+00:00/PT1H", value: <celsius> }
+    const values: any[] = gJson?.properties?.temperature?.values ?? [];
+    const out: { validTime: string; tempC: number }[] = [];
+    for (const v of values) {
+      const vt: string = v?.validTime ?? "";
+      const [start, durStr] = vt.split("/");
+      if (!start) continue;
+      const tempC = Number(v?.value);
+      if (!Number.isFinite(tempC)) continue;
+      // Expand interval into hourly samples (PT1H, PT3H, etc.)
+      const hours = (() => {
+        const m = /PT(\d+)H/.exec(durStr ?? "PT1H");
+        return m ? Math.max(1, Math.min(24, parseInt(m[1], 10))) : 1;
+      })();
+      const startMs = Date.parse(start);
+      for (let i = 0; i < hours; i++) {
+        out.push({ validTime: new Date(startMs + i * 3600 * 1000).toISOString(), tempC });
+      }
+    }
+    return out;
+  } catch { return null; }
+}
+
+// ---------- Visual Crossing — global sanity-check oracle ----------
+// Free tier: 1000 records/day. Returns hourly temps for next 10 days.
+async function fetchVisualCrossing(lat: number, lon: number, localDay: string): Promise<number | null> {
+  const key = Deno.env.get("VISUAL_CROSSING_API_KEY");
+  if (!key) return null;
+  try {
+    const url = `https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/${lat},${lon}/${localDay}/${localDay}?unitGroup=metric&include=days&elements=tempmax&key=${key}&contentType=json`;
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const tmax = Number(j?.days?.[0]?.tempmax);
+    return Number.isFinite(tmax) ? tmax : null;
+  } catch { return null; }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
