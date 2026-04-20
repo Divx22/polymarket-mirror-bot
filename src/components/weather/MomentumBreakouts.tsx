@@ -231,11 +231,17 @@ const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => v
           </span>
           <span className="text-xs text-muted-foreground truncate">· {m.market.city}</span>
         </div>
-        <div className="text-[11px] text-muted-foreground mt-0.5">
-          Gap <span className="font-mono-num text-foreground">{gapThenPct}%</span>
-          {" → "}
-          <span className="font-mono-num text-foreground font-semibold">{gapNowPct}%</span>
-          {" "}<span className="text-[10px]">(1h ago → now)</span>
+        <div className="mt-1.5 inline-flex items-center gap-2 rounded border border-border bg-background/60 px-2.5 py-1.5">
+          <div className="flex flex-col items-center">
+            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">1h ago</span>
+            <span className="font-mono-num text-sm font-semibold text-foreground leading-tight">{gapThenPct}%</span>
+          </div>
+          <span className={cn("text-base", isFlat ? "text-muted-foreground" : isUp ? "text-emerald-400" : "text-red-400")}>→</span>
+          <div className="flex flex-col items-center">
+            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Now</span>
+            <span className={cn("font-mono-num text-sm font-bold leading-tight", isFlat ? "text-foreground" : isUp ? "text-emerald-400" : "text-red-400")}>{gapNowPct}%</span>
+          </div>
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground ml-1">Gap #1 vs #2</span>
         </div>
       </div>
       <div className="flex items-center gap-3 pl-0 sm:pl-0">
