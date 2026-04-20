@@ -6,6 +6,7 @@ import {
   pct, edgeColor, confidenceColor,
 } from "@/lib/weather";
 import { cn } from "@/lib/utils";
+import { PositionCalculator } from "./PositionCalculator";
 
 export type ScoredOutcome = {
   outcome: WeatherOutcome;
@@ -17,12 +18,13 @@ type Props = {
   markets: WeatherMarket[];
   outcomes: Record<string, WeatherOutcome[]>;
   signals: Record<string, WeatherSignal>;
+  bankroll: number;
   onSelect?: (market: WeatherMarket) => void;
 };
 
 const MIN_EDGE = 0.07;
 
-export const BestTradeSignal = ({ markets, outcomes, signals, onSelect }: Props) => {
+export const BestTradeSignal = ({ markets, outcomes, signals, bankroll, onSelect }: Props) => {
   // Flatten all outcomes with their parent market + signal context, filter by edge
   const scored: ScoredOutcome[] = [];
   for (const m of markets) {
