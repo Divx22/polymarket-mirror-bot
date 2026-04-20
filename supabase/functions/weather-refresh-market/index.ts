@@ -176,6 +176,59 @@ async function fetchPrice(tokenId: string): Promise<number | null> {
   } catch { return null; }
 }
 
+// Order book — returns realistic fill prices, not midpoint.
+// best_ask = price you'd pay to BUY YES; best_bid = price you'd receive to SELL.
+// Edge calculation should use best_ask for BUY signals (you're hitting the ask).
+async function fetchBook(tokenId: string): Promise<{ best_bid: number | null; best_ask: number | null; ask_size: number | null; bid_size: number | null } | null> {
+  try {
+    const r = await fetch(`https://clob.polymarket.com/book?token_id=${tokenId}`);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const asks: any[] = Array.isArray(j?.asks) ? j.asks : [];
+    const bids: any[] = Array.isArray(j?.bids) ? j.bids : [];
+    // Polymarket returns asks ascending? Sort defensively.
+    const asksSorted = asks.map((a) => ({ p: Number(a.price), s: Number(a.size) }))
+      .filter((a) => Number.isFinite(a.p)).sort((a, b) => a.p - b.p);
+    const bidsSorted = bids.map((b) => ({ p: Number(b.price), s: Number(b.size) }))
+      .filter((b) => Number.isFinite(b.p)).sort((a, b) => b.p - a.p);
+    return {
+      best_ask: asksSorted[0]?.p ?? null,
+      ask_size: asksSorted[0]?.s ?? null,
+      best_bid: bidsSorted[0]?.p ?? null,
+      bid_size: bidsSorted[0]?.s ?? null,
+    };
+  } catch { return null; }
+}
+
+// METAR observations from aviationweather.gov (free, no key).
+// Returns hourly temps for the last `hours` hours. Used to replace already-
+// elapsed forecast hours with actual measurements when the event is today.
+async function fetchMetar(stationCode: string | null, hours: number): Promise<{ time: string; tempC: number }[]> {
+  if (!stationCode) return [];
+  try {
+    const url = `https://aviationweather.gov/api/data/metar?ids=${stationCode}&format=json&hours=${hours}`;
+    const r = await fetch(url);
+    if (!r.ok) return [];
+    const arr: any[] = await r.json();
+    return (arr ?? [])
+      .map((m) => ({ time: m?.reportTime as string, tempC: Number(m?.temp) }))
+      .filter((x) => x.time && Number.isFinite(x.tempC));
+  } catch { return []; }
+}
+
+// Per-station per-hour MAX of METAR readings within the local day so far.
+// Returns the OBSERVED max (already-happened) — we use this as a floor so
+// the daily-max can never go BELOW what's already been measured.
+function metarObservedMaxForLocalDay(
+  metars: { time: string; tempC: number }[], timezone: string, localDay: string,
+): number | null {
+  let max = -Infinity;
+  for (const m of metars) {
+    if (localYMD(new Date(m.time), timezone) === localDay && m.tempC > max) max = m.tempC;
+  }
+  return Number.isFinite(max) ? max : null;
+}
+
 function confidenceFor(agreement: number): "high" | "medium" | "low" {
   if (agreement > 0.85) return "high";
   if (agreement >= 0.7) return "medium";
@@ -256,39 +309,49 @@ Deno.serve(async (req) => {
     ]);
 
     // Fetch all forecasts in parallel. Each .catch(null) so a single model
-    // outage doesn't kill the whole refresh.
-    const [ecmwfEns, gefs, ifsDet, aifsDet, graphcastDet, nwsHours] = await Promise.all([
+    // outage doesn't kill the whole refresh. METAR pulled for any station
+    // (works globally — ICAO codes); only used if event is today/tomorrow.
+    const eventLocalDay = localDay;
+    const todayLocal = localYMD(new Date(), timezone);
+    const useMetar = eventLocalDay <= todayLocal; // event is today or in the past
+    const [ecmwfEns, gefs, ifsDet, aifsDet, graphcastDet, nwsHours, metars] = await Promise.all([
       fetchEnsemble(lat, lon, timezone, "ecmwf_ifs025").catch(() => null),
       fetchEnsemble(lat, lon, timezone, "gfs025").catch(() => null),
       fetchOpenMeteoModel("https://api.open-meteo.com/v1/forecast", lat, lon, timezone, "ecmwf_ifs025").catch(() => null),
       fetchOpenMeteoModel("https://api.open-meteo.com/v1/forecast", lat, lon, timezone, "ecmwf_aifs025").catch(() => null),
       fetchOpenMeteoModel("https://api.open-meteo.com/v1/forecast", lat, lon, timezone, "graphcast").catch(() => null),
       usMarket ? fetchNwsHourly(Number(lat), Number(lon)) : Promise.resolve(null),
+      useMetar ? fetchMetar(stationCode, 30) : Promise.resolve([] as { time: string; tempC: number }[]),
     ]);
 
-    // Build a combined "ensemble values" array of per-member daily-max temps,
-    // bias-corrected per source. Treat each deterministic model as a 1-member
-    // contributor — adds calibration without overwhelming the true ensembles.
+    // METAR floor: max temp observed so far today at the station. The daily
+    // max can NEVER be lower than this — it's already happened. Massive
+    // variance reduction late in the day.
+    const metarFloor = useMetar ? metarObservedMaxForLocalDay(metars, timezone, localDay) : null;
+    const applyFloor = (vals: number[]) =>
+      metarFloor != null ? vals.map((v) => Math.max(v, metarFloor)) : vals;
+
     const ensembleValues: number[] = [];
     if (ecmwfEns) {
       const idxs = localDayIndices(ecmwfEns.time, localDay);
-      ensembleValues.push(...memberDailyMax(ecmwfEns.members, idxs, biasEcmwf));
+      ensembleValues.push(...applyFloor(memberDailyMax(ecmwfEns.members, idxs, biasEcmwf)));
     }
     if (gefs) {
       const idxs = localDayIndices(gefs.time, localDay);
-      ensembleValues.push(...memberDailyMax(gefs.members, idxs, biasGfs));
+      ensembleValues.push(...applyFloor(memberDailyMax(gefs.members, idxs, biasGfs)));
     }
     const aifsMax = aifsDet ? deterministicDailyMax(aifsDet.time, aifsDet.temp, localDay, biasAifs) : null;
-    if (aifsMax != null) ensembleValues.push(aifsMax);
+    if (aifsMax != null) ensembleValues.push(metarFloor != null ? Math.max(aifsMax, metarFloor) : aifsMax);
     const graphcastMax = graphcastDet ? deterministicDailyMax(graphcastDet.time, graphcastDet.temp, localDay, biasGraphcast) : null;
-    if (graphcastMax != null) ensembleValues.push(graphcastMax);
+    if (graphcastMax != null) ensembleValues.push(metarFloor != null ? Math.max(graphcastMax, metarFloor) : graphcastMax);
 
-    // Independent comparison sources for agreement check
-    const ifsMax = ifsDet ? deterministicDailyMax(ifsDet.time, ifsDet.temp, localDay, biasEcmwf) : null;
-    const nwsMax = nwsHours && stationCode ? (() => {
+    const ifsMaxRaw = ifsDet ? deterministicDailyMax(ifsDet.time, ifsDet.temp, localDay, biasEcmwf) : null;
+    const ifsMax = ifsMaxRaw != null && metarFloor != null ? Math.max(ifsMaxRaw, metarFloor) : ifsMaxRaw;
+    const nwsMaxRaw = nwsHours && stationCode ? (() => {
       const v = nwsDailyMaxForLocalDay(nwsHours, timezone, localDay);
       return v != null ? v - biasNws : null;
     })() : null;
+    const nwsMax = nwsMaxRaw != null && metarFloor != null ? Math.max(nwsMaxRaw, metarFloor) : nwsMaxRaw;
 
     // For agreement: NWS (US) is the gold standard since it's literally the
     // settlement source. For non-US, fall back to deterministic IFS.
@@ -300,8 +363,20 @@ Deno.serve(async (req) => {
         const pRef = referenceMax != null
           ? ((referenceMax >= (o.bucket_min_c ?? -Infinity) && referenceMax <= (o.bucket_max_c ?? Infinity)) ? 1 : 0)
           : pModelRaw;
-        const price = o.clob_token_id ? await fetchPrice(o.clob_token_id) : null;
-        return { o, pEcmwf: pModelRaw, pNoaa: pRef, pModel: pModelRaw, price, edge: null as number | null };
+        // Use order book best_ask as the realistic BUY price (you can't fill
+        // at midpoint if the spread is wide). Fall back to midpoint if book
+        // unavailable.
+        const [book, mid] = o.clob_token_id
+          ? await Promise.all([fetchBook(o.clob_token_id), fetchPrice(o.clob_token_id)])
+          : [null, null];
+        const askPrice = book?.best_ask ?? mid;
+        const bidPrice = book?.best_bid ?? mid;
+        return {
+          o, pEcmwf: pModelRaw, pNoaa: pRef, pModel: pModelRaw,
+          price: askPrice, midpoint: mid, bid: bidPrice, ask: book?.best_ask ?? null,
+          ask_size: book?.ask_size ?? null, bid_size: book?.bid_size ?? null,
+          edge: null as number | null,
+        };
       })
     );
 
@@ -346,7 +421,12 @@ Deno.serve(async (req) => {
       distribution.push({
         label: x.o.label,
         p_model: x.pModel,
-        p_market: x.price,
+        p_market: x.price,        // realistic ASK price used for edge
+        p_midpoint: x.midpoint,
+        best_bid: x.bid,
+        best_ask: x.ask,
+        ask_size: x.ask_size,
+        bid_size: x.bid_size,
         edge: adjEdge,
         raw_edge: x.edge,
         suggested_size_percent: size,
@@ -373,7 +453,10 @@ Deno.serve(async (req) => {
       ecmwf_aifs: aifsMax != null,
       graphcast: graphcastMax != null,
       nws: nwsMax != null,
+      metar_floor_c: metarFloor,
+      metar_observation_count: metars?.length ?? 0,
       ensemble_member_count: ensembleValues.length,
+      uses_order_book: enriched.some((x) => x.ask != null),
     };
 
     await supabase.from("weather_signals").insert({
