@@ -6,7 +6,7 @@ import { Loader2, RefreshCw, Search, Sparkles, AlertCircle } from "lucide-react"
 import { toast } from "sonner";
 import {
   type WeatherMarket, type WeatherOutcome, type WeatherSignal,
-  pct, edgeColor,
+  pct, edgeColor, isSettlementRisk,
 } from "@/lib/weather";
 import { cn } from "@/lib/utils";
 import { ConfidenceExplainer } from "./ConfidenceExplainer";
@@ -43,6 +43,7 @@ export const WeatherScanner = ({ markets, outcomes, signals, bankroll, minVolume
   const ranked: Row[] = useMemo(() => {
     const rows: Row[] = [];
     for (const m of markets) {
+      if (isSettlementRisk(m.event_time)) continue;
       const vol = Number(m.event_volume_24h ?? 0);
       if (vol < minVolume) continue;
       const sig = signals[m.id] ?? null;
