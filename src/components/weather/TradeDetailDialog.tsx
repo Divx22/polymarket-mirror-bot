@@ -80,6 +80,37 @@ export const TradeDetailDialog = ({
           />
         </div>
 
+        {signal && (signal.market_favorite_label || signal.model_favorite_label) && (
+          <div className="rounded-md border border-border bg-surface-2/40 p-3 space-y-1.5">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Market vs Model</div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <div className="text-muted-foreground">Model says</div>
+                <div className="font-medium">
+                  {signal.model_favorite_label ?? "—"}{" "}
+                  <span className="font-mono-num text-muted-foreground">
+                    ({pct(signal.model_favorite_prob, 0)})
+                  </span>
+                </div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Market says</div>
+                <div className="font-medium">
+                  {signal.market_favorite_label ?? "—"}{" "}
+                  <span className="font-mono-num text-muted-foreground">
+                    ({signal.market_favorite_price != null ? `${(signal.market_favorite_price * 100).toFixed(0)}¢` : "—"})
+                  </span>
+                </div>
+              </div>
+            </div>
+            {signal.favorite_mismatch && (
+              <div className="text-[11px] text-emerald-400 pt-1">
+                ⚡ The market is betting on a different outcome than the forecast.
+              </div>
+            )}
+          </div>
+        )}
+
         {best && bestPlan && (
           <div className="border border-emerald-500/30 bg-emerald-500/10 rounded-md p-3 sm:p-4 space-y-3">
             <div className="flex items-center gap-2">

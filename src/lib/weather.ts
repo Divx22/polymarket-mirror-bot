@@ -10,6 +10,7 @@ export type WeatherMarket = {
   polymarket_event_slug: string | null;
   active: boolean;
   updated_at: string;
+  event_volume_24h: number | null;
 };
 
 export type WeatherOutcome = {
@@ -40,6 +41,11 @@ export type WeatherSignal = {
   best_edge: number | null;
   best_suggested_size_percent: number | null;
   created_at: string;
+  market_favorite_label: string | null;
+  market_favorite_price: number | null;
+  model_favorite_label: string | null;
+  model_favorite_prob: number | null;
+  favorite_mismatch: boolean | null;
 };
 
 export const pct = (n: number | null | undefined, dp = 1) =>
@@ -68,4 +74,12 @@ export const sizeForEdge = (edge: number, agreement = 1): number => {
   if (abs >= 0.15) base = 3;
   else if (abs >= 0.1) base = 2;
   return Number((base * agreement).toFixed(2));
+};
+
+export const formatVolume = (v: number | null | undefined): string => {
+  if (v == null || !Number.isFinite(Number(v))) return "—";
+  const n = Number(v);
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}k`;
+  return `$${n.toFixed(0)}`;
 };

@@ -25,32 +25,43 @@ type Props = {
   outcomes: Record<string, WeatherOutcome[]>;
   signals: Record<string, WeatherSignal>;
   bankroll: number;
+  minVolume?: number;
+  mismatchOnly?: boolean;
   onReload: () => void | Promise<void>;
   onSelect?: (m: WeatherMarket) => void;
 };
 
-export const WeatherScanner = ({ markets, outcomes, signals, bankroll, onReload, onSelect }: Props) => {
+export const WeatherScanner = ({ markets, outcomes, signals, bankroll, minVolume = 0, mismatchOnly = false, onReload, onSelect }: Props) => {
   const [scanning, setScanning] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [autoOn, setAutoOn] = useState(false);
   const [pageCount, setPageCount] = useState(1);
   const [lastScanAt, setLastScanAt] = useState<Date | null>(null);
 
-  // Build ranked rows: every outcome with edge >= 7%, sorted desc
+  // Build ranked rows: every outcome with edge >= 7%, then apply volume + mismatch filters,
+  // sort by mismatch first, then edge desc.
   const ranked: Row[] = useMemo(() => {
     const rows: Row[] = [];
     for (const m of markets) {
-      const outs = outcomes[m.id] ?? [];
+      const vol = Number(m.event_volume_24h ?? 0);
+      if (vol < minVolume) continue;
       const sig = signals[m.id] ?? null;
+      if (mismatchOnly && !sig?.favorite_mismatch) continue;
+      const outs = outcomes[m.id] ?? [];
       for (const o of outs) {
         if ((o.edge ?? -Infinity) >= 0.07) {
           rows.push({ outcome: o, market: m, signal: sig });
         }
       }
     }
-    rows.sort((a, b) => (b.outcome.edge ?? -Infinity) - (a.outcome.edge ?? -Infinity));
+    rows.sort((a, b) => {
+      const ma = a.signal?.favorite_mismatch ? 1 : 0;
+      const mb = b.signal?.favorite_mismatch ? 1 : 0;
+      if (ma !== mb) return mb - ma;
+      return (b.outcome.edge ?? -Infinity) - (a.outcome.edge ?? -Infinity);
+    });
     return rows;
-  }, [markets, outcomes, signals]);
+  }, [markets, outcomes, signals, minVolume, mismatchOnly]);
 
   const visible = ranked.slice(0, pageCount * PAGE_SIZE);
 

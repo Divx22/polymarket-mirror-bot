@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Wallet, Loader2 } from "lucide-react";
+import { Wallet, Loader2, Droplet } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 type Props = {
@@ -44,6 +43,47 @@ export const BankrollInput = ({ userId, bankroll, onChange }: Props) => {
         onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
         inputMode="decimal"
         className="h-6 w-24 px-1.5 text-xs font-mono-num bg-transparent border-0 focus-visible:ring-0"
+      />
+      {saving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+    </div>
+  );
+};
+
+export const MinVolumeInput = ({
+  userId, minVolume, onChange,
+}: { userId: string; minVolume: number; onChange: (n: number) => void }) => {
+  const [value, setValue] = useState(String(minVolume));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { setValue(String(minVolume)); }, [minVolume]);
+
+  const save = async () => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0 || n > 100_000_000) {
+      toast.error("Enter a min volume between 0 and 100,000,000");
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase
+      .from("config").update({ min_volume_usd: n }).eq("user_id", userId);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    onChange(n);
+    toast.success(`Min volume set to $${n.toLocaleString()}`);
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2/40 px-2 py-1">
+      <Droplet className="h-3.5 w-3.5 text-muted-foreground" />
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Min Vol</span>
+      <span className="text-xs text-muted-foreground">$</span>
+      <Input
+        value={value}
+        onChange={(e) => setValue(e.target.value.replace(/[^0-9.]/g, ""))}
+        onBlur={save}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+        inputMode="decimal"
+        className="h-6 w-20 px-1.5 text-xs font-mono-num bg-transparent border-0 focus-visible:ring-0"
       />
       {saving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
     </div>

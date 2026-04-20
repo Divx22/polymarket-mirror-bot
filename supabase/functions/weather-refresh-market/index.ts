@@ -406,6 +406,19 @@ Deno.serve(async (req) => {
     let bestRawEdge: number | null = null;
     const distribution: any[] = [];
 
+    // Favorite detection
+    let mktFav: { label: string; price: number } | null = null;
+    let modelFav: { label: string; prob: number } | null = null;
+    for (const x of enriched) {
+      if (x.price != null && (mktFav == null || x.price > mktFav.price)) {
+        mktFav = { label: x.o.label, price: x.price };
+      }
+      if (modelFav == null || x.pModel > modelFav.prob) {
+        modelFav = { label: x.o.label, prob: x.pModel };
+      }
+    }
+    const favoriteMismatch = !!(mktFav && modelFav && mktFav.label !== modelFav.label);
+
     for (const x of enriched) {
       const adjEdge = x.edge != null ? x.edge * agreement : null;
       const size = adjEdge != null ? suggestedSize(adjEdge, agreement) : 0;
@@ -467,6 +480,11 @@ Deno.serve(async (req) => {
       best_outcome_label: bestLabel,
       best_edge: Number.isFinite(bestAdjEdge) ? bestAdjEdge : null,
       best_suggested_size_percent: bestSize,
+      market_favorite_label: mktFav?.label ?? null,
+      market_favorite_price: mktFav?.price ?? null,
+      model_favorite_label: modelFav?.label ?? null,
+      model_favorite_prob: modelFav?.prob ?? null,
+      favorite_mismatch: favoriteMismatch,
       distribution: {
         outcomes: distribution,
         verify_flag: verifyFlag,
@@ -475,7 +493,25 @@ Deno.serve(async (req) => {
       },
     });
 
-    await supabase.from("weather_markets").update({ updated_at: new Date().toISOString() }).eq("id", m.id);
+    // Pull event-level 24h volume from Polymarket gamma (best-effort)
+    let eventVolume24h: number | null = null;
+    try {
+      const slug = (m as any).polymarket_event_slug;
+      if (slug) {
+        const r = await fetch(`https://gamma-api.polymarket.com/events?slug=${encodeURIComponent(slug)}`);
+        if (r.ok) {
+          const arr = await r.json();
+          const ev = Array.isArray(arr) ? arr[0] : arr;
+          const v = Number(ev?.volume24hr ?? ev?.volume_24hr ?? 0);
+          if (Number.isFinite(v) && v > 0) eventVolume24h = v;
+        }
+      }
+    } catch { /* ignore */ }
+
+    await supabase.from("weather_markets").update({
+      updated_at: new Date().toISOString(),
+      ...(eventVolume24h != null ? { event_volume_24h: eventVolume24h } : {}),
+    }).eq("id", m.id);
 
     return new Response(JSON.stringify({
       ok: true,

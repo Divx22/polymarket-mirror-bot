@@ -25,6 +25,7 @@ export type Database = {
           last_polled_at: string | null
           last_seen_ts: number
           max_usdc_per_trade: number
+          min_volume_usd: number
           mirror_mode: string
           mirror_ratio: number
           reconcile_interval_min: number
@@ -45,6 +46,7 @@ export type Database = {
           last_polled_at?: string | null
           last_seen_ts?: number
           max_usdc_per_trade?: number
+          min_volume_usd?: number
           mirror_mode?: string
           mirror_ratio?: number
           reconcile_interval_min?: number
@@ -65,6 +67,7 @@ export type Database = {
           last_polled_at?: string | null
           last_seen_ts?: number
           max_usdc_per_trade?: number
+          min_volume_usd?: number
           mirror_mode?: string
           mirror_ratio?: number
           reconcile_interval_min?: number
@@ -695,6 +698,7 @@ export type Database = {
           condition_type: string
           created_at: string
           event_time: string
+          event_volume_24h: number | null
           id: string
           latitude: number
           longitude: number
@@ -710,6 +714,7 @@ export type Database = {
           condition_type?: string
           created_at?: string
           event_time: string
+          event_volume_24h?: number | null
           id?: string
           latitude: number
           longitude: number
@@ -725,6 +730,7 @@ export type Database = {
           condition_type?: string
           created_at?: string
           event_time?: string
+          event_volume_24h?: number | null
           id?: string
           latitude?: number
           longitude?: number
@@ -813,8 +819,13 @@ export type Database = {
           confidence_level: string | null
           created_at: string
           distribution: Json | null
+          favorite_mismatch: boolean | null
           id: string
+          market_favorite_label: string | null
+          market_favorite_price: number | null
           market_id: string
+          model_favorite_label: string | null
+          model_favorite_prob: number | null
           user_id: string
         }
         Insert: {
@@ -825,8 +836,13 @@ export type Database = {
           confidence_level?: string | null
           created_at?: string
           distribution?: Json | null
+          favorite_mismatch?: boolean | null
           id?: string
+          market_favorite_label?: string | null
+          market_favorite_price?: number | null
           market_id: string
+          model_favorite_label?: string | null
+          model_favorite_prob?: number | null
           user_id: string
         }
         Update: {
@@ -837,8 +853,13 @@ export type Database = {
           confidence_level?: string | null
           created_at?: string
           distribution?: Json | null
+          favorite_mismatch?: boolean | null
           id?: string
+          market_favorite_label?: string | null
+          market_favorite_price?: number | null
           market_id?: string
+          model_favorite_label?: string | null
+          model_favorite_prob?: number | null
           user_id?: string
         }
         Relationships: [

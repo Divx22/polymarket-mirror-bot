@@ -20,24 +20,34 @@ type Props = {
   outcomes: Record<string, WeatherOutcome[]>;
   signals: Record<string, WeatherSignal>;
   bankroll: number;
+  minVolume?: number;
+  mismatchOnly?: boolean;
   onSelect?: (market: WeatherMarket) => void;
 };
 
 const MIN_EDGE = 0.07;
 
-export const BestTradeSignal = ({ markets, outcomes, signals, bankroll, onSelect }: Props) => {
-  // Flatten all outcomes with their parent market + signal context, filter by edge
+export const BestTradeSignal = ({ markets, outcomes, signals, bankroll, minVolume = 0, mismatchOnly = false, onSelect }: Props) => {
+  // Flatten all outcomes with their parent market + signal context, filter by edge + volume + mismatch
   const scored: ScoredOutcome[] = [];
   for (const m of markets) {
-    const outs = outcomes[m.id] ?? [];
+    const vol = Number(m.event_volume_24h ?? 0);
+    if (vol < minVolume) continue;
     const sig = signals[m.id] ?? null;
+    if (mismatchOnly && !sig?.favorite_mismatch) continue;
+    const outs = outcomes[m.id] ?? [];
     for (const o of outs) {
       if ((o.edge ?? -Infinity) >= MIN_EDGE) {
         scored.push({ outcome: o, market: m, signal: sig });
       }
     }
   }
-  scored.sort((a, b) => (b.outcome.edge ?? -Infinity) - (a.outcome.edge ?? -Infinity));
+  scored.sort((a, b) => {
+    const ma = a.signal?.favorite_mismatch ? 1 : 0;
+    const mb = b.signal?.favorite_mismatch ? 1 : 0;
+    if (ma !== mb) return mb - ma;
+    return (b.outcome.edge ?? -Infinity) - (a.outcome.edge ?? -Infinity);
+  });
 
   if (scored.length === 0) {
     return (
@@ -143,6 +153,14 @@ const BestCard = ({ pick, bankroll, onSelect }: { pick: ScoredOutcome; bankroll:
       onClick={() => onSelect?.(m)}
       className="rounded-lg border border-emerald-500/40 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent p-3 sm:p-5 cursor-pointer hover:border-emerald-500/60 transition-colors"
     >
+      {signal?.favorite_mismatch && signal.market_favorite_label && (
+        <div className="mb-3 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-[11px] text-emerald-300 leading-relaxed flex items-start gap-1.5">
+          <span>⚡</span>
+          <span>
+            Market favorite is <span className="font-semibold text-foreground">{signal.market_favorite_label}</span> — your model disagrees.
+          </span>
+        </div>
+      )}
       <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
         <div className="flex items-center gap-2 min-w-0">
           <Sparkles className="h-5 w-5 text-emerald-400 shrink-0" />
