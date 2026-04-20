@@ -348,13 +348,15 @@ export const MomentumBreakouts = ({
         }
         if (merged.length === 0) return null;
         return (
-          <ul className="divide-y divide-border/50">
-            {merged.map((row) =>
-              row.kind === "local"
-                ? <Row key={row.key} m={row.data} onSelect={onSelect} />
-                : <ExternalRow key={row.key} m={row.data} />,
-            )}
-          </ul>
+          <div className="p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {merged.map((row) => {
+              const stake = suggestStake(bankroll, stakeCapPct, row.sortScore);
+              const stakePct = bankroll > 0 ? (stake / bankroll) * 100 : 0;
+              return row.kind === "local"
+                ? <Row key={row.key} m={row.data} onSelect={onSelect} stake={stake} stakePct={stakePct} score={row.sortScore} />
+                : <ExternalRow key={row.key} m={row.data} stake={stake} stakePct={stakePct} score={row.sortScore} />;
+            })}
+          </div>
         );
       })()}
     </div>
