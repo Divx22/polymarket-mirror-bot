@@ -46,6 +46,17 @@ async function fetchHistory(tokenId: string): Promise<HistPoint[]> {
   } catch { return []; }
 }
 
+// Live midpoint from Polymarket — much more accurate than the cached DB price.
+async function fetchMid(tokenId: string): Promise<number | null> {
+  try {
+    const r = await fetch(`https://clob.polymarket.com/midpoint?token_id=${tokenId}`);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const m = Number(j?.mid);
+    return Number.isFinite(m) ? m : null;
+  } catch { return null; }
+}
+
 function priceAt(hist: HistPoint[], targetTs: number): number | null {
   if (hist.length === 0) return null;
   let best: HistPoint | null = null;
@@ -82,17 +93,20 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
     for (let i = 0; i < eligible.length; i += BATCH) {
       const batch = eligible.slice(i, i + BATCH);
       await Promise.all(batch.map(async (m) => {
-        const outs = (outcomes[m.id] ?? []).filter(o => o.clob_token_id && o.polymarket_price != null);
+        const outs = (outcomes[m.id] ?? []).filter(o => o.clob_token_id);
         if (outs.length < 2) return;
 
-        const sorted = [...outs].sort((a, b) => (b.polymarket_price ?? 0) - (a.polymarket_price ?? 0));
-        const leader = sorted[0];
-        const runnerUp = sorted[1];
-        const leaderNow = leader.polymarket_price ?? 0;
-        const runnerNow = runnerUp.polymarket_price ?? 0;
+        // Fetch LIVE midpoints for every outcome — DB prices are stale snapshots.
+        const liveMids = await Promise.all(outs.map(o => fetchMid(o.clob_token_id!)));
+        const enriched = outs.map((o, i) => ({ o, mid: liveMids[i] ?? o.polymarket_price ?? 0 }));
+        enriched.sort((a, b) => b.mid - a.mid);
+
+        const leader = enriched[0].o;
+        const runnerUp = enriched[1].o;
+        const leaderNow = enriched[0].mid;
+        const runnerNow = enriched[1].mid;
         const gapNow = leaderNow - runnerNow;
 
-        // Skip immediately if current gap doesn't meet the bar — keeps UI clean.
         if (gapNow <= GAP_NOW_MIN) return;
         if (leaderNow > MAX_ENTRY_PRICE) return;
 
