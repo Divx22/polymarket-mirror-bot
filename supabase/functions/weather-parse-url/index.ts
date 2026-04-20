@@ -229,9 +229,23 @@ Deno.serve(async (req) => {
     const event_time = detectDate(text);
     let lat: number | null = null;
     let lon: number | null = null;
+    let station_code: string | null = null;
+    let station_name: string | null = null;
+    let timezone: string | null = null;
     if (city) {
-      const g = await geocode(city);
-      if (g) { lat = g.lat; lon = g.lon; }
+      // Prefer official station coordinates (settlement source) over generic geocode.
+      const { data: stationRow } = await supabase
+        .from("stations").select("*").ilike("city", city).maybeSingle();
+      if (stationRow) {
+        lat = Number(stationRow.latitude);
+        lon = Number(stationRow.longitude);
+        station_code = stationRow.station_code;
+        station_name = stationRow.station_name;
+        timezone = stationRow.timezone;
+      } else {
+        const g = await geocode(city);
+        if (g) { lat = g.lat; lon = g.lon; }
+      }
     }
 
     const condition_type = /rain|precip|snow/i.test(text) ? "rain" : "temperature_discrete";
@@ -251,6 +265,9 @@ Deno.serve(async (req) => {
       event_time,
       polymarket_url: url,
       event_slug: slug,
+      station_code,
+      station_name,
+      timezone,
       outcomes,
       missing,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
