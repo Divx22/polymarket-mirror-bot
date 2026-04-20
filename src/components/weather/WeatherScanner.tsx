@@ -217,6 +217,13 @@ export const WeatherScanner = ({ markets, outcomes, signals, bankroll, onReload,
                       <td className="px-3 py-2.5 text-right font-mono-num">
                         {r.outcome.suggested_size_percent ?? 0}%
                       </td>
+                      <td className="px-3 py-2.5 text-right font-mono-num font-semibold text-foreground">
+                        {(() => {
+                          const sz = Number(r.outcome.suggested_size_percent ?? 0);
+                          const v = (bankroll * sz) / 100;
+                          return v > 0 ? `$${v.toFixed(2)}` : "—";
+                        })()}
+                      </td>
                       <td className="px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
                         {verify ? (
                           <span className="px-2 py-0.5 rounded border text-[10px] uppercase tracking-wider bg-amber-500/15 text-amber-400 border-amber-500/30">
