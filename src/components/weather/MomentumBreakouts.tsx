@@ -10,17 +10,19 @@ type Props = {
   onSelect?: (m: WeatherMarket) => void;
 };
 
-// SIMPLE RULE:
-//   Compare the gap between #1 and #2 outcomes 1 hour ago vs now (same two outcomes).
-// RULES (newbie-friendly):
-//   Round 1: current gap between #1 and #2 outcomes must be ≥ GAP_MIN.
-//   Round 2: 1h ago, the SAME two outcomes' gap must ALSO have been ≥ GAP_MIN.
-//   Display the change: positive = widening, 0% = flat, negative = narrowing.
-const WINDOW_HOURS = 1;
-const GAP_MIN = 0.15;          // 15% threshold for both rounds
-const MAX_ENTRY_PRICE = 0.95;  // virtually never enter at >95%
+// RULES:
+//   Qualify: gap (#1 vs #2, same outcomes) is ≥ GAP_MIN at all 3 snapshots: 2h ago, 1h ago, now.
+//   Trajectory based on the two step deltas (d1 = 1h - 2h, d2 = now - 1h):
+//     accelerating  — both d1 and d2 are positive AND d2 ≥ d1 (gap grew faster recently)
+//     widening      — net (now - 2h) > FLAT_BAND (steady up trend)
+//     flat          — |now - 2h| ≤ FLAT_BAND
+//     narrowing     — net (now - 2h) < -FLAT_BAND
+const GAP_MIN = 0.15;
+const MAX_ENTRY_PRICE = 0.95;
 const MIN_HOURS_TO_EVENT = 0.5;
+const FLAT_BAND = 0.01; // ±1% rounds to "flat"
 
+type Trajectory = "accelerating" | "widening" | "flat" | "narrowing";
 type HistPoint = { t: number; p: number };
 
 type Movement = {
@@ -28,9 +30,11 @@ type Movement = {
   leader: WeatherOutcome;
   runnerUp: WeatherOutcome;
   leaderNow: number;
-  gapNow: number;
-  gapThen: number;        // qualified — always ≥ GAP_MIN
-  gapDelta: number;       // gapNow - gapThen (positive=widening, negative=narrowing)
+  gap2h: number;     // gap 2h ago
+  gap1h: number;     // gap 1h ago
+  gapNow: number;    // gap now
+  netDelta: number;  // gapNow - gap2h
+  trajectory: Trajectory;
 };
 
 async function fetchHistory(tokenId: string): Promise<HistPoint[]> {
@@ -86,7 +90,8 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
     });
 
     const found: Movement[] = [];
-    const targetThen = Date.now() - WINDOW_HOURS * 3_600_000;
+    const target1h = Date.now() - 1 * 3_600_000;
+    const target2h = Date.now() - 2 * 3_600_000;
 
     let done = 0;
     const BATCH = 4;
@@ -96,7 +101,6 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         const outs = (outcomes[m.id] ?? []).filter(o => o.clob_token_id);
         if (outs.length < 2) return;
 
-        // Fetch LIVE midpoints for every outcome — DB prices are stale snapshots.
         const liveMids = await Promise.all(outs.map(o => fetchMid(o.clob_token_id!)));
         const enriched = outs.map((o, i) => ({ o, mid: liveMids[i] ?? o.polymarket_price ?? 0 }));
         enriched.sort((a, b) => b.mid - a.mid);
@@ -104,42 +108,53 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         const leader = enriched[0].o;
         const runnerUp = enriched[1].o;
         const leaderNow = enriched[0].mid;
-        const runnerNow = enriched[1].mid;
-        const gapNow = leaderNow - runnerNow;
+        const gapNow = leaderNow - enriched[1].mid;
 
-        // Round 1: current gap must qualify.
         if (gapNow < GAP_MIN) return;
         if (leaderNow > MAX_ENTRY_PRICE) return;
 
-        // Round 2: same two outcomes' gap 1h ago must also qualify.
         const [leaderHist, runnerHist] = await Promise.all([
           fetchHistory(leader.clob_token_id!),
           fetchHistory(runnerUp.clob_token_id!),
         ]);
-        const leaderThen = priceAt(leaderHist, targetThen);
-        const runnerThen = priceAt(runnerHist, targetThen);
-        if (leaderThen == null || runnerThen == null) return; // no history → can't qualify
-        const gapThen = leaderThen - runnerThen;
-        if (gapThen < GAP_MIN) return; // failed Round 2
+        const leader1h = priceAt(leaderHist, target1h);
+        const runner1h = priceAt(runnerHist, target1h);
+        const leader2h = priceAt(leaderHist, target2h);
+        const runner2h = priceAt(runnerHist, target2h);
+        if (leader1h == null || runner1h == null || leader2h == null || runner2h == null) return;
 
-        const gapDelta = gapNow - gapThen;
-        found.push({ market: m, leader, runnerUp, leaderNow, gapNow, gapThen, gapDelta });
+        const gap1h = leader1h - runner1h;
+        const gap2h = leader2h - runner2h;
+        if (gap1h < GAP_MIN || gap2h < GAP_MIN) return; // all 3 must qualify
+
+        const d1 = gap1h - gap2h;       // change 2h→1h
+        const d2 = gapNow - gap1h;      // change 1h→now
+        const netDelta = gapNow - gap2h;
+
+        let trajectory: Trajectory;
+        if (d1 > 0 && d2 > 0 && d2 >= d1) trajectory = "accelerating";
+        else if (netDelta > FLAT_BAND) trajectory = "widening";
+        else if (netDelta < -FLAT_BAND) trajectory = "narrowing";
+        else trajectory = "flat";
+
+        found.push({ market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory });
       }));
       done += batch.length;
       setProgress(Math.round((done / eligible.length) * 100));
     }
 
-    // Sort by largest positive momentum (widening) first; flat/negative after.
-    found.sort((a, b) => b.gapDelta - a.gapDelta);
+    // Order: accelerating > widening > flat > narrowing; tiebreak by netDelta.
+    const rank: Record<Trajectory, number> = { accelerating: 0, widening: 1, flat: 2, narrowing: 3 };
+    found.sort((a, b) => rank[a.trajectory] - rank[b.trajectory] || b.netDelta - a.netDelta);
 
     setItems(found);
     setScannedAt(Date.now());
     setScanning(false);
-    const widening = found.filter(f => f.gapDelta > 0).length;
+    const accel = found.filter(f => f.trajectory === "accelerating").length;
     if (found.length > 0) {
-      toast.success(`${found.length} qualified · ${widening} widening`);
+      toast.success(`${found.length} qualified · ${accel} accelerating`);
     } else {
-      toast.info(`No markets qualified (need gap ≥${Math.round(GAP_MIN * 100)}% now AND 1h ago)`);
+      toast.info(`No markets qualified (need gap ≥${Math.round(GAP_MIN * 100)}% at 2h ago, 1h ago, and now)`);
     }
   };
 
