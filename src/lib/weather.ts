@@ -5,29 +5,40 @@ export type WeatherMarket = {
   longitude: number;
   market_question: string;
   condition_type: string;
-  condition_range: string;
-  temp_min_c: number | null;
-  temp_max_c: number | null;
-  precip_threshold_mm: number | null;
   event_time: string;
-  polymarket_price: number | null;
   polymarket_url: string | null;
-  clob_token_id: string | null;
+  polymarket_event_slug: string | null;
   active: boolean;
+  updated_at: string;
+};
+
+export type WeatherOutcome = {
+  id: string;
+  market_id: string;
+  label: string;
+  bucket_min_c: number | null;
+  bucket_max_c: number | null;
+  sub_market_question: string | null;
+  clob_token_id: string | null;
+  condition_id: string | null;
+  polymarket_price: number | null;
+  p_model: number | null;
+  p_noaa: number | null;
+  p_ecmwf: number | null;
+  edge: number | null;
+  suggested_size_percent: number | null;
+  display_order: number;
   updated_at: string;
 };
 
 export type WeatherSignal = {
   id: string;
   market_id: string;
-  p_noaa: number | null;
-  p_ecmwf: number | null;
-  p_final: number;
   agreement: number;
-  p_market: number | null;
-  edge: number | null;
-  suggested_size_percent: number | null;
   confidence_level: "high" | "medium" | "low" | null;
+  best_outcome_label: string | null;
+  best_edge: number | null;
+  best_suggested_size_percent: number | null;
   created_at: string;
 };
 
@@ -48,4 +59,13 @@ export const edgeColor = (edge: number | null | undefined) => {
   if (edge >= 0.07) return "text-emerald-400";
   if (edge <= -0.07) return "text-red-400";
   return "text-muted-foreground";
+};
+
+export const sizeForEdge = (edge: number, agreement = 1): number => {
+  const abs = Math.abs(edge);
+  if (abs < 0.07) return 0;
+  let base = 1;
+  if (abs >= 0.15) base = 3;
+  else if (abs >= 0.1) base = 2;
+  return Number((base * agreement).toFixed(2));
 };
