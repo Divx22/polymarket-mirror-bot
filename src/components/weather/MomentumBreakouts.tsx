@@ -18,13 +18,15 @@ type Movement = {
   priceThen: number;      // 0-1, ~2h ago
   delta: number;          // priceNow - priceThen, in price (0-1)
   gap: number;            // priceNow - runnerUp price, in price (0-1)
+  deltaPct: number;       // (priceNow - priceThen) / priceThen — relative move
   liveAsk: number | null; // 0-1
   isBreakout: boolean;    // passes all thresholds
 };
 
-// Thresholds (balanced): leader must have risen ≥15¢ in last 2h AND lead #2 by ≥15¢.
-const RISE_THRESHOLD = 0.15;
-const GAP_THRESHOLD = 0.15;
+// Thresholds: leader must have risen ≥25% (relative) in last 2h AND lead #2 by ≥15¢ absolute.
+// Relative % catches fast climbers from any base (e.g. 40¢→55¢ = +37%, or 20¢→30¢ = +50%).
+const RISE_PCT_THRESHOLD = 0.25; // +25% relative move
+const GAP_THRESHOLD = 0.15;       // still absolute — #1 must clearly lead #2
 const WINDOW_HOURS = 2;
 // Don't bother once leader is too expensive — no upside left.
 const MAX_ENTRY_PRICE = 0.85;
@@ -109,22 +111,23 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         const priceThen = priceAt(hist, targetThen);
         if (priceThen == null) return; // no history → skip
         const delta = priceNow - priceThen;
+        const deltaPct = priceThen > 0.001 ? (priceNow - priceThen) / priceThen : 0;
 
         const isBreakout =
-          delta >= RISE_THRESHOLD &&
+          deltaPct >= RISE_PCT_THRESHOLD &&
           gap >= GAP_THRESHOLD &&
           priceNow <= MAX_ENTRY_PRICE;
 
         const liveAsk = isBreakout ? await fetchAsk(leader.clob_token_id!) : null;
 
-        found.push({ market: m, leader, runnerUp, priceNow, priceThen, delta, gap, liveAsk, isBreakout });
+        found.push({ market: m, leader, runnerUp, priceNow, priceThen, delta, deltaPct, gap, liveAsk, isBreakout });
       }));
       done += batch.length;
       setProgress(Math.round((done / eligible.length) * 100));
     }
 
-    // Sort by absolute 2h move desc — biggest movers first regardless of direction.
-    found.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+    // Sort by absolute 2h % move desc — biggest relative movers first.
+    found.sort((a, b) => Math.abs(b.deltaPct) - Math.abs(a.deltaPct));
     setBreakouts(found);
     setScannedAt(Date.now());
     setScanning(false);
@@ -154,7 +157,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider">Momentum (All Markets)</div>
             <div className="text-[10px] text-muted-foreground">
-              Ranked by 2h price change · Breakout = ≥{Math.round(RISE_THRESHOLD * 100)}¢ rise + gap ≥{Math.round(GAP_THRESHOLD * 100)}¢ + entry ≤{Math.round(MAX_ENTRY_PRICE * 100)}¢
+              Ranked by 2h % change · Breakout = ≥{Math.round(RISE_PCT_THRESHOLD * 100)}% rise + gap ≥{Math.round(GAP_THRESHOLD * 100)}¢ + entry ≤{Math.round(MAX_ENTRY_PRICE * 100)}¢
             </div>
           </div>
         </div>
@@ -211,6 +214,7 @@ const BreakoutRow = ({ b, onSelect }: { b: Movement; onSelect?: (m: WeatherMarke
   const upside = (1 - entryPrice) * 100;
   const isUp = b.delta >= 0;
   const deltaCents = Math.abs(b.delta * 100);
+  const deltaPctAbs = Math.abs(b.deltaPct * 100);
 
   const copyPrice = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -249,7 +253,7 @@ const BreakoutRow = ({ b, onSelect }: { b: Movement; onSelect?: (m: WeatherMarke
           <div className="text-[11px] text-muted-foreground mt-0.5">
             <span className="font-mono-num text-foreground">{(b.priceThen * 100).toFixed(0)}¢ → {(b.priceNow * 100).toFixed(0)}¢</span>
             <span className={cn("font-semibold ml-1", isUp ? "text-emerald-400" : "text-red-400")}>
-              ({isUp ? "+" : "−"}{deltaCents.toFixed(0)}¢ / 2h)
+              ({isUp ? "+" : "−"}{deltaPctAbs.toFixed(0)}% / {deltaCents.toFixed(0)}¢ in 2h)
             </span>
             {b.runnerUp && (
               <> · #2 <span className="font-mono-num text-foreground">{b.runnerUp.label} {((b.runnerUp.polymarket_price ?? 0) * 100).toFixed(0)}¢</span> · gap <span className="text-foreground font-mono-num">{(b.gap * 100).toFixed(0)}¢</span></>
