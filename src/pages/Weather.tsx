@@ -2,17 +2,21 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { LogOut, RefreshCw, Loader2, Trash2, ArrowLeft } from "lucide-react";
+import { LogOut, RefreshCw, Loader2, Trash2, ArrowLeft, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { AddMarketDialog } from "@/components/weather/AddMarketDialog";
 import { TradeDetailDialog } from "@/components/weather/TradeDetailDialog";
-import { WeatherMarket, WeatherSignal, pct, edgeColor, confidenceColor } from "@/lib/weather";
+import {
+  WeatherMarket, WeatherOutcome, WeatherSignal,
+  pct, edgeColor, confidenceColor,
+} from "@/lib/weather";
 
 const Weather = () => {
   const nav = useNavigate();
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [markets, setMarkets] = useState<WeatherMarket[]>([]);
+  const [outcomes, setOutcomes] = useState<Record<string, WeatherOutcome[]>>({});
   const [signals, setSignals] = useState<Record<string, WeatherSignal>>({});
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
@@ -33,11 +37,17 @@ const Weather = () => {
 
   const load = useCallback(async () => {
     if (!userId) return;
-    const [{ data: ms }, { data: sigs }] = await Promise.all([
+    const [{ data: ms }, { data: os }, { data: sigs }] = await Promise.all([
       supabase.from("weather_markets").select("*").eq("active", true).order("event_time"),
+      supabase.from("weather_outcomes").select("*").order("display_order"),
       supabase.from("weather_signals").select("*").order("created_at", { ascending: false }),
     ]);
     setMarkets((ms ?? []) as WeatherMarket[]);
+    const grouped: Record<string, WeatherOutcome[]> = {};
+    (os ?? []).forEach((o: any) => {
+      (grouped[o.market_id] ??= []).push(o as WeatherOutcome);
+    });
+    setOutcomes(grouped);
     const latest: Record<string, WeatherSignal> = {};
     (sigs ?? []).forEach((s: any) => {
       if (!latest[s.market_id]) latest[s.market_id] = s as WeatherSignal;
@@ -68,9 +78,7 @@ const Weather = () => {
     setRefreshingAll(true);
     for (const m of markets) {
       try {
-        await supabase.functions.invoke("weather-refresh-market", {
-          body: { market_id: m.id },
-        });
+        await supabase.functions.invoke("weather-refresh-market", { body: { market_id: m.id } });
       } catch { /* skip */ }
     }
     setRefreshingAll(false);
@@ -92,6 +100,14 @@ const Weather = () => {
   if (loading || !userId) {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading…</div>;
   }
+
+  // Best opportunity per market = highest positive edge among its outcomes (>= 7%)
+  const bestFor = (mid: string) => {
+    const list = outcomes[mid] ?? [];
+    const best = [...list].sort((a, b) => (b.edge ?? -Infinity) - (a.edge ?? -Infinity))[0];
+    if (!best || (best.edge ?? -Infinity) < 0.07) return null;
+    return best;
+  };
 
   return (
     <div className="min-h-screen">
@@ -126,10 +142,8 @@ const Weather = () => {
                   <th className="text-left px-4 py-2 font-medium">Market</th>
                   <th className="text-left px-3 py-2 font-medium">City</th>
                   <th className="text-left px-3 py-2 font-medium">Event</th>
-                  <th className="text-right px-3 py-2 font-medium">NOAA</th>
-                  <th className="text-right px-3 py-2 font-medium">ECMWF</th>
-                  <th className="text-right px-3 py-2 font-medium">Final</th>
-                  <th className="text-right px-3 py-2 font-medium">Market</th>
+                  <th className="text-right px-3 py-2 font-medium">Outcomes</th>
+                  <th className="text-left px-3 py-2 font-medium">Best Trade</th>
                   <th className="text-right px-3 py-2 font-medium">Edge</th>
                   <th className="text-right px-3 py-2 font-medium">Size</th>
                   <th className="text-center px-3 py-2 font-medium">Conf.</th>
@@ -138,31 +152,40 @@ const Weather = () => {
               </thead>
               <tbody>
                 {markets.length === 0 && (
-                  <tr><td colSpan={11} className="text-center py-12 text-muted-foreground">
+                  <tr><td colSpan={9} className="text-center py-12 text-muted-foreground">
                     No markets yet. Click "Add market" to get started.
                   </td></tr>
                 )}
                 {markets.map((m) => {
                   const s = signals[m.id];
+                  const best = bestFor(m.id);
+                  const outs = outcomes[m.id] ?? [];
                   return (
                     <tr key={m.id} className="border-b border-border/50 hover:bg-surface-2/50">
                       <td className="px-4 py-2.5 max-w-[260px]">
                         <div className="truncate" title={m.market_question}>{m.market_question}</div>
-                        <div className="text-[10px] text-muted-foreground">{m.condition_range}</div>
+                        <div className="text-[10px] text-muted-foreground">{m.condition_type}</div>
                       </td>
                       <td className="px-3 py-2.5 text-muted-foreground">{m.city}</td>
                       <td className="px-3 py-2.5 text-muted-foreground text-xs">
                         {new Date(m.event_time).toLocaleString()}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono-num">{pct(s?.p_noaa)}</td>
-                      <td className="px-3 py-2.5 text-right font-mono-num">{pct(s?.p_ecmwf)}</td>
-                      <td className="px-3 py-2.5 text-right font-mono-num font-semibold">{pct(s?.p_final)}</td>
-                      <td className="px-3 py-2.5 text-right font-mono-num">{pct(s?.p_market)}</td>
-                      <td className={`px-3 py-2.5 text-right font-mono-num font-semibold ${edgeColor(s?.edge)}`}>
-                        {pct(s?.edge)}
+                      <td className="px-3 py-2.5 text-right font-mono-num">{outs.length}</td>
+                      <td className="px-3 py-2.5">
+                        {best ? (
+                          <div className="flex items-center gap-1.5 text-emerald-400">
+                            <Sparkles className="h-3 w-3" />
+                            <span className="font-medium">{best.label}</span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className={`px-3 py-2.5 text-right font-mono-num font-semibold ${edgeColor(best?.edge)}`}>
+                        {pct(best?.edge)}
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono-num">
-                        {s?.suggested_size_percent ? `${s.suggested_size_percent}%` : "—"}
+                        {best?.suggested_size_percent ? `${best.suggested_size_percent}%` : "—"}
                       </td>
                       <td className="px-3 py-2.5 text-center">
                         {s?.confidence_level ? (
@@ -192,7 +215,7 @@ const Weather = () => {
           </div>
         </section>
         <p className="text-[11px] text-muted-foreground text-center">
-          Manual trading assistant. Forecasts via Open-Meteo (GFS as NOAA proxy + ECMWF ensemble). No auto-execution.
+          Manual trading assistant. ECMWF ensemble distribution + GFS sanity check via Open-Meteo. No auto-execution.
         </p>
       </main>
 
@@ -200,6 +223,7 @@ const Weather = () => {
         open={!!detailMarket}
         onOpenChange={(v) => !v && setDetailMarket(null)}
         market={detailMarket}
+        outcomes={detailMarket ? outcomes[detailMarket.id] ?? [] : []}
         signal={detailMarket ? signals[detailMarket.id] ?? null : null}
       />
     </div>
