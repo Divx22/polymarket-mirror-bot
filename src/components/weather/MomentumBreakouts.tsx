@@ -46,6 +46,7 @@ type ExternalMovement = {
   leader_label: string;
   runner_label: string;
   leaderNow: number;
+  gap2h: number;
   gap1h: number;
   gapNow: number;
   netDelta: number;
