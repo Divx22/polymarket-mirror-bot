@@ -613,6 +613,160 @@ export type Database = {
         }
         Relationships: []
       }
+      weather_forecasts: {
+        Row: {
+          id: string
+          last_updated: string
+          market_id: string
+          probability: number
+          raw: Json | null
+          source: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          last_updated?: string
+          market_id: string
+          probability: number
+          raw?: Json | null
+          source: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          last_updated?: string
+          market_id?: string
+          probability?: number
+          raw?: Json | null
+          source?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weather_forecasts_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "weather_markets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      weather_markets: {
+        Row: {
+          active: boolean
+          city: string
+          clob_token_id: string | null
+          condition_range: string
+          condition_type: string
+          created_at: string
+          event_time: string
+          id: string
+          latitude: number
+          longitude: number
+          market_question: string
+          polymarket_price: number | null
+          polymarket_url: string | null
+          precip_threshold_mm: number | null
+          temp_max_c: number | null
+          temp_min_c: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          city: string
+          clob_token_id?: string | null
+          condition_range: string
+          condition_type?: string
+          created_at?: string
+          event_time: string
+          id?: string
+          latitude: number
+          longitude: number
+          market_question: string
+          polymarket_price?: number | null
+          polymarket_url?: string | null
+          precip_threshold_mm?: number | null
+          temp_max_c?: number | null
+          temp_min_c?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          city?: string
+          clob_token_id?: string | null
+          condition_range?: string
+          condition_type?: string
+          created_at?: string
+          event_time?: string
+          id?: string
+          latitude?: number
+          longitude?: number
+          market_question?: string
+          polymarket_price?: number | null
+          polymarket_url?: string | null
+          precip_threshold_mm?: number | null
+          temp_max_c?: number | null
+          temp_min_c?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      weather_signals: {
+        Row: {
+          agreement: number
+          confidence_level: string | null
+          created_at: string
+          edge: number | null
+          id: string
+          market_id: string
+          p_ecmwf: number | null
+          p_final: number
+          p_market: number | null
+          p_noaa: number | null
+          suggested_size_percent: number | null
+          user_id: string
+        }
+        Insert: {
+          agreement: number
+          confidence_level?: string | null
+          created_at?: string
+          edge?: number | null
+          id?: string
+          market_id: string
+          p_ecmwf?: number | null
+          p_final: number
+          p_market?: number | null
+          p_noaa?: number | null
+          suggested_size_percent?: number | null
+          user_id: string
+        }
+        Update: {
+          agreement?: number
+          confidence_level?: string | null
+          created_at?: string
+          edge?: number | null
+          id?: string
+          market_id?: string
+          p_ecmwf?: number | null
+          p_final?: number
+          p_market?: number | null
+          p_noaa?: number | null
+          suggested_size_percent?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weather_signals_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "weather_markets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
