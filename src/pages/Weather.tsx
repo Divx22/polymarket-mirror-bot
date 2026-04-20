@@ -273,9 +273,17 @@ const Weather = () => {
                         {best?.suggested_size_percent ? `${best.suggested_size_percent}%` : "—"}
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono-num font-semibold text-foreground">
-                        {best?.suggested_size_percent
-                          ? `$${((bankroll * Number(best.suggested_size_percent)) / 100).toFixed(2)}`
-                          : "—"}
+                        {(() => {
+                          if (!best?.suggested_size_percent) return "—";
+                          const { capped, wasCapped } = applyMaxTradeCap(best.suggested_size_percent, maxTradePct);
+                          const dollars = (bankroll * capped) / 100;
+                          return (
+                            <span title={wasCapped ? `Capped from ${best.suggested_size_percent}% to ${maxTradePct}%` : undefined}>
+                              ${dollars.toFixed(2)}
+                              {wasCapped && <span className="ml-1 text-[9px] text-amber-400">⛨</span>}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-3 py-2.5 text-center">
                         {s?.confidence_level ? (
