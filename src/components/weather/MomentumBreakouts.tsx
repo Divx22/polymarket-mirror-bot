@@ -279,31 +279,46 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
         </div>
       )}
 
-      {!scanning && items.length === 0 && externals.length === 0 && scannedAt != null && (
-        <div className="px-4 py-6 text-center text-xs text-muted-foreground">
-          No markets qualified — try Discover to scan all of Polymarket.
-        </div>
-      )}
+      {(() => {
+        const score = (leaderNow: number, gapNow: number) => ((1 - leaderNow) + gapNow) / 2;
+        const localSlugs = new Set(
+          items.map((it) => it.market.polymarket_event_slug).filter(Boolean) as string[],
+        );
+        const dedupedExternals = externals.filter(
+          (e) => !e.event_slug || !localSlugs.has(e.event_slug),
+        );
+        type Merged =
+          | { kind: "local"; key: string; sortScore: number; data: Movement }
+          | { kind: "ext"; key: string; sortScore: number; data: ExternalMovement };
+        const merged: Merged[] = [
+          ...items.map((it): Merged => ({
+            kind: "local", key: `l-${it.market.id}`,
+            sortScore: score(it.leaderNow, it.gapNow), data: it,
+          })),
+          ...dedupedExternals.map((e, i): Merged => ({
+            kind: "ext", key: `e-${e.event_slug ?? i}`,
+            sortScore: score(e.leaderNow, e.gapNow), data: e,
+          })),
+        ].sort((a, b) => b.sortScore - a.sortScore);
 
-      {items.length > 0 && (
-        <ul className="divide-y divide-border/50">
-          {items.map((m) => <Row key={m.market.id} m={m} onSelect={onSelect} />)}
-        </ul>
-      )}
-
-      {externals.length > 0 && (
-        <>
-          <div className="px-4 py-1.5 border-t border-border bg-surface-2/60 flex items-center gap-1.5">
-            <Globe className="h-3 w-3 text-blue-400" />
-            <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-              From Polymarket · not in your scanner
-            </span>
-          </div>
+        if (!scanning && merged.length === 0 && scannedAt != null) {
+          return (
+            <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+              No markets qualified — try Discover to scan all of Polymarket.
+            </div>
+          );
+        }
+        if (merged.length === 0) return null;
+        return (
           <ul className="divide-y divide-border/50">
-            {externals.map((m, i) => <ExternalRow key={`${m.event_slug ?? i}`} m={m} />)}
+            {merged.map((row) =>
+              row.kind === "local"
+                ? <Row key={row.key} m={row.data} onSelect={onSelect} />
+                : <ExternalRow key={row.key} m={row.data} />,
+            )}
           </ul>
-        </>
-      )}
+        );
+      })()}
     </div>
   );
 };
