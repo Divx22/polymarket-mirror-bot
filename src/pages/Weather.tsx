@@ -135,6 +135,13 @@ const Weather = () => {
       </header>
 
       <main className="container py-6 space-y-4">
+        <BestTradeSignal
+          markets={markets}
+          outcomes={outcomes}
+          signals={signals}
+          onSelect={(m) => setDetailMarket(m)}
+        />
+
         <section className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
