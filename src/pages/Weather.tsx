@@ -9,7 +9,8 @@ import { AddMarketDialog } from "@/components/weather/AddMarketDialog";
 import { TradeDetailDialog } from "@/components/weather/TradeDetailDialog";
 import { BestTradeSignal } from "@/components/weather/BestTradeSignal";
 import { WeatherScanner } from "@/components/weather/WeatherScanner";
-import { BankrollInput, MinVolumeInput } from "@/components/weather/PositionCalculator";
+import { BankrollInput, MinVolumeInput, MaxTradeCapInput } from "@/components/weather/PositionCalculator";
+import { StationOverridePicker } from "@/components/weather/StationOverridePicker";
 import {
   WeatherMarket, WeatherOutcome, WeatherSignal,
   pct, edgeColor, confidenceColor, formatVolume,
