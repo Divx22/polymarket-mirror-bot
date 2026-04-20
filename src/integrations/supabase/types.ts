@@ -616,6 +616,42 @@ export type Database = {
         }
         Relationships: []
       }
+      stations: {
+        Row: {
+          city: string
+          created_at: string
+          id: string
+          latitude: number
+          longitude: number
+          station_code: string
+          station_name: string
+          timezone: string
+          updated_at: string
+        }
+        Insert: {
+          city: string
+          created_at?: string
+          id?: string
+          latitude: number
+          longitude: number
+          station_code: string
+          station_name: string
+          timezone: string
+          updated_at?: string
+        }
+        Update: {
+          city?: string
+          created_at?: string
+          id?: string
+          latitude?: number
+          longitude?: number
+          station_code?: string
+          station_name?: string
+          timezone?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       weather_markets: {
         Row: {
           active: boolean
