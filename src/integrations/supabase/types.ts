@@ -17,6 +17,7 @@ export type Database = {
       config: {
         Row: {
           auto_execute: boolean
+          bankroll_usdc: number
           created_at: string
           daily_usdc_limit: number
           enabled: boolean
@@ -36,6 +37,7 @@ export type Database = {
         }
         Insert: {
           auto_execute?: boolean
+          bankroll_usdc?: number
           created_at?: string
           daily_usdc_limit?: number
           enabled?: boolean
@@ -55,6 +57,7 @@ export type Database = {
         }
         Update: {
           auto_execute?: boolean
+          bankroll_usdc?: number
           created_at?: string
           daily_usdc_limit?: number
           enabled?: boolean

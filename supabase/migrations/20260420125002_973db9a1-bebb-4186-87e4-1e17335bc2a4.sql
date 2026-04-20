@@ -1,0 +1,1 @@
+ALTER TABLE public.config ADD COLUMN IF NOT EXISTS bankroll_usdc numeric NOT NULL DEFAULT 1000;
