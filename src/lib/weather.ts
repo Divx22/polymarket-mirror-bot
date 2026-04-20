@@ -11,6 +11,23 @@ export type WeatherMarket = {
   active: boolean;
   updated_at: string;
   event_volume_24h: number | null;
+  resolution_station_code: string | null;
+  resolution_station_name: string | null;
+  resolution_lat: number | null;
+  resolution_lon: number | null;
+};
+
+// Cap a suggested-size percent at the user's max_trade_pct (default 2%).
+// Returns { capped, original } so UI can show "Capped from 4% → 2%".
+export const applyMaxTradeCap = (
+  suggestedPct: number | null | undefined,
+  maxPct: number,
+): { capped: number; wasCapped: boolean } => {
+  const s = Number(suggestedPct ?? 0);
+  if (!Number.isFinite(s) || s <= 0) return { capped: 0, wasCapped: false };
+  const m = Number.isFinite(maxPct) && maxPct > 0 ? maxPct : 2;
+  if (s > m) return { capped: m, wasCapped: true };
+  return { capped: s, wasCapped: false };
 };
 
 export type WeatherOutcome = {
