@@ -415,6 +415,37 @@ Deno.serve(async (req) => {
     })() : null;
     const nwsMax = nwsMaxRaw != null && metarFloor != null ? Math.max(nwsMaxRaw, metarFloor) : nwsMaxRaw;
 
+    // NBM (second independent US source): take daily max from gridpoint hourly temps.
+    const nbmMaxRaw = nbmHours
+      ? (() => {
+          let max = -Infinity;
+          for (const h of nbmHours) {
+            if (localYMD(new Date(h.validTime), timezone) === localDay && h.tempC > max) max = h.tempC;
+          }
+          return Number.isFinite(max) ? max : null;
+        })()
+      : null;
+    const nbmMax = nbmMaxRaw != null && metarFloor != null ? Math.max(nbmMaxRaw, metarFloor) : nbmMaxRaw;
+
+    // Visual Crossing global oracle (already a daily max).
+    const vcDailyMax = vcMax != null && metarFloor != null ? Math.max(vcMax, metarFloor) : vcMax;
+
+    // Provider-disagreement detection: compare reference (NWS or IFS) to the
+    // independent providers (NBM + VC). If any disagrees by >2°C, flag it —
+    // signals correlated-failure risk in our primary pipe.
+    const DISAGREEMENT_THRESHOLD_C = 2.0;
+    const refForDisagreement = nwsMax ?? ifsMax;
+    const disagreements: { source: string; delta_c: number; value_c: number }[] = [];
+    if (refForDisagreement != null) {
+      if (nbmMax != null && Math.abs(nbmMax - refForDisagreement) > DISAGREEMENT_THRESHOLD_C) {
+        disagreements.push({ source: "nbm", delta_c: Number((nbmMax - refForDisagreement).toFixed(2)), value_c: Number(nbmMax.toFixed(2)) });
+      }
+      if (vcDailyMax != null && Math.abs(vcDailyMax - refForDisagreement) > DISAGREEMENT_THRESHOLD_C) {
+        disagreements.push({ source: "visual_crossing", delta_c: Number((vcDailyMax - refForDisagreement).toFixed(2)), value_c: Number(vcDailyMax.toFixed(2)) });
+      }
+    }
+    const providerDisagreement = disagreements.length > 0;
+
     // For agreement: NWS (US) is the gold standard since it's literally the
     // settlement source. For non-US, fall back to deterministic IFS.
     const referenceMax = nwsMax ?? ifsMax;
