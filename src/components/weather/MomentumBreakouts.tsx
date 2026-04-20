@@ -164,8 +164,9 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
       setProgress(Math.round((done / eligible.length) * 100));
     }
 
-    // Sort by combined score: upside (1 - leader price) × current gap. Highest payoff × widest lead first.
-    found.sort((a, b) => ((1 - b.leaderNow) * b.gapNow) - ((1 - a.leaderNow) * a.gapNow));
+    // Sort by average of upside% and gap%. Highest combined first.
+    const score = (leaderNow: number, gapNow: number) => ((1 - leaderNow) + gapNow) / 2;
+    found.sort((a, b) => score(b.leaderNow, b.gapNow) - score(a.leaderNow, a.gapNow));
 
     setItems(found);
     setScannedAt(Date.now());
