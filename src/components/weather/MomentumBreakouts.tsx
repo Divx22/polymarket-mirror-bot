@@ -404,7 +404,7 @@ const ExternalRow = ({ m }: { m: ExternalMovement }) => {
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-foreground">{m.leader_label}</span>
           <span className="text-xs text-muted-foreground">vs {m.runner_label}</span>
-          <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded border text-[9px] uppercase tracking-wider", meta.badge)}>
+          <span className={cn("inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-bold uppercase tracking-wide", meta.badge)}>
             {meta.label} {netSign}{netPct}%
           </span>
           {m.city && <span className="text-xs text-muted-foreground truncate">· {m.city}</span>}
