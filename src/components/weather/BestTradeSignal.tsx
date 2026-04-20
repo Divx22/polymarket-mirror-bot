@@ -131,8 +131,11 @@ const BestCard = ({ pick, bankroll, onSelect }: { pick: ScoredOutcome; bankroll:
 
   const mid = o.polymarket_price ?? null;
   const bid = book?.bid ?? null;
-  const lo = bid != null ? bid : mid != null ? Math.max(0, mid - 0.01) : null;
-  const hi = mid;
+  const ask = book?.ask ?? null;
+  // Exact instruction: place a limit BUY at the current best ask (fills immediately).
+  // If you want to be patient and save 1 tick, use ask - 0.01 (may not fill).
+  const limitPrice = ask ?? mid;
+  const patientPrice = limitPrice != null ? Math.max(0.01, limitPrice - 0.01) : null;
 
   return (
     <div
@@ -200,30 +203,29 @@ const BestCard = ({ pick, bankroll, onSelect }: { pick: ScoredOutcome; bankroll:
         Positive = market underprices vs. ensemble consensus.
       </div>
 
-      <div className="rounded border border-border/60 bg-background/40 px-3 py-2 text-xs">
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">
-          Entry Guidance
-        </div>
-        {lo != null && hi != null ? (
-          <div>
-            Place limit orders between{" "}
-            <span className="font-mono-num font-semibold text-foreground">
-              {(lo * 100).toFixed(1)}¢
-            </span>
-            {" and "}
-            <span className="font-mono-num font-semibold text-foreground">
-              {(hi * 100).toFixed(1)}¢
-            </span>
-            {book?.ask != null && (
-              <span className="text-muted-foreground">
-                {" "}· ask {(book.ask * 100).toFixed(1)}¢
-              </span>
+      {limitPrice != null && (
+        <div className="rounded border border-border/60 bg-background/40 px-3 py-2 text-xs">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+            Entry Guidance
+          </div>
+          <div className="leading-relaxed">
+            Place a <span className="font-semibold text-foreground">limit BUY</span> at{" "}
+            <span className="font-mono-num font-semibold text-emerald-400">
+              {(limitPrice * 100).toFixed(1)}¢
+            </span>{" "}
+            <span className="text-muted-foreground">(current best ask — fills now).</span>
+            {patientPrice != null && patientPrice < limitPrice && (
+              <div className="text-muted-foreground mt-0.5">
+                Patient: try{" "}
+                <span className="font-mono-num text-foreground">
+                  {(patientPrice * 100).toFixed(1)}¢
+                </span>{" "}
+                to save 1¢ (may not fill).
+              </div>
             )}
           </div>
-        ) : (
-          <div className="text-muted-foreground">Fetching live book…</div>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="mt-2">
         <PositionCalculator
