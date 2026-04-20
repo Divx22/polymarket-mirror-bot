@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const GAP_MIN = 0.10;
+const DEFAULT_GAP_MIN = 0.10;
 const MAX_ENTRY_PRICE = 0.95;
 const MAX_HOURS = 48;
 const MIN_HOURS = 0.5;
@@ -125,6 +125,16 @@ function eventEndTime(ev: any): number | null {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
+    // Optional body: { gap_min?: number } in 0..1 range. Falls back to DEFAULT_GAP_MIN.
+    let gapMin = DEFAULT_GAP_MIN;
+    try {
+      if (req.method === "POST") {
+        const body = await req.json().catch(() => null);
+        const v = Number(body?.gap_min);
+        if (Number.isFinite(v) && v > 0 && v < 1) gapMin = v;
+      }
+    } catch { /* ignore */ }
+
     const events = await discoverEvents();
     const now = Date.now();
     const target1h = now - 3_600_000;
@@ -177,14 +187,14 @@ Deno.serve(async (req) => {
         const leader = valid[0];
         const runner = valid[1];
         const gapNow = leader.mid - runner.mid;
-        if (gapNow < GAP_MIN || leader.mid > MAX_ENTRY_PRICE) return;
+        if (gapNow < gapMin || leader.mid > MAX_ENTRY_PRICE) return;
 
         const [lh, rh] = await Promise.all([fetchHistory(leader.tokenId), fetchHistory(runner.tokenId)]);
         const l1h = priceAt(lh, target1h);
         const r1h = priceAt(rh, target1h);
         if (l1h == null || r1h == null) return;
         const gap1h = l1h - r1h;
-        if (gap1h < GAP_MIN) return;
+        if (gap1h < gapMin) return;
 
         const target2h = now - 2 * 3_600_000;
         const l2h = priceAt(lh, target2h);

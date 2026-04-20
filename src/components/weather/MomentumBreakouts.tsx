@@ -9,9 +9,13 @@ type Props = {
   markets: WeatherMarket[];
   outcomes: Record<string, WeatherOutcome[]>;
   onSelect?: (m: WeatherMarket) => void;
+  /** Minimum gap (0–1) between #1 and #2 outcomes required at "now" AND "1h ago". Default 0.10. */
+  gapMin?: number;
+  /** Allow user to change the threshold via a slider in the panel header. Default true. */
+  showThresholdControl?: boolean;
 };
 
-const GAP_MIN = 0.10;
+const DEFAULT_GAP_MIN = 0.10;
 const MAX_ENTRY_PRICE = 0.95;
 const MIN_HOURS_TO_EVENT = 0.5;
 const FLAT_BAND = 0.01;
@@ -85,13 +89,15 @@ function priceAt(hist: HistPoint[], targetTs: number): number | null {
   return best.p;
 }
 
-export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
+export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinProp, showThresholdControl = true }: Props) => {
   const [scanning, setScanning] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [items, setItems] = useState<Movement[]>([]);
   const [externals, setExternals] = useState<ExternalMovement[]>([]);
   const [scannedAt, setScannedAt] = useState<number | null>(null);
   const [progress, setProgress] = useState(0);
+  // Threshold (0–1). Editable via slider when showThresholdControl is true.
+  const [gapMin, setGapMin] = useState<number>(gapMinProp ?? DEFAULT_GAP_MIN);
 
   const scan = async () => {
     setScanning(true);
@@ -124,7 +130,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         const leaderNow = enriched[0].mid;
         const gapNow = leaderNow - enriched[1].mid;
 
-        if (gapNow < GAP_MIN) return;
+        if (gapNow < gapMin) return;
         if (leaderNow > MAX_ENTRY_PRICE) return;
 
         const [leaderHist, runnerHist] = await Promise.all([
@@ -136,7 +142,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         if (leader1h == null || runner1h == null) return;
 
         const gap1h = leader1h - runner1h;
-        if (gap1h < GAP_MIN) return;
+        if (gap1h < gapMin) return;
 
         const leader2h = priceAt(leaderHist, target2h);
         const runner2h = priceAt(runnerHist, target2h);
@@ -158,8 +164,8 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
       setProgress(Math.round((done / eligible.length) * 100));
     }
 
-    const rank: Record<Trajectory, number> = { accelerating: 0, widening: 1, flat: 2, narrowing: 3 };
-    found.sort((a, b) => rank[a.trajectory] - rank[b.trajectory] || b.netDelta - a.netDelta);
+    // Sort by combined score: upside (1 - leader price) × current gap. Highest payoff × widest lead first.
+    found.sort((a, b) => ((1 - b.leaderNow) * b.gapNow) - ((1 - a.leaderNow) * a.gapNow));
 
     setItems(found);
     setScannedAt(Date.now());
@@ -168,14 +174,16 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
       const accel = found.filter(f => f.trajectory === "accelerating").length;
       toast.success(`${found.length} qualified · ${accel} accelerating`);
     } else {
-      toast.info(`No markets in your scanner qualified`);
+      toast.info(`No markets in your scanner qualified at ≥${Math.round(gapMin * 100)}%`);
     }
   };
 
   const discover = async () => {
     setDiscovering(true);
     try {
-      const { data, error } = await supabase.functions.invoke("weather-discover-momentum");
+      const { data, error } = await supabase.functions.invoke("weather-discover-momentum", {
+        body: { gap_min: gapMin },
+      });
       if (error) throw error;
       const results = (data?.results ?? []) as any[];
       const mapped: ExternalMovement[] = results.map((r) => ({
@@ -193,8 +201,8 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         netDelta: r.net_delta,
         trajectory: r.trajectory,
       }));
-      const rank: Record<Trajectory, number> = { accelerating: 0, widening: 1, flat: 2, narrowing: 3 };
-      mapped.sort((a, b) => rank[a.trajectory] - rank[b.trajectory] || b.netDelta - a.netDelta);
+      // Same combined-score sort as local results.
+      mapped.sort((a, b) => ((1 - b.leaderNow) * b.gapNow) - ((1 - a.leaderNow) * a.gapNow));
       setExternals(mapped);
       toast.success(`Discover scanned ${data?.scanned ?? 0} · ${mapped.length} qualified`);
     } catch (e: any) {
@@ -217,10 +225,38 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider">Momentum</div>
             <div className="text-[10px] text-muted-foreground">
-              Gap #1 vs #2 ≥{Math.round(GAP_MIN * 100)}% now AND 1h ago. 2h shown for context.
+              Gap #1 vs #2 ≥{Math.round(gapMin * 100)}% now AND 1h ago. Sorted by upside × gap.
             </div>
           </div>
         </div>
+        {showThresholdControl && (
+          <div className="hidden md:flex items-center gap-2 mr-2">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Min gap</span>
+            <input
+              type="range"
+              min={5}
+              max={30}
+              step={1}
+              value={Math.round(gapMin * 100)}
+              onChange={(e) => setGapMin(Number(e.target.value) / 100)}
+              className="w-24 accent-primary"
+              aria-label="Minimum gap percentage"
+            />
+            <input
+              type="number"
+              min={5}
+              max={50}
+              step={1}
+              value={Math.round(gapMin * 100)}
+              onChange={(e) => {
+                const v = Math.max(1, Math.min(50, Number(e.target.value) || 0));
+                setGapMin(v / 100);
+              }}
+              className="w-12 rounded border border-border bg-background px-1.5 py-0.5 text-xs font-mono-num text-foreground"
+            />
+            <span className="text-[10px] text-muted-foreground">%</span>
+          </div>
+        )}
         <div className="flex items-center gap-1.5">
           <button
             onClick={discover}
