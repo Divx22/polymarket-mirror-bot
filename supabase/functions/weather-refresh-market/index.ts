@@ -224,6 +224,8 @@ Deno.serve(async (req) => {
     let bestEdge = -Infinity;
     let bestLabel: string | null = null;
     let bestSize = 0;
+    let bestPModel = 0;
+    let bestPrice: number | null = null;
     const distribution: any[] = [];
 
     for (const x of enriched) {
@@ -249,8 +251,17 @@ Deno.serve(async (req) => {
         bestEdge = x.edge;
         bestLabel = x.o.label;
         bestSize = size;
+        bestPModel = x.pModel;
+        bestPrice = x.price;
       }
     }
+
+    // Sanity flag: model very confident but market strongly disagrees → likely
+    // timing/station/microclimate mismatch. Surface as VERIFY (don't auto-size up).
+    const verifyFlag =
+      bestPModel > 0.8 && bestPrice != null && bestPrice < 0.3
+        ? "Model >80% but market <30% — verify resolution window, station, and forecast freshness before sizing up."
+        : null;
 
     await supabase.from("weather_signals").insert({
       market_id: m.id,
@@ -260,7 +271,7 @@ Deno.serve(async (req) => {
       best_outcome_label: bestLabel,
       best_edge: Number.isFinite(bestEdge) ? bestEdge : null,
       best_suggested_size_percent: bestSize,
-      distribution,
+      distribution: { outcomes: distribution, verify_flag: verifyFlag },
     });
 
     await supabase.from("weather_markets").update({ updated_at: new Date().toISOString() }).eq("id", m.id);
@@ -272,6 +283,7 @@ Deno.serve(async (req) => {
       best_outcome_label: bestLabel,
       best_edge: Number.isFinite(bestEdge) ? bestEdge : null,
       best_suggested_size_percent: bestSize,
+      verify_flag: verifyFlag,
       distribution,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
