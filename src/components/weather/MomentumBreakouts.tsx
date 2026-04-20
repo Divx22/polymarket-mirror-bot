@@ -107,7 +107,23 @@ function momentumScore(leaderNow: number, gapNow: number, netDelta: number, traj
   return 0.4 * upside + 0.3 * gapNow + 0.3 * netDelta + (TRAJ_BONUS[trajectory] ?? 0);
 }
 
-export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinProp, showThresholdControl = true }: Props) => {
+// Suggest a stake $ for a momentum pick.
+// Long-term strategy: scale by score within [0..MAX_SCORE], cap at stakeCapPct% of bankroll.
+// MAX_SCORE ~ 0.45 = strong upside (50%) + wide gap (30%) + big widening (10%) + accel bonus (5%).
+const MAX_SCORE = 0.45;
+function suggestStake(bankroll: number, stakeCapPct: number, score: number): number {
+  if (!Number.isFinite(bankroll) || bankroll <= 0) return 0;
+  const cap = bankroll * (stakeCapPct / 100);
+  const ratio = Math.max(0, Math.min(1, score / MAX_SCORE));
+  // Floor at 25% of cap so qualified picks always show a non-trivial size.
+  const stake = cap * Math.max(0.25, ratio);
+  return Math.round(stake);
+}
+
+export const MomentumBreakouts = ({
+  markets, outcomes, onSelect, gapMin: gapMinProp, showThresholdControl = true,
+  bankroll = 1000, stakeCapPct = 3,
+}: Props) => {
   const [scanning, setScanning] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [items, setItems] = useState<Movement[]>([]);
