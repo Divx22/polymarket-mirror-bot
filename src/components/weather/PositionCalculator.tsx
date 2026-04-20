@@ -139,11 +139,15 @@ export const computePositionPlan = (
   sizePct: number,
   bid: number | null,
   mid: number | null,
+  ask: number | null = null,
 ) => {
   const positionValue = Math.max(0, (bankrollUsdc * sizePct) / 100);
+  // Realistic fill price = current best ASK (what you actually pay to buy now).
+  // The stale `mid` (last trade) can be wildly off for thin books — never use it
+  // as the entry estimate when an ask is available.
   const lo = bid ?? (mid != null ? Math.max(0.01, mid - 0.01) : null);
-  const hi = mid;
-  const entry = lo != null && hi != null ? (lo + hi) / 2 : (mid ?? bid);
+  const hi = ask ?? mid;
+  const entry = ask ?? (lo != null && hi != null ? (lo + hi) / 2 : (mid ?? bid));
   const shares = entry && entry > 0 ? Math.floor(positionValue / entry) : 0;
   // Split 50/50 (rounded down). Remainder added to mid leg so totals match.
   const halfBid = lo != null ? Math.floor(shares / 2) : 0;
