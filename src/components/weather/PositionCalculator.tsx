@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Wallet, Loader2, Droplet } from "lucide-react";
+import { Wallet, Loader2, Droplet, Shield } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { applyMaxTradeCap } from "@/lib/weather";
 
 type Props = {
   userId: string;
