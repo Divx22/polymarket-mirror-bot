@@ -69,7 +69,7 @@ export const BestTradeSignal = ({ markets, outcomes, signals, bankroll, minVolum
 
   return (
     <div className="space-y-3">
-      <BestCard pick={best} bankroll={bankroll} onSelect={onSelect} />
+      <BestCard pick={best} bankroll={bankroll} maxTradePct={maxTradePct} onSelect={onSelect} />
       {others.length > 0 && (
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="px-4 py-2 text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border bg-surface-2/40">
