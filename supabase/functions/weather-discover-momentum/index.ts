@@ -158,6 +158,7 @@ Deno.serve(async (req) => {
       leader_now: number;
       gap_now: number;
       gap_1h: number;
+      gap_2h: number;
       net_delta: number;
       trajectory: Trajectory;
     };
@@ -223,6 +224,7 @@ Deno.serve(async (req) => {
           leader_now: leader.mid,
           gap_now: gapNow,
           gap_1h: gap1h,
+          gap_2h: gap2h,
           net_delta: netDelta,
           trajectory,
         });

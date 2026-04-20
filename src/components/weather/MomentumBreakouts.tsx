@@ -46,6 +46,7 @@ type ExternalMovement = {
   leader_label: string;
   runner_label: string;
   leaderNow: number;
+  gap2h: number;
   gap1h: number;
   gapNow: number;
   netDelta: number;
@@ -191,6 +192,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
         leader_label: r.leader_label,
         runner_label: r.runner_label,
         leaderNow: r.leader_now,
+        gap2h: r.gap_2h ?? r.gap_1h,
         gap1h: r.gap_1h,
         gapNow: r.gap_now,
         netDelta: r.net_delta,
@@ -396,6 +398,7 @@ const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => v
 const ExternalRow = ({ m }: { m: ExternalMovement }) => {
   const entryPct = (m.leaderNow * 100).toFixed(1);
   const upsidePct = ((1 - m.leaderNow) * 100).toFixed(1);
+  const gap2hPct = (m.gap2h * 100).toFixed(1);
   const gap1hPct = (m.gap1h * 100).toFixed(1);
   const gapNowPct = (m.gapNow * 100).toFixed(1);
   const netSign = m.netDelta >= 0 ? "+" : "";
@@ -403,13 +406,18 @@ const ExternalRow = ({ m }: { m: ExternalMovement }) => {
   const meta = TRAJ_META[m.trajectory] ?? TRAJ_META.flat;
   const nowColor = m.trajectory === "narrowing" ? "text-red-400" : m.trajectory === "flat" ? "text-foreground" : "text-emerald-400";
 
-  const open = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const openRow = () => {
     if (m.polymarket_url) window.open(m.polymarket_url, "_blank", "noopener,noreferrer");
   };
 
   return (
-    <li className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 hover:bg-surface-2/50">
+    <li
+      onClick={openRow}
+      className={cn(
+        "flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 hover:bg-surface-2/50",
+        m.polymarket_url && "cursor-pointer",
+      )}
+    >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-foreground">{m.leader_label}</span>
@@ -420,6 +428,8 @@ const ExternalRow = ({ m }: { m: ExternalMovement }) => {
           {m.city && <span className="text-xs text-muted-foreground truncate">· {m.city}</span>}
         </div>
         <div className="mt-1.5 inline-flex items-center gap-2 rounded border border-border bg-background/60 px-2.5 py-1.5">
+          <Snap label="2h ago" value={gap2hPct} />
+          <span className={cn("text-base", meta.arrow)}>→</span>
           <Snap label="1h ago" value={gap1hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
           <Snap label="Now" value={gapNowPct} bold valueClass={nowColor} />
@@ -436,14 +446,10 @@ const ExternalRow = ({ m }: { m: ExternalMovement }) => {
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Upside</div>
           <div className="font-mono-num font-semibold text-emerald-400">+{upsidePct}%</div>
         </div>
-        <button
-          onClick={open}
-          disabled={!m.polymarket_url}
-          className="inline-flex items-center gap-1 rounded border border-border bg-background hover:bg-surface-2 px-2 py-1 text-[11px] disabled:opacity-50"
-        >
+        <span className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground">
           <ExternalLink className="h-3 w-3" />
           Open
-        </button>
+        </span>
       </div>
     </li>
   );
