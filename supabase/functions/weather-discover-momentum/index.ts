@@ -187,14 +187,14 @@ Deno.serve(async (req) => {
         const leader = valid[0];
         const runner = valid[1];
         const gapNow = leader.mid - runner.mid;
-        if (gapNow < GAP_MIN || leader.mid > MAX_ENTRY_PRICE) return;
+        if (gapNow < gapMin || leader.mid > MAX_ENTRY_PRICE) return;
 
         const [lh, rh] = await Promise.all([fetchHistory(leader.tokenId), fetchHistory(runner.tokenId)]);
         const l1h = priceAt(lh, target1h);
         const r1h = priceAt(rh, target1h);
         if (l1h == null || r1h == null) return;
         const gap1h = l1h - r1h;
-        if (gap1h < GAP_MIN) return;
+        if (gap1h < gapMin) return;
 
         const target2h = now - 2 * 3_600_000;
         const l2h = priceAt(lh, target2h);
