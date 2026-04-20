@@ -13,7 +13,7 @@ import { BankrollInput, MinVolumeInput, MaxTradeCapInput } from "@/components/we
 import { StationOverridePicker } from "@/components/weather/StationOverridePicker";
 import {
   WeatherMarket, WeatherOutcome, WeatherSignal,
-  pct, edgeColor, confidenceColor, formatVolume,
+  pct, edgeColor, confidenceColor, formatVolume, applyMaxTradeCap,
 } from "@/lib/weather";
 import { cn } from "@/lib/utils";
 
