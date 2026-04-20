@@ -196,8 +196,9 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
         netDelta: r.net_delta,
         trajectory: r.trajectory,
       }));
-      // Same combined-score sort as local results.
-      mapped.sort((a, b) => ((1 - b.leaderNow) * b.gapNow) - ((1 - a.leaderNow) * a.gapNow));
+      // Same average-score sort as local results.
+      const score = (leaderNow: number, gapNow: number) => ((1 - leaderNow) + gapNow) / 2;
+      mapped.sort((a, b) => score(b.leaderNow, b.gapNow) - score(a.leaderNow, a.gapNow));
       setExternals(mapped);
     } catch (e: any) {
       console.error("Discover failed", e);
