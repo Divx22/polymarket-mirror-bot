@@ -33,7 +33,7 @@ export const TradeDetailDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl w-[calc(100vw-1rem)] max-h-[90vh] overflow-y-auto p-3 sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             {market.market_question}
@@ -77,6 +77,7 @@ export const TradeDetailDialog = ({
           </div>
         )}
 
+        <div className="overflow-x-auto -mx-3 sm:mx-0">
         <Table>
           <TableHeader>
             <TableRow>
@@ -125,6 +126,7 @@ export const TradeDetailDialog = ({
             )}
           </TableBody>
         </Table>
+        </div>
 
         <div className="border-t border-border pt-3 text-sm text-muted-foreground">
           <div className="font-medium text-foreground mb-1">Manual execution</div>

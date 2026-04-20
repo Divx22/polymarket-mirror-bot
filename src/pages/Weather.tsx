@@ -118,19 +118,19 @@ const Weather = () => {
   return (
     <div className="min-h-screen">
       <header className="border-b border-border bg-background/80 backdrop-blur sticky top-0 z-10">
-        <div className="container py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link to="/" className="text-muted-foreground hover:text-foreground">
+        <div className="container py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <Link to="/" className="text-muted-foreground hover:text-foreground shrink-0">
               <ArrowLeft className="h-4 w-4" />
             </Link>
-            <div className="h-2 w-2 rounded-full bg-primary animate-pulse-soft" />
-            <h1 className="text-sm font-semibold tracking-wide">Weather Edge Trader</h1>
+            <div className="h-2 w-2 rounded-full bg-primary animate-pulse-soft shrink-0" />
+            <h1 className="text-sm font-semibold tracking-wide truncate">Weather Edge Trader</h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <BankrollInput userId={userId} bankroll={bankroll} onChange={setBankroll} />
             <Button variant="outline" size="sm" onClick={refreshAll} disabled={refreshingAll || markets.length === 0}>
-              {refreshingAll ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
-              Refresh all
+              {refreshingAll ? <Loader2 className="h-3 w-3 animate-spin sm:mr-1" /> : <RefreshCw className="h-3 w-3 sm:mr-1" />}
+              <span className="hidden sm:inline">Refresh all</span>
             </Button>
             <AddMarketDialog userId={userId} onAdded={load} />
             <Button variant="ghost" size="sm" onClick={signOut}>
@@ -140,7 +140,7 @@ const Weather = () => {
         </div>
       </header>
 
-      <main className="container py-6 space-y-4">
+      <main className="container py-4 sm:py-6 space-y-4 px-2 sm:px-4">
         <WeatherScanner
           markets={markets}
           outcomes={outcomes}
@@ -160,7 +160,7 @@ const Weather = () => {
 
         <section className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[900px]">
               <thead className="text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border">
                 <tr>
                   <th className="text-left px-4 py-2 font-medium">Market</th>
