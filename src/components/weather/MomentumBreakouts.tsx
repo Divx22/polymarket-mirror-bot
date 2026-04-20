@@ -28,11 +28,11 @@ type Movement = {
 
 // Two independent breakout triggers (either fires):
 //   1) RISE: leader's price rose ≥25% relative in last 2h (catches fast climbers from any base)
-//   2) GAP-WIDENING: leader was already ahead AND the gap to #2 grew by ≥8¢ in last 2h
-// Both require: gap-now ≥15¢ absolute, and entry ≤85¢ (no upside otherwise).
+//   2) GAP-WIDENING: leader was already ahead AND the gap to #2 grew by ≥8% in last 2h
+// Both require: gap-now ≥15% absolute, and entry ≤85% (no upside otherwise).
 const RISE_PCT_THRESHOLD = 0.25;     // +25% relative move on leader
 const GAP_THRESHOLD = 0.15;          // current gap #1 vs #2
-const GAP_WIDENING_THRESHOLD = 0.08; // gap grew by ≥8¢ over the window
+const GAP_WIDENING_THRESHOLD = 0.08; // gap grew by ≥8% over the window
 const WINDOW_HOURS = 2;
 const MAX_ENTRY_PRICE = 0.85;
 const MIN_HOURS_TO_EVENT = 0.5;
@@ -179,7 +179,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider">Momentum (All Markets)</div>
             <div className="text-[10px] text-muted-foreground">
-              Breakout = (≥{Math.round(RISE_PCT_THRESHOLD * 100)}% rise OR gap widened ≥{Math.round(GAP_WIDENING_THRESHOLD * 100)}¢) + gap ≥{Math.round(GAP_THRESHOLD * 100)}¢ + entry ≤{Math.round(MAX_ENTRY_PRICE * 100)}¢
+              Breakout = (≥{Math.round(RISE_PCT_THRESHOLD * 100)}% rise OR gap widened ≥{Math.round(GAP_WIDENING_THRESHOLD * 100)}%) + gap ≥{Math.round(GAP_THRESHOLD * 100)}% + entry ≤{Math.round(MAX_ENTRY_PRICE * 100)}%
             </div>
           </div>
         </div>
@@ -241,9 +241,9 @@ const BreakoutRow = ({ b, onSelect }: { b: Movement; onSelect?: (m: WeatherMarke
   const copyPrice = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await navigator.clipboard.writeText(cents);
+      await navigator.clipboard.writeText(`${cents}%`);
       setCopied(true);
-      toast.success(`Copied ${cents}¢`);
+      toast.success(`Copied ${cents}%`);
       setTimeout(() => setCopied(false), 1500);
     } catch {
       toast.error("Copy failed");
@@ -273,20 +273,20 @@ const BreakoutRow = ({ b, onSelect }: { b: Movement; onSelect?: (m: WeatherMarke
             </span>
           </div>
           <div className="text-[11px] text-muted-foreground mt-0.5">
-            <span className="font-mono-num text-foreground">{(b.priceThen * 100).toFixed(0)}¢ → {(b.priceNow * 100).toFixed(0)}¢</span>
+            <span className="font-mono-num text-foreground">{(b.priceThen * 100).toFixed(1)}% → {(b.priceNow * 100).toFixed(1)}%</span>
             <span className={cn("font-semibold ml-1", isUp ? "text-emerald-400" : "text-red-400")}>
-              ({isUp ? "+" : "−"}{deltaPctAbs.toFixed(0)}% / {deltaCents.toFixed(0)}¢ in 2h)
+              ({isUp ? "+" : "−"}{deltaPctAbs.toFixed(0)}% / {deltaCents.toFixed(0)}% in 2h)
             </span>
             {b.runnerUp && (
-              <> · #2 <span className="font-mono-num text-foreground">{b.runnerUp.label} {((b.runnerUp.polymarket_price ?? 0) * 100).toFixed(0)}¢</span> · gap{" "}
+              <> · #2 <span className="font-mono-num text-foreground">{b.runnerUp.label} {((b.runnerUp.polymarket_price ?? 0) * 100).toFixed(1)}%</span> · gap{" "}
                 {b.gapThen != null ? (
-                  <span className="font-mono-num text-foreground">{(b.gapThen * 100).toFixed(0)}¢ → {(b.gap * 100).toFixed(0)}¢</span>
+                  <span className="font-mono-num text-foreground">{(b.gapThen * 100).toFixed(1)}% → {(b.gap * 100).toFixed(1)}%</span>
                 ) : (
-                  <span className="font-mono-num text-foreground">{(b.gap * 100).toFixed(0)}¢</span>
+                  <span className="font-mono-num text-foreground">{(b.gap * 100).toFixed(0)}%</span>
                 )}
                 {b.gapThen != null && Math.abs(b.gapDelta) >= 0.02 && (
                   <span className={cn("ml-1 font-semibold", b.gapDelta >= 0 ? "text-emerald-400" : "text-red-400")}>
-                    ({b.gapDelta >= 0 ? "+" : "−"}{Math.abs(b.gapDelta * 100).toFixed(0)}¢)
+                    ({b.gapDelta >= 0 ? "+" : "−"}{Math.abs(b.gapDelta * 100).toFixed(1)}%)
                   </span>
                 )}
               </>
@@ -297,11 +297,11 @@ const BreakoutRow = ({ b, onSelect }: { b: Movement; onSelect?: (m: WeatherMarke
       <div className="flex items-center gap-3 pl-5 sm:pl-0">
         <div className="text-right">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Entry</div>
-          <div className={cn("font-mono-num font-semibold", b.isBreakout ? "text-blue-400" : "text-foreground")}>{cents}¢</div>
+          <div className={cn("font-mono-num font-semibold", b.isBreakout ? "text-blue-400" : "text-foreground")}>{cents}%</div>
         </div>
         <div className="text-right">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Upside</div>
-          <div className={cn("font-mono-num font-semibold", upside >= 30 ? "text-emerald-400" : "text-foreground")}>+{upside.toFixed(0)}¢</div>
+          <div className={cn("font-mono-num font-semibold", upside >= 30 ? "text-emerald-400" : "text-foreground")}>+{upside.toFixed(1)}%</div>
         </div>
         <button
           onClick={copyPrice}
