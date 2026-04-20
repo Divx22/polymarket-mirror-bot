@@ -160,7 +160,7 @@ const Weather = () => {
 
         <section className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[900px]">
               <thead className="text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border">
                 <tr>
                   <th className="text-left px-4 py-2 font-medium">Market</th>
