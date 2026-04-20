@@ -170,12 +170,6 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
     setItems(found);
     setScannedAt(Date.now());
     setScanning(false);
-    if (found.length > 0) {
-      const accel = found.filter(f => f.trajectory === "accelerating").length;
-      toast.success(`${found.length} qualified · ${accel} accelerating`);
-    } else {
-      toast.info(`No markets in your scanner qualified at ≥${Math.round(gapMin * 100)}%`);
-    }
   };
 
   const discover = async () => {
