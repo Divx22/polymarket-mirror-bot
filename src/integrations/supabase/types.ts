@@ -267,6 +267,56 @@ export type Database = {
         }
         Relationships: []
       }
+      forecast_snapshots: {
+        Row: {
+          created_at: string
+          event_time: string
+          forecast_lead_hours: number
+          forecast_temp_c: number
+          id: string
+          market_id: string
+          model_name: string
+          resolved: boolean
+          station_code: string | null
+          taken_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_time: string
+          forecast_lead_hours: number
+          forecast_temp_c: number
+          id?: string
+          market_id: string
+          model_name: string
+          resolved?: boolean
+          station_code?: string | null
+          taken_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event_time?: string
+          forecast_lead_hours?: number
+          forecast_temp_c?: number
+          id?: string
+          market_id?: string
+          model_name?: string
+          resolved?: boolean
+          station_code?: string | null
+          taken_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "forecast_snapshots_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "weather_markets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       markets_cache: {
         Row: {
           asset_id: string
