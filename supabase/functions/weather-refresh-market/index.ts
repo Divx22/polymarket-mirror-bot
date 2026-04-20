@@ -374,13 +374,15 @@ Deno.serve(async (req) => {
     const eventLocalDay = localDay;
     const todayLocal = localYMD(new Date(), timezone);
     const useMetar = eventLocalDay <= todayLocal; // event is today or in the past
-    const [ecmwfEns, gefs, ifsDet, aifsDet, graphcastDet, nwsHours, metars] = await Promise.all([
+    const [ecmwfEns, gefs, ifsDet, aifsDet, graphcastDet, nwsHours, nbmHours, vcMax, metars] = await Promise.all([
       fetchEnsemble(lat, lon, timezone, "ecmwf_ifs025").catch(() => null),
       fetchEnsemble(lat, lon, timezone, "gfs025").catch(() => null),
       fetchOpenMeteoModel("https://api.open-meteo.com/v1/forecast", lat, lon, timezone, "ecmwf_ifs025").catch(() => null),
       fetchOpenMeteoModel("https://api.open-meteo.com/v1/forecast", lat, lon, timezone, "ecmwf_aifs025").catch(() => null),
       fetchOpenMeteoModel("https://api.open-meteo.com/v1/forecast", lat, lon, timezone, "graphcast").catch(() => null),
       usMarket ? fetchNwsHourly(Number(lat), Number(lon)) : Promise.resolve(null),
+      usMarket ? fetchNbmHourly(Number(lat), Number(lon)).catch(() => null) : Promise.resolve(null),
+      fetchVisualCrossing(Number(lat), Number(lon), localDay).catch(() => null),
       useMetar ? fetchMetar(stationCode, 30) : Promise.resolve([] as { time: string; tempC: number }[]),
     ]);
 
