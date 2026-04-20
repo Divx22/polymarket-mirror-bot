@@ -51,10 +51,11 @@ const Weather = () => {
       supabase.from("weather_markets").select("*").eq("active", true).order("event_time"),
       supabase.from("weather_outcomes").select("*").order("display_order"),
       supabase.from("weather_signals").select("*").order("created_at", { ascending: false }),
-      supabase.from("config").select("bankroll_usdc, min_volume_usd").eq("user_id", userId).maybeSingle(),
+      supabase.from("config").select("bankroll_usdc, min_volume_usd, max_trade_pct").eq("user_id", userId).maybeSingle(),
     ]);
     if (cfg?.bankroll_usdc != null) setBankroll(Number(cfg.bankroll_usdc));
     if ((cfg as any)?.min_volume_usd != null) setMinVolume(Number((cfg as any).min_volume_usd));
+    if ((cfg as any)?.max_trade_pct != null) setMaxTradePct(Number((cfg as any).max_trade_pct));
     setMarkets((ms ?? []) as WeatherMarket[]);
     const grouped: Record<string, WeatherOutcome[]> = {};
     (os ?? []).forEach((o: any) => {
