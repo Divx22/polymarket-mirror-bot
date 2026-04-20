@@ -168,12 +168,13 @@ type CalcProps = {
   sizePct: number;
   bid: number | null;
   mid: number | null;
+  ask?: number | null;
   maxTradePct?: number;
 };
 
-export const PositionCalculator = ({ bankrollUsdc, sizePct, bid, mid, maxTradePct = 2 }: CalcProps) => {
+export const PositionCalculator = ({ bankrollUsdc, sizePct, bid, mid, ask = null, maxTradePct = 2 }: CalcProps) => {
   const { capped: effectivePct, wasCapped } = applyMaxTradeCap(sizePct, maxTradePct);
-  const plan = computePositionPlan(bankrollUsdc, effectivePct, bid, mid);
+  const plan = computePositionPlan(bankrollUsdc, effectivePct, bid, mid, ask);
   if (effectivePct <= 0 || bankrollUsdc <= 0) return null;
 
   const fmt = (n: number | null | undefined, dp = 2) =>
