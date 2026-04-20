@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Sparkles, TrendingUp, AlertCircle } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import {
   type WeatherMarket, type WeatherOutcome, type WeatherSignal,
-  pct, edgeColor, confidenceColor,
+  pct, edgeColor,
 } from "@/lib/weather";
 import { cn } from "@/lib/utils";
 import { PositionCalculator } from "./PositionCalculator";
+import { ConfidenceExplainer } from "./ConfidenceExplainer";
 
 export type ScoredOutcome = {
   outcome: WeatherOutcome;
@@ -150,9 +150,12 @@ const BestCard = ({ pick, bankroll, onSelect }: { pick: ScoredOutcome; bankroll:
           </div>
         </div>
         {conf && (
-          <Badge variant="outline" className={cn("uppercase text-[10px] tracking-wider", confidenceColor(conf))}>
-            {conf}
-          </Badge>
+          <ConfidenceExplainer
+            confidence={conf}
+            signal={signal}
+            outcome={o}
+            market={m}
+          />
         )}
       </div>
 
