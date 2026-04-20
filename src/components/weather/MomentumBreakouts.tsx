@@ -10,17 +10,19 @@ type Props = {
   onSelect?: (m: WeatherMarket) => void;
 };
 
-// SIMPLE RULE:
-//   Compare the gap between #1 and #2 outcomes 1 hour ago vs now (same two outcomes).
-// RULES (newbie-friendly):
-//   Round 1: current gap between #1 and #2 outcomes must be ≥ GAP_MIN.
-//   Round 2: 1h ago, the SAME two outcomes' gap must ALSO have been ≥ GAP_MIN.
-//   Display the change: positive = widening, 0% = flat, negative = narrowing.
-const WINDOW_HOURS = 1;
-const GAP_MIN = 0.15;          // 15% threshold for both rounds
-const MAX_ENTRY_PRICE = 0.95;  // virtually never enter at >95%
+// RULES:
+//   Qualify: gap (#1 vs #2, same outcomes) is ≥ GAP_MIN at all 3 snapshots: 2h ago, 1h ago, now.
+//   Trajectory based on the two step deltas (d1 = 1h - 2h, d2 = now - 1h):
+//     accelerating  — both d1 and d2 are positive AND d2 ≥ d1 (gap grew faster recently)
+//     widening      — net (now - 2h) > FLAT_BAND (steady up trend)
+//     flat          — |now - 2h| ≤ FLAT_BAND
+//     narrowing     — net (now - 2h) < -FLAT_BAND
+const GAP_MIN = 0.15;
+const MAX_ENTRY_PRICE = 0.95;
 const MIN_HOURS_TO_EVENT = 0.5;
+const FLAT_BAND = 0.01; // ±1% rounds to "flat"
 
+type Trajectory = "accelerating" | "widening" | "flat" | "narrowing";
 type HistPoint = { t: number; p: number };
 
 type Movement = {
@@ -28,9 +30,11 @@ type Movement = {
   leader: WeatherOutcome;
   runnerUp: WeatherOutcome;
   leaderNow: number;
-  gapNow: number;
-  gapThen: number;        // qualified — always ≥ GAP_MIN
-  gapDelta: number;       // gapNow - gapThen (positive=widening, negative=narrowing)
+  gap2h: number;     // gap 2h ago
+  gap1h: number;     // gap 1h ago
+  gapNow: number;    // gap now
+  netDelta: number;  // gapNow - gap2h
+  trajectory: Trajectory;
 };
 
 async function fetchHistory(tokenId: string): Promise<HistPoint[]> {
@@ -86,7 +90,8 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
     });
 
     const found: Movement[] = [];
-    const targetThen = Date.now() - WINDOW_HOURS * 3_600_000;
+    const target1h = Date.now() - 1 * 3_600_000;
+    const target2h = Date.now() - 2 * 3_600_000;
 
     let done = 0;
     const BATCH = 4;
@@ -96,7 +101,6 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         const outs = (outcomes[m.id] ?? []).filter(o => o.clob_token_id);
         if (outs.length < 2) return;
 
-        // Fetch LIVE midpoints for every outcome — DB prices are stale snapshots.
         const liveMids = await Promise.all(outs.map(o => fetchMid(o.clob_token_id!)));
         const enriched = outs.map((o, i) => ({ o, mid: liveMids[i] ?? o.polymarket_price ?? 0 }));
         enriched.sort((a, b) => b.mid - a.mid);
@@ -104,42 +108,53 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         const leader = enriched[0].o;
         const runnerUp = enriched[1].o;
         const leaderNow = enriched[0].mid;
-        const runnerNow = enriched[1].mid;
-        const gapNow = leaderNow - runnerNow;
+        const gapNow = leaderNow - enriched[1].mid;
 
-        // Round 1: current gap must qualify.
         if (gapNow < GAP_MIN) return;
         if (leaderNow > MAX_ENTRY_PRICE) return;
 
-        // Round 2: same two outcomes' gap 1h ago must also qualify.
         const [leaderHist, runnerHist] = await Promise.all([
           fetchHistory(leader.clob_token_id!),
           fetchHistory(runnerUp.clob_token_id!),
         ]);
-        const leaderThen = priceAt(leaderHist, targetThen);
-        const runnerThen = priceAt(runnerHist, targetThen);
-        if (leaderThen == null || runnerThen == null) return; // no history → can't qualify
-        const gapThen = leaderThen - runnerThen;
-        if (gapThen < GAP_MIN) return; // failed Round 2
+        const leader1h = priceAt(leaderHist, target1h);
+        const runner1h = priceAt(runnerHist, target1h);
+        const leader2h = priceAt(leaderHist, target2h);
+        const runner2h = priceAt(runnerHist, target2h);
+        if (leader1h == null || runner1h == null || leader2h == null || runner2h == null) return;
 
-        const gapDelta = gapNow - gapThen;
-        found.push({ market: m, leader, runnerUp, leaderNow, gapNow, gapThen, gapDelta });
+        const gap1h = leader1h - runner1h;
+        const gap2h = leader2h - runner2h;
+        if (gap1h < GAP_MIN || gap2h < GAP_MIN) return; // all 3 must qualify
+
+        const d1 = gap1h - gap2h;       // change 2h→1h
+        const d2 = gapNow - gap1h;      // change 1h→now
+        const netDelta = gapNow - gap2h;
+
+        let trajectory: Trajectory;
+        if (d1 > 0 && d2 > 0 && d2 >= d1) trajectory = "accelerating";
+        else if (netDelta > FLAT_BAND) trajectory = "widening";
+        else if (netDelta < -FLAT_BAND) trajectory = "narrowing";
+        else trajectory = "flat";
+
+        found.push({ market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory });
       }));
       done += batch.length;
       setProgress(Math.round((done / eligible.length) * 100));
     }
 
-    // Sort by largest positive momentum (widening) first; flat/negative after.
-    found.sort((a, b) => b.gapDelta - a.gapDelta);
+    // Order: accelerating > widening > flat > narrowing; tiebreak by netDelta.
+    const rank: Record<Trajectory, number> = { accelerating: 0, widening: 1, flat: 2, narrowing: 3 };
+    found.sort((a, b) => rank[a.trajectory] - rank[b.trajectory] || b.netDelta - a.netDelta);
 
     setItems(found);
     setScannedAt(Date.now());
     setScanning(false);
-    const widening = found.filter(f => f.gapDelta > 0).length;
+    const accel = found.filter(f => f.trajectory === "accelerating").length;
     if (found.length > 0) {
-      toast.success(`${found.length} qualified · ${widening} widening`);
+      toast.success(`${found.length} qualified · ${accel} accelerating`);
     } else {
-      toast.info(`No markets qualified (need gap ≥${Math.round(GAP_MIN * 100)}% now AND 1h ago)`);
+      toast.info(`No markets qualified (need gap ≥${Math.round(GAP_MIN * 100)}% at 2h ago, 1h ago, and now)`);
     }
   };
 
@@ -156,7 +171,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider">Momentum</div>
             <div className="text-[10px] text-muted-foreground">
-              #1 vs #2 gap is ≥{Math.round(GAP_MIN * 100)}% now AND was ≥{Math.round(GAP_MIN * 100)}% an hour ago. Change shown as ± vs 1h ago.
+              Gap #1 vs #2 ≥{Math.round(GAP_MIN * 100)}% at all 3 snapshots (2h, 1h, now). Badge = trajectory.
             </div>
           </div>
         </div>
@@ -178,7 +193,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
 
       {!scanning && items.length === 0 && scannedAt != null && (
         <div className="px-4 py-6 text-center text-xs text-muted-foreground">
-          No markets qualified — need gap ≥{Math.round(GAP_MIN * 100)}% both now and 1h ago.
+          No markets qualified — need gap ≥{Math.round(GAP_MIN * 100)}% at 2h ago, 1h ago, and now.
         </div>
       )}
 
@@ -191,21 +206,44 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
   );
 };
 
+const TRAJ_META: Record<Trajectory, { label: string; badge: string; arrow: string }> = {
+  accelerating: {
+    label: "Accelerating",
+    badge: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+    arrow: "text-emerald-400",
+  },
+  widening: {
+    label: "Widening",
+    badge: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+    arrow: "text-emerald-400",
+  },
+  flat: {
+    label: "Flat",
+    badge: "bg-muted text-muted-foreground border-border",
+    arrow: "text-muted-foreground",
+  },
+  narrowing: {
+    label: "Narrowing",
+    badge: "bg-red-500/15 text-red-400 border-red-500/30",
+    arrow: "text-red-400",
+  },
+};
+
 const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => void }) => {
   const [copied, setCopied] = useState(false);
   const entryPct = (m.leaderNow * 100).toFixed(1);
   const upsidePct = ((1 - m.leaderNow) * 100).toFixed(1);
+  const gap2hPct = (m.gap2h * 100).toFixed(1);
+  const gap1hPct = (m.gap1h * 100).toFixed(1);
   const gapNowPct = (m.gapNow * 100).toFixed(1);
-  const gapThenPct = (m.gapThen * 100).toFixed(1);
-  const gapDeltaPct = (m.gapDelta * 100).toFixed(1);
-  const isFlat = Math.abs(m.gapDelta) < 0.005; // <0.5% rounds to 0
-  const isUp = !isFlat && m.gapDelta > 0;
-  const badgeClass = isFlat
-    ? "bg-muted text-muted-foreground border-border"
-    : isUp
-      ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-      : "bg-red-500/15 text-red-400 border-red-500/30";
-  const badgeLabel = isFlat ? "Flat 0%" : isUp ? `Widening +${gapDeltaPct}%` : `Narrowing ${gapDeltaPct}%`;
+  const netSign = m.netDelta >= 0 ? "+" : "";
+  const netPct = (m.netDelta * 100).toFixed(1);
+  const meta = TRAJ_META[m.trajectory];
+  const nowColor = m.trajectory === "narrowing"
+    ? "text-red-400"
+    : m.trajectory === "flat"
+      ? "text-foreground"
+      : "text-emerald-400";
 
   const copy = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -226,20 +264,25 @@ const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => v
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-foreground">{m.leader.label}</span>
           <span className="text-xs text-muted-foreground">vs {m.runnerUp.label}</span>
-          <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded border text-[9px] uppercase tracking-wider", badgeClass)}>
-            {badgeLabel}
+          <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded border text-[9px] uppercase tracking-wider", meta.badge)}>
+            {meta.label} {netSign}{netPct}%
           </span>
           <span className="text-xs text-muted-foreground truncate">· {m.market.city}</span>
         </div>
         <div className="mt-1.5 inline-flex items-center gap-2 rounded border border-border bg-background/60 px-2.5 py-1.5">
           <div className="flex flex-col items-center">
-            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">1h ago</span>
-            <span className="font-mono-num text-sm font-semibold text-foreground leading-tight">{gapThenPct}%</span>
+            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">2h ago</span>
+            <span className="font-mono-num text-sm font-semibold text-foreground leading-tight">{gap2hPct}%</span>
           </div>
-          <span className={cn("text-base", isFlat ? "text-muted-foreground" : isUp ? "text-emerald-400" : "text-red-400")}>→</span>
+          <span className={cn("text-base", meta.arrow)}>→</span>
+          <div className="flex flex-col items-center">
+            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">1h ago</span>
+            <span className="font-mono-num text-sm font-semibold text-foreground leading-tight">{gap1hPct}%</span>
+          </div>
+          <span className={cn("text-base", meta.arrow)}>→</span>
           <div className="flex flex-col items-center">
             <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Now</span>
-            <span className={cn("font-mono-num text-sm font-bold leading-tight", isFlat ? "text-foreground" : isUp ? "text-emerald-400" : "text-red-400")}>{gapNowPct}%</span>
+            <span className={cn("font-mono-num text-sm font-bold leading-tight", nowColor)}>{gapNowPct}%</span>
           </div>
           <span className="text-[9px] uppercase tracking-wider text-muted-foreground ml-1">Gap #1 vs #2</span>
         </div>
