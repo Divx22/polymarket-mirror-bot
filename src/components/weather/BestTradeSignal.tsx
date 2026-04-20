@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Sparkles, TrendingUp, AlertCircle, Copy, Check } from "lucide-react";
+import { Sparkles, TrendingUp, AlertCircle, Copy, Check, EyeOff, Eye } from "lucide-react";
 import { toast } from "sonner";
 import {
   type WeatherMarket, type WeatherOutcome, type WeatherSignal,
@@ -29,46 +29,75 @@ type Props = {
 const MIN_EDGE = 0.07;
 
 export const BestTradeSignal = ({ markets, outcomes, signals, bankroll, minVolume = 0, mismatchOnly = false, maxTradePct = 2, onSelect }: Props) => {
-  // Flatten all outcomes with their parent market + signal context, filter by edge + volume + mismatch
-  const scored: ScoredOutcome[] = [];
+  const [showSubThreshold, setShowSubThreshold] = useState(false);
+
+  // Flatten all outcomes with their parent market + signal context.
+  // We keep two buckets: qualified (≥7% edge, outside settlement window, passes filters)
+  // and subThreshold (everything else with positive-but-small edge or settlement risk).
+  const qualified: ScoredOutcome[] = [];
+  const subThreshold: (ScoredOutcome & { reason: string })[] = [];
   for (const m of markets) {
     const vol = Number(m.event_volume_24h ?? 0);
-    if (vol < minVolume) continue;
-    // Skip markets within the settlement-risk window — apparent edge here is
-    // almost always a settlement quirk, not real alpha.
-    if (isSettlementRisk(m.event_time)) continue;
+    const lowVol = vol < minVolume;
+    const settlement = isSettlementRisk(m.event_time);
     const sig = signals[m.id] ?? null;
-    if (mismatchOnly && !sig?.favorite_mismatch) continue;
+    const failsMismatch = mismatchOnly && !sig?.favorite_mismatch;
     const outs = outcomes[m.id] ?? [];
     for (const o of outs) {
-      if ((o.edge ?? -Infinity) >= MIN_EDGE) {
-        scored.push({ outcome: o, market: m, signal: sig });
+      const edge = o.edge ?? -Infinity;
+      if (edge < 0) continue; // ignore negative-edge outcomes entirely
+      const meetsEdge = edge >= MIN_EDGE;
+      if (meetsEdge && !lowVol && !settlement && !failsMismatch) {
+        qualified.push({ outcome: o, market: m, signal: sig });
+      } else if (edge > 0) {
+        const reasons: string[] = [];
+        if (!meetsEdge) reasons.push(`edge ${(edge * 100).toFixed(1)}% < 7%`);
+        if (settlement) reasons.push("settlement risk");
+        if (lowVol) reasons.push("low volume");
+        if (failsMismatch) reasons.push("no mismatch");
+        subThreshold.push({ outcome: o, market: m, signal: sig, reason: reasons.join(" · ") });
       }
     }
   }
-  scored.sort((a, b) => {
+  const sortFn = (a: ScoredOutcome, b: ScoredOutcome) => {
     const ma = a.signal?.favorite_mismatch ? 1 : 0;
     const mb = b.signal?.favorite_mismatch ? 1 : 0;
     if (ma !== mb) return mb - ma;
     return (b.outcome.edge ?? -Infinity) - (a.outcome.edge ?? -Infinity);
-  });
+  };
+  qualified.sort(sortFn);
+  subThreshold.sort(sortFn);
 
-  if (scored.length === 0) {
+  const best = qualified[0] ?? null;
+  const others = qualified.slice(1, 6);
+
+  if (!best) {
     return (
-      <div className="rounded-lg border border-border bg-card p-5 flex items-center gap-3">
-        <AlertCircle className="h-5 w-5 text-muted-foreground" />
-        <div>
-          <div className="text-sm font-semibold">No clear edge right now</div>
-          <div className="text-xs text-muted-foreground">
-            All tracked markets have edge below 7%. Refresh forecasts or add new markets.
+      <div className="space-y-3">
+        <div className="rounded-lg border border-border bg-card p-5 flex items-center gap-3">
+          <AlertCircle className="h-5 w-5 text-muted-foreground" />
+          <div className="flex-1">
+            <div className="text-sm font-semibold">No qualified edge right now</div>
+            <div className="text-xs text-muted-foreground">
+              No outcomes meet all criteria (≥7% edge, outside 6h settlement window, passes filters).
+            </div>
           </div>
+          {subThreshold.length > 0 && (
+            <button
+              onClick={() => setShowSubThreshold((v) => !v)}
+              className="inline-flex items-center gap-1 rounded border border-border bg-surface-2/60 hover:bg-surface-2 px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            >
+              {showSubThreshold ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+              {showSubThreshold ? "Hide" : `Show ${subThreshold.length} sub-threshold`}
+            </button>
+          )}
         </div>
+        {showSubThreshold && subThreshold.length > 0 && (
+          <SubThresholdList items={subThreshold.slice(0, 10)} onSelect={onSelect} />
+        )}
       </div>
     );
   }
-
-  const best = scored[0];
-  const others = scored.slice(1, 6);
 
   return (
     <div className="space-y-3">
@@ -113,9 +142,64 @@ export const BestTradeSignal = ({ markets, outcomes, signals, bankroll, minVolum
           </ul>
         </div>
       )}
+      {subThreshold.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowSubThreshold((v) => !v)}
+            className="inline-flex items-center gap-1 rounded border border-border bg-surface-2/60 hover:bg-surface-2 px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showSubThreshold ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+            {showSubThreshold ? "Hide sub-threshold" : `Show ${subThreshold.length} sub-threshold`}
+          </button>
+          {showSubThreshold && (
+            <div className="mt-2">
+              <SubThresholdList items={subThreshold.slice(0, 10)} onSelect={onSelect} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
+
+const SubThresholdList = ({
+  items, onSelect,
+}: {
+  items: (ScoredOutcome & { reason: string })[];
+  onSelect?: (m: WeatherMarket) => void;
+}) => (
+  <div className="rounded-lg border border-dashed border-border bg-card/50 overflow-hidden">
+    <div className="px-4 py-2 text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border/60 bg-surface-2/30">
+      Sub-threshold (not actionable — for context only)
+    </div>
+    <ul className="divide-y divide-border/40">
+      {items.map((p) => (
+        <li
+          key={p.outcome.id}
+          onClick={() => onSelect?.(p.market)}
+          className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 px-3 sm:px-4 py-2.5 text-sm hover:bg-surface-2/40 cursor-pointer opacity-75"
+        >
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <AlertCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="truncate font-medium">{p.outcome.label}</div>
+              <div className="truncate text-[11px] text-muted-foreground">
+                {p.market.city} · {p.reason}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 sm:gap-4 text-xs font-mono-num pl-5 sm:pl-0">
+            <span className="text-muted-foreground">M {pct(p.outcome.p_model, 0)}</span>
+            <span className="text-muted-foreground">P {pct(p.outcome.polymarket_price, 0)}</span>
+            <span className={cn("font-semibold w-12 sm:w-14 text-right", edgeColor(p.outcome.edge))}>
+              {pct(p.outcome.edge)}
+            </span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  </div>
+);
 
 const BestCard = ({ pick, bankroll, maxTradePct = 2, onSelect }: { pick: ScoredOutcome; bankroll: number; maxTradePct?: number; onSelect?: (m: WeatherMarket) => void }) => {
   const { outcome: o, market: m, signal } = pick;
