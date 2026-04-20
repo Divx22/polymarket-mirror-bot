@@ -40,9 +40,9 @@ const MIN_HOURS_TO_EVENT = 0.5;
 type HistPoint = { t: number; p: number };
 
 async function fetchHistory(tokenId: string): Promise<HistPoint[]> {
-  // Polymarket prices-history endpoint. interval=1h gives ~hourly samples.
-  // fidelity=1 returns minute-level — too noisy. interval=1h is sufficient for 2h delta.
-  const url = `https://clob.polymarket.com/prices-history?market=${tokenId}&interval=1h&fidelity=60`;
+  // interval=1d returns ~24h of hourly samples — enough to look back 2h reliably.
+  // (interval=1h only returns the last ~30min, which is useless for a 2h delta.)
+  const url = `https://clob.polymarket.com/prices-history?market=${tokenId}&interval=1d&fidelity=60`;
   try {
     const r = await fetch(url);
     if (!r.ok) return [];
