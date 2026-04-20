@@ -111,7 +111,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         const priceNow = leader.polymarket_price ?? 0;
         const gap = priceNow - (runnerUp?.polymarket_price ?? 0);
 
-        const hist = await fetchHistory(leader.clob_token_id!);
+        
         const [hist, runnerHist] = await Promise.all([
           fetchHistory(leader.clob_token_id!),
           runnerUp?.clob_token_id ? fetchHistory(runnerUp.clob_token_id) : Promise.resolve([] as HistPoint[]),
