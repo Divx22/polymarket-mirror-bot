@@ -180,13 +180,17 @@ Deno.serve(async (req) => {
     }
 
     // Compute distributions
+    // IMPORTANT: P_model = ECMWF ensemble only. GFS is a single deterministic
+    // scenario, not a probability distribution — using it to *blend* probabilities
+    // artificially inflates confidence. Instead we use GFS-vs-ECMWF agreement
+    // purely as a confidence signal (see `agreement` below).
     const enriched = await Promise.all(
       outcomes.map(async (o) => {
         const pEcmwf = probInBucket(ensValues, o.bucket_min_c, o.bucket_max_c);
         const pNoaa = gfsMax != null
           ? ((gfsMax >= (o.bucket_min_c ?? -Infinity) && gfsMax <= (o.bucket_max_c ?? Infinity)) ? 1 : 0)
-          : pEcmwf; // fallback: trust ECMWF
-        const pModel = 0.55 * pEcmwf + 0.45 * pNoaa;
+          : pEcmwf;
+        const pModel = pEcmwf; // ECMWF only — no blending
         const price = o.clob_token_id ? await fetchPrice(o.clob_token_id) : null;
         const edge = price != null ? pModel - price : null;
         return { o, pEcmwf, pNoaa, pModel, price, edge };
@@ -196,11 +200,10 @@ Deno.serve(async (req) => {
     // Normalize ECMWF probabilities to sum to 1 across outcomes (handles bucket overlap/gaps)
     const sumEc = enriched.reduce((s, x) => s + x.pEcmwf, 0);
     if (sumEc > 0) {
-      for (const x of enriched) x.pEcmwf = x.pEcmwf / sumEc;
-    }
-    const sumModel = enriched.reduce((s, x) => s + x.pModel, 0);
-    if (sumModel > 0) {
-      for (const x of enriched) x.pModel = x.pModel / sumModel;
+      for (const x of enriched) {
+        x.pEcmwf = x.pEcmwf / sumEc;
+        x.pModel = x.pEcmwf;
+      }
     }
     // Recompute edges with normalized probs
     for (const x of enriched) {
@@ -221,6 +224,8 @@ Deno.serve(async (req) => {
     let bestEdge = -Infinity;
     let bestLabel: string | null = null;
     let bestSize = 0;
+    let bestPModel = 0;
+    let bestPrice: number | null = null;
     const distribution: any[] = [];
 
     for (const x of enriched) {
@@ -246,8 +251,17 @@ Deno.serve(async (req) => {
         bestEdge = x.edge;
         bestLabel = x.o.label;
         bestSize = size;
+        bestPModel = x.pModel;
+        bestPrice = x.price;
       }
     }
+
+    // Sanity flag: model very confident but market strongly disagrees → likely
+    // timing/station/microclimate mismatch. Surface as VERIFY (don't auto-size up).
+    const verifyFlag =
+      bestPModel > 0.8 && bestPrice != null && bestPrice < 0.3
+        ? "Model >80% but market <30% — verify resolution window, station, and forecast freshness before sizing up."
+        : null;
 
     await supabase.from("weather_signals").insert({
       market_id: m.id,
@@ -257,7 +271,7 @@ Deno.serve(async (req) => {
       best_outcome_label: bestLabel,
       best_edge: Number.isFinite(bestEdge) ? bestEdge : null,
       best_suggested_size_percent: bestSize,
-      distribution,
+      distribution: { outcomes: distribution, verify_flag: verifyFlag },
     });
 
     await supabase.from("weather_markets").update({ updated_at: new Date().toISOString() }).eq("id", m.id);
@@ -269,6 +283,7 @@ Deno.serve(async (req) => {
       best_outcome_label: bestLabel,
       best_edge: Number.isFinite(bestEdge) ? bestEdge : null,
       best_suggested_size_percent: bestSize,
+      verify_flag: verifyFlag,
       distribution,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {

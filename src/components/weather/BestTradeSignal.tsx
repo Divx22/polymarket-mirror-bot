@@ -174,14 +174,23 @@ const BestCard = ({ pick, onSelect }: { pick: ScoredOutcome; onSelect?: (m: Weat
         />
       </div>
 
+      {o.p_model != null && o.p_model > 0.8 && o.polymarket_price != null && o.polymarket_price < 0.3 && (
+        <div className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300 mb-2 leading-relaxed">
+          <span className="font-semibold">⚠ VERIFY before sizing up.</span> Model says &gt;80% but market is &lt;30%.
+          Likely causes: resolution window (station vs. grid), forecast lag, or microclimate near a temperature threshold.
+          Treat suggested size as a ceiling, not a target.
+        </div>
+      )}
+
       <div className="rounded border border-border/60 bg-background/40 px-3 py-2 text-[11px] text-muted-foreground mb-2 leading-relaxed">
         <span className="text-foreground font-medium">How edge is computed:</span>{" "}
-        We pull the live <span className="text-foreground">ECMWF 51-member ensemble</span> + GFS
-        deterministic forecast from Open-Meteo, count how many members land in this temperature
-        bucket on the event day, then blend (55% ECMWF / 45% GFS) to get{" "}
-        <span className="text-foreground">Model Prob.</span> Edge ={" "}
-        <span className="text-foreground">Model Prob − Market Price</span>. Positive = market is
-        underpricing this outcome vs. forecast consensus.
+        <span className="text-foreground">Model Prob.</span> = share of the live{" "}
+        <span className="text-foreground">ECMWF 51-member ensemble</span> (Open-Meteo) whose daily-max
+        temperature lands in this bucket. GFS is <span className="text-foreground">not blended into
+        probability</span> — it's a single deterministic run, so it only adjusts{" "}
+        <span className="text-foreground">Confidence</span> via agreement with ECMWF.{" "}
+        <span className="text-foreground">Edge = Model Prob − Market Price.</span>{" "}
+        Positive = market underprices vs. ensemble consensus.
       </div>
 
       <div className="rounded border border-border/60 bg-background/40 px-3 py-2 text-xs">
