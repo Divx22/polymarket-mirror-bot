@@ -4,7 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { MarketMakerPanel } from "@/components/MarketMakerPanel";
 import { MyPositionsPanel } from "@/components/MyPositionsPanel";
-import { LogOut } from "lucide-react";
+import { LogOut, CloudSun } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const Index = () => {
   const nav = useNavigate();
@@ -54,10 +55,18 @@ const Index = () => {
               Polymarket Market Maker
             </h1>
           </div>
-          <Button variant="ghost" size="sm" onClick={signOut}>
-            <LogOut className="h-4 w-4 mr-2" />
-            Sign out
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/weather">
+                <CloudSun className="h-4 w-4 mr-2" />
+                Weather Edge
+              </Link>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={signOut}>
+              <LogOut className="h-4 w-4 mr-2" />
+              Sign out
+            </Button>
+          </div>
         </div>
       </header>
 
