@@ -3,12 +3,12 @@ import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { LogOut, RefreshCw, Loader2, Trash2, ArrowLeft, Sparkles, Zap } from "lucide-react";
+import { LogOut, RefreshCw, Loader2, Trash2, ArrowLeft, Sparkles, Zap, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { AddMarketDialog } from "@/components/weather/AddMarketDialog";
 import { TradeDetailDialog } from "@/components/weather/TradeDetailDialog";
 import { BestTradeSignal } from "@/components/weather/BestTradeSignal";
-import { MomentumBreakouts } from "@/components/weather/MomentumBreakouts";
+
 import { WeatherScanner } from "@/components/weather/WeatherScanner";
 import { BankrollInput, MinVolumeInput, MaxTradeCapInput } from "@/components/weather/PositionCalculator";
 import { StationOverridePicker } from "@/components/weather/StationOverridePicker";
@@ -215,11 +215,7 @@ const Weather = () => {
           onSelect={(m) => setDetailMarket(m)}
         />
 
-        <MomentumBreakouts
-          markets={markets}
-          outcomes={outcomes}
-          onSelect={(m) => setDetailMarket(m)}
-        />
+        {/* Momentum scanner moved to its own page (/momentum) for focused analysis. */}
 
         <ClvPanel />
         <BiasPanel />
