@@ -1,5 +1,7 @@
 // Refresh probabilities + prices for ALL outcomes of a discrete-temperature market.
-// Distribution model: ECMWF 51-member ensemble histogram; NOAA used for agreement check.
+// Distribution model: BLENDED ENSEMBLE — ECMWF IFS + ECMWF AIFS (ML) + GFS GEFS + GraphCast (ML).
+// US cities additionally pulled from official NOAA NWS API (api.weather.gov) — Polymarket's settlement source.
+// Bias correction: subtracts mean recent forecast error per (station, model) before bucketing.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 const corsHeaders = {
@@ -27,7 +29,15 @@ type Station = {
   timezone: string;
 };
 
-// Returns YYYY-MM-DD in the given IANA timezone for a given Date.
+type Outcome = {
+  id: string;
+  label: string;
+  bucket_min_c: number | null;
+  bucket_max_c: number | null;
+  clob_token_id: string | null;
+  display_order: number;
+};
+
 function localYMD(d: Date, timezone: string): string {
   const fmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
@@ -39,33 +49,29 @@ function localYMD(d: Date, timezone: string): string {
   return `${y}-${m}-${day}`;
 }
 
-type Outcome = {
-  id: string;
-  label: string;
-  bucket_min_c: number | null;
-  bucket_max_c: number | null;
-  clob_token_id: string | null;
-  display_order: number;
-};
-
-function pickHourly(times: string[], target: Date): number {
-  let best = 0; let bestDiff = Infinity;
-  for (let i = 0; i < times.length; i++) {
-    const d = Math.abs(new Date(times[i]).getTime() - target.getTime());
-    if (d < bestDiff) { bestDiff = d; best = i; }
-  }
-  return best;
-}
-
-// Open-Meteo returns hourly times in the requested timezone (no offset suffix).
-// Passing timezone=<IANA> gives back local-time strings like "2026-04-20T14:00".
-async function fetchEnsemble(lat: number, lon: number, timezone: string) {
+// ---------- Open-Meteo fetchers (timezone-aware) ----------
+async function fetchOpenMeteoModel(
+  baseUrl: string, lat: number, lon: number, timezone: string, model: string,
+): Promise<{ time: string[]; temp: number[] }> {
   const url =
-    `https://ensemble-api.open-meteo.com/v1/ensemble?latitude=${lat}&longitude=${lon}` +
-    `&hourly=temperature_2m&models=ecmwf_ifs025&forecast_days=10` +
+    `${baseUrl}?latitude=${lat}&longitude=${lon}` +
+    `&hourly=temperature_2m&models=${model}&forecast_days=10` +
     `&timezone=${encodeURIComponent(timezone)}`;
   const r = await fetch(url);
-  if (!r.ok) throw new Error(`ecmwf-ensemble ${r.status}`);
+  if (!r.ok) throw new Error(`${model} ${r.status}`);
+  const j = await r.json();
+  return { time: j?.hourly?.time ?? [], temp: j?.hourly?.temperature_2m ?? [] };
+}
+
+async function fetchEnsemble(
+  lat: number, lon: number, timezone: string, model: string,
+): Promise<{ time: string[]; members: number[][] }> {
+  const url =
+    `https://ensemble-api.open-meteo.com/v1/ensemble?latitude=${lat}&longitude=${lon}` +
+    `&hourly=temperature_2m&models=${model}&forecast_days=10` +
+    `&timezone=${encodeURIComponent(timezone)}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${model} ${r.status}`);
   const j = await r.json();
   const time: string[] = j?.hourly?.time ?? [];
   const hourly = j?.hourly ?? {};
@@ -74,29 +80,64 @@ async function fetchEnsemble(lat: number, lon: number, timezone: string) {
   return { time, members };
 }
 
-async function fetchGfs(lat: number, lon: number, timezone: string) {
-  const url =
-    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-    `&hourly=temperature_2m&models=gfs_seamless&forecast_days=10` +
-    `&timezone=${encodeURIComponent(timezone)}`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`gfs ${r.status}`);
-  const j = await r.json();
-  return { time: j?.hourly?.time ?? [], temp: j?.hourly?.temperature_2m ?? [] };
+// ---------- NOAA NWS official API (US only, Polymarket's settlement source) ----------
+async function fetchNwsHourly(lat: number, lon: number): Promise<{ validTime: string; tempC: number }[] | null> {
+  try {
+    const headers = { "User-Agent": "polymarket-edge-app (contact@example.com)", Accept: "application/geo+json" };
+    const pointRes = await fetch(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`, { headers });
+    if (!pointRes.ok) return null;
+    const point = await pointRes.json();
+    const forecastUrl = point?.properties?.forecastHourly;
+    if (!forecastUrl) return null;
+    const fRes = await fetch(forecastUrl, { headers });
+    if (!fRes.ok) return null;
+    const fJson = await fRes.json();
+    const periods: any[] = fJson?.properties?.periods ?? [];
+    return periods.map((p) => ({
+      validTime: p.startTime as string,
+      tempC: p.temperatureUnit === "F" ? ((Number(p.temperature) - 32) * 5) / 9 : Number(p.temperature),
+    })).filter((x) => Number.isFinite(x.tempC));
+  } catch { return null; }
 }
 
-// Returns indices for all hours that fall on `localYmd` (00:00–23:59 local time).
-// `times[i]` is a local-time string like "2026-04-20T14:00" (Open-Meteo with timezone=...).
+function nwsDailyMaxForLocalDay(
+  hours: { validTime: string; tempC: number }[], timezone: string, localDay: string,
+): number | null {
+  let max = -Infinity;
+  for (const h of hours) {
+    const ymd = localYMD(new Date(h.validTime), timezone);
+    if (ymd === localDay && h.tempC > max) max = h.tempC;
+  }
+  return Number.isFinite(max) ? max : null;
+}
+
+// ---------- Bias correction ----------
+async function getBias(
+  supabase: ReturnType<typeof createClient>, stationCode: string | null, modelName: string,
+): Promise<number> {
+  if (!stationCode) return 0;
+  const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from("forecast_bias")
+    .select("error_c")
+    .eq("station_code", stationCode)
+    .eq("model_name", modelName)
+    .gte("valid_at", since)
+    .limit(500);
+  const rows = (data ?? []) as { error_c: number }[];
+  if (!rows.length) return 0;
+  const mean = rows.reduce((s, r) => s + Number(r.error_c), 0) / rows.length;
+  return Number.isFinite(mean) ? mean : 0;
+}
+
+// ---------- Helpers ----------
 function localDayIndices(times: string[], localYmd: string): number[] {
   const out: number[] = [];
-  for (let i = 0; i < times.length; i++) {
-    if (times[i].startsWith(localYmd)) out.push(i);
-  }
+  for (let i = 0; i < times.length; i++) if (times[i].startsWith(localYmd)) out.push(i);
   return out;
 }
 
-// Per-member daily max temp → returns array of length = #members
-function memberDailyMax(members: number[][], idxs: number[]): number[] {
+function memberDailyMax(members: number[][], idxs: number[], biasC: number): number[] {
   if (!members.length || !idxs.length) return [];
   const numMembers = members[0].length;
   const result = new Array(numMembers).fill(-Infinity);
@@ -107,15 +148,22 @@ function memberDailyMax(members: number[][], idxs: number[]): number[] {
       if (v != null && v > result[m]) result[m] = v;
     }
   }
-  return result.filter((v) => Number.isFinite(v));
+  return result.filter((v) => Number.isFinite(v)).map((v) => v - biasC);
+}
+
+function deterministicDailyMax(times: string[], temps: number[], localYmd: string, biasC: number): number | null {
+  let max = -Infinity;
+  for (let i = 0; i < times.length; i++) {
+    if (times[i].startsWith(localYmd) && temps[i] != null && temps[i] > max) max = temps[i];
+  }
+  return Number.isFinite(max) ? max - biasC : null;
 }
 
 function probInBucket(values: number[], min: number | null, max: number | null): number {
   if (!values.length) return 0;
   const lo = min ?? -Infinity;
   const hi = max ?? Infinity;
-  const hits = values.filter((v) => v >= lo && v <= hi).length;
-  return hits / values.length;
+  return values.filter((v) => v >= lo && v <= hi).length / values.length;
 }
 
 async function fetchPrice(tokenId: string): Promise<number | null> {
@@ -141,6 +189,13 @@ function suggestedSize(edge: number, agreement: number): number {
   if (abs >= 0.15) base = 3;
   else if (abs >= 0.1) base = 2;
   return Number((base * agreement).toFixed(2));
+}
+
+// US bounding box check (rough — covers contiguous + AK + HI)
+function isUS(lat: number, lon: number): boolean {
+  return (lat >= 24 && lat <= 50 && lon >= -125 && lon <= -66) ||
+         (lat >= 50 && lat <= 72 && lon >= -170 && lon <= -130) ||
+         (lat >= 18 && lat <= 23 && lon >= -161 && lon <= -154);
 }
 
 Deno.serve(async (req) => {
@@ -178,10 +233,6 @@ Deno.serve(async (req) => {
     const outcomes = (outs ?? []) as Outcome[];
     if (!outcomes.length) throw new Error("no outcomes for this market");
 
-    // Settlement alignment: look up the official station for this city.
-    // Forecasts use the station's coordinates and timezone — NOT the market's
-    // generic geocoded lat/lon — so the daily MAX matches Polymarket's
-    // resolution source exactly. Local day = 00:00–23:59 in station timezone.
     const { data: stationRow } = await supabase
       .from("stations").select("*").ilike("city", m.city).maybeSingle();
     const station: Station | null = (stationRow as Station | null) ?? null;
@@ -189,49 +240,72 @@ Deno.serve(async (req) => {
     const lat = station?.latitude ?? m.latitude;
     const lon = station?.longitude ?? m.longitude;
     const timezone = station?.timezone ?? "UTC";
+    const stationCode = station?.station_code ?? null;
     const localDay = localYMD(new Date(m.event_time), timezone);
+    const usMarket = isUS(Number(lat), Number(lon));
 
-    // Fetch ensemble + GFS in the station's local timezone
-    const [ens, gfs] = await Promise.all([
-      fetchEnsemble(lat, lon, timezone),
-      fetchGfs(lat, lon, timezone).catch(() => ({ time: [] as string[], temp: [] as number[] })),
+    // Pre-fetch bias offsets (mean error over last 14d) per (station, model).
+    // We SUBTRACT this from forecasts so a model that's been running 1.5°C hot
+    // on this station gets calibrated down by 1.5°C before we bucket probabilities.
+    const [biasEcmwf, biasAifs, biasGfs, biasGraphcast, biasNws] = await Promise.all([
+      getBias(supabase, stationCode, "ecmwf_ifs025"),
+      getBias(supabase, stationCode, "ecmwf_aifs025"),
+      getBias(supabase, stationCode, "gfs_seamless"),
+      getBias(supabase, stationCode, "graphcast"),
+      getBias(supabase, stationCode, "nws"),
     ]);
 
-    // Per-member MAX over the FULL local day at the station (00:00–23:59)
-    const ensIdxs = localDayIndices(ens.time, localDay);
-    const ensValues = memberDailyMax(ens.members, ensIdxs);
+    // Fetch all forecasts in parallel. Each .catch(null) so a single model
+    // outage doesn't kill the whole refresh.
+    const [ecmwfEns, gefs, ifsDet, aifsDet, graphcastDet, nwsHours] = await Promise.all([
+      fetchEnsemble(lat, lon, timezone, "ecmwf_ifs025").catch(() => null),
+      fetchEnsemble(lat, lon, timezone, "gfs025").catch(() => null),
+      fetchOpenMeteoModel("https://api.open-meteo.com/v1/forecast", lat, lon, timezone, "ecmwf_ifs025").catch(() => null),
+      fetchOpenMeteoModel("https://api.open-meteo.com/v1/forecast", lat, lon, timezone, "ecmwf_aifs025").catch(() => null),
+      fetchOpenMeteoModel("https://api.open-meteo.com/v1/forecast", lat, lon, timezone, "graphcast").catch(() => null),
+      usMarket ? fetchNwsHourly(Number(lat), Number(lon)) : Promise.resolve(null),
+    ]);
 
-    // GFS deterministic local-day MAX
-    const gfsIdxs = localDayIndices(gfs.time, localDay);
-    let gfsMax: number | null = null;
-    if (gfsIdxs.length) {
-      gfsMax = -Infinity;
-      for (const i of gfsIdxs) {
-        const v = gfs.temp[i];
-        if (v != null && v > gfsMax) gfsMax = v;
-      }
-      if (!Number.isFinite(gfsMax)) gfsMax = null;
+    // Build a combined "ensemble values" array of per-member daily-max temps,
+    // bias-corrected per source. Treat each deterministic model as a 1-member
+    // contributor — adds calibration without overwhelming the true ensembles.
+    const ensembleValues: number[] = [];
+    if (ecmwfEns) {
+      const idxs = localDayIndices(ecmwfEns.time, localDay);
+      ensembleValues.push(...memberDailyMax(ecmwfEns.members, idxs, biasEcmwf));
     }
+    if (gefs) {
+      const idxs = localDayIndices(gefs.time, localDay);
+      ensembleValues.push(...memberDailyMax(gefs.members, idxs, biasGfs));
+    }
+    const aifsMax = aifsDet ? deterministicDailyMax(aifsDet.time, aifsDet.temp, localDay, biasAifs) : null;
+    if (aifsMax != null) ensembleValues.push(aifsMax);
+    const graphcastMax = graphcastDet ? deterministicDailyMax(graphcastDet.time, graphcastDet.temp, localDay, biasGraphcast) : null;
+    if (graphcastMax != null) ensembleValues.push(graphcastMax);
 
-    // Compute distributions
-    // IMPORTANT: P_model = ECMWF ensemble only. GFS is a single deterministic
-    // scenario, not a probability distribution — using it to *blend* probabilities
-    // artificially inflates confidence. Instead we use GFS-vs-ECMWF agreement
-    // purely as a confidence signal (see `agreement` below).
+    // Independent comparison sources for agreement check
+    const ifsMax = ifsDet ? deterministicDailyMax(ifsDet.time, ifsDet.temp, localDay, biasEcmwf) : null;
+    const nwsMax = nwsHours && stationCode ? (() => {
+      const v = nwsDailyMaxForLocalDay(nwsHours, timezone, localDay);
+      return v != null ? v - biasNws : null;
+    })() : null;
+
+    // For agreement: NWS (US) is the gold standard since it's literally the
+    // settlement source. For non-US, fall back to deterministic IFS.
+    const referenceMax = nwsMax ?? ifsMax;
+
     const enriched = await Promise.all(
       outcomes.map(async (o) => {
-        const pEcmwf = probInBucket(ensValues, o.bucket_min_c, o.bucket_max_c);
-        const pNoaa = gfsMax != null
-          ? ((gfsMax >= (o.bucket_min_c ?? -Infinity) && gfsMax <= (o.bucket_max_c ?? Infinity)) ? 1 : 0)
-          : pEcmwf;
-        const pModel = pEcmwf; // ECMWF only — no blending
+        const pModelRaw = probInBucket(ensembleValues, o.bucket_min_c, o.bucket_max_c);
+        const pRef = referenceMax != null
+          ? ((referenceMax >= (o.bucket_min_c ?? -Infinity) && referenceMax <= (o.bucket_max_c ?? Infinity)) ? 1 : 0)
+          : pModelRaw;
         const price = o.clob_token_id ? await fetchPrice(o.clob_token_id) : null;
-        const edge = price != null ? pModel - price : null;
-        return { o, pEcmwf, pNoaa, pModel, price, edge };
+        return { o, pEcmwf: pModelRaw, pNoaa: pRef, pModel: pModelRaw, price, edge: null as number | null };
       })
     );
 
-    // Normalize ECMWF probabilities to sum to 1 across outcomes (handles bucket overlap/gaps)
+    // Normalize ensemble probabilities to sum to 1
     const sumEc = enriched.reduce((s, x) => s + x.pEcmwf, 0);
     if (sumEc > 0) {
       for (const x of enriched) {
@@ -239,26 +313,16 @@ Deno.serve(async (req) => {
         x.pModel = x.pEcmwf;
       }
     }
-    // Recompute edges with normalized probs
     for (const x of enriched) {
       x.edge = x.price != null ? x.pModel - x.price : null;
     }
 
-    // Agreement: 1 - sum of |p_ecmwf - p_noaa| / 2 (total variation distance)
-    // For NOAA-as-binary, build a normalized noaa distribution
     const sumNoaa = enriched.reduce((s, x) => s + x.pNoaa, 0);
-    if (sumNoaa > 0) {
-      for (const x of enriched) x.pNoaa = x.pNoaa / sumNoaa;
-    }
+    if (sumNoaa > 0) for (const x of enriched) x.pNoaa = x.pNoaa / sumNoaa;
     const tvd = enriched.reduce((s, x) => s + Math.abs(x.pEcmwf - x.pNoaa), 0) / 2;
     const agreement = Math.max(0, 1 - tvd);
     const confidence = confidenceFor(agreement);
 
-    // Confidence-adjusted edge: a 60% model probability when ECMWF and GFS
-    // disagree (low agreement) is NOT a true 60% — shrink the edge toward 0
-    // by `agreement`. This is what the UI shows + what we rank "best" on so
-    // users never see "low confidence + huge edge" again.
-    // Persist per-outcome updates + suggested sizes
     let bestAdjEdge = -Infinity;
     let bestLabel: string | null = null;
     let bestSize = 0;
@@ -298,12 +362,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Sanity flag: model very confident but market strongly disagrees → likely
-    // timing/station/microclimate mismatch. Surface as VERIFY (don't auto-size up).
     const verifyFlag =
       bestPModel > 0.8 && bestPrice != null && bestPrice < 0.3
         ? "Model >80% but market <30% — verify resolution window, station, and forecast freshness before sizing up."
         : null;
+
+    const sourcesUsed = {
+      ecmwf_ens: !!ecmwfEns,
+      gefs: !!gefs,
+      ecmwf_aifs: aifsMax != null,
+      graphcast: graphcastMax != null,
+      nws: nwsMax != null,
+      ensemble_member_count: ensembleValues.length,
+    };
 
     await supabase.from("weather_signals").insert({
       market_id: m.id,
@@ -317,6 +388,7 @@ Deno.serve(async (req) => {
         outcomes: distribution,
         verify_flag: verifyFlag,
         best_raw_edge: bestRawEdge,
+        sources: sourcesUsed,
       },
     });
 
@@ -332,6 +404,7 @@ Deno.serve(async (req) => {
       best_suggested_size_percent: bestSize,
       verify_flag: verifyFlag,
       distribution,
+      sources: sourcesUsed,
       station: station
         ? { code: station.station_code, name: station.station_name, timezone, local_day: localDay }
         : { code: null, name: null, timezone, local_day: localDay, warning: `No station mapped for "${m.city}"` },
