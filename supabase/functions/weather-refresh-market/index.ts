@@ -311,9 +311,13 @@ Deno.serve(async (req) => {
       agreement,
       confidence_level: confidence,
       best_outcome_label: bestLabel,
-      best_edge: Number.isFinite(bestEdge) ? bestEdge : null,
+      best_edge: Number.isFinite(bestAdjEdge) ? bestAdjEdge : null,
       best_suggested_size_percent: bestSize,
-      distribution: { outcomes: distribution, verify_flag: verifyFlag },
+      distribution: {
+        outcomes: distribution,
+        verify_flag: verifyFlag,
+        best_raw_edge: bestRawEdge,
+      },
     });
 
     await supabase.from("weather_markets").update({ updated_at: new Date().toISOString() }).eq("id", m.id);
@@ -323,7 +327,8 @@ Deno.serve(async (req) => {
       agreement,
       confidence_level: confidence,
       best_outcome_label: bestLabel,
-      best_edge: Number.isFinite(bestEdge) ? bestEdge : null,
+      best_edge: Number.isFinite(bestAdjEdge) ? bestAdjEdge : null,
+      best_raw_edge: bestRawEdge,
       best_suggested_size_percent: bestSize,
       verify_flag: verifyFlag,
       distribution,
