@@ -199,6 +199,7 @@ const Weather = () => {
           bankroll={bankroll}
           minVolume={minVolume}
           mismatchOnly={mismatchOnly}
+          maxTradePct={maxTradePct}
           onSelect={(m) => setDetailMarket(m)}
         />
 
