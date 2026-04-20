@@ -11,6 +11,8 @@ const Momentum = () => {
   const [loading, setLoading] = useState(true);
   const [markets, setMarkets] = useState<WeatherMarket[]>([]);
   const [outcomes, setOutcomes] = useState<Record<string, WeatherOutcome[]>>({});
+  const [bankroll, setBankroll] = useState<number>(1000);
+  const [maxTradePct, setMaxTradePct] = useState<number>(2);
 
   useEffect(() => {
     document.title = "Momentum · Weather Edge Trader";
@@ -27,9 +29,10 @@ const Momentum = () => {
 
   const load = useCallback(async () => {
     if (!userId) return;
-    const [{ data: ms }, { data: os }] = await Promise.all([
+    const [{ data: ms }, { data: os }, { data: cfg }] = await Promise.all([
       supabase.from("weather_markets").select("*").eq("active", true).order("event_time"),
       supabase.from("weather_outcomes").select("*").order("display_order"),
+      supabase.from("config").select("bankroll_usdc, max_trade_pct").eq("user_id", userId).maybeSingle(),
     ]);
     setMarkets((ms ?? []) as WeatherMarket[]);
     const grouped: Record<string, WeatherOutcome[]> = {};
@@ -37,11 +40,18 @@ const Momentum = () => {
       (grouped[o.market_id] ??= []).push(o as WeatherOutcome);
     });
     setOutcomes(grouped);
+    if (cfg) {
+      setBankroll(Number(cfg.bankroll_usdc ?? 1000));
+      setMaxTradePct(Number(cfg.max_trade_pct ?? 2));
+    }
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading…</div>;
+
+  // Cap at the lower of user's max_trade_pct and 3% (long-term momentum strategy guardrail).
+  const stakeCapPct = Math.min(maxTradePct, 3);
 
   return (
     <div className="min-h-screen">
@@ -52,15 +62,23 @@ const Momentum = () => {
           </Link>
           <TrendingUp className="h-4 w-4 text-primary" />
           <h1 className="text-sm font-semibold tracking-wide">Momentum Scanner</h1>
+          <div className="ml-auto text-[10px] text-muted-foreground font-mono-num">
+            Bankroll ${bankroll.toLocaleString()} · max {stakeCapPct}%/trade
+          </div>
         </div>
       </header>
 
       <main className="container py-4 sm:py-6 space-y-4 px-2 sm:px-4">
         <p className="text-xs text-muted-foreground">
-          Scans your saved markets and (via Discover) every active Polymarket temperature market in the next 48h.
-          Adjust the threshold to widen or tighten qualifying gaps. Results sort by upside × current gap.
+          Scans your saved markets and (via Discover) every active Polymarket weather market in the next 48h.
+          Suggested stake is based on your bankroll, capped at {stakeCapPct}% of capital, and scaled by momentum score.
         </p>
-        <MomentumBreakouts markets={markets} outcomes={outcomes} />
+        <MomentumBreakouts
+          markets={markets}
+          outcomes={outcomes}
+          bankroll={bankroll}
+          stakeCapPct={stakeCapPct}
+        />
       </main>
     </div>
   );

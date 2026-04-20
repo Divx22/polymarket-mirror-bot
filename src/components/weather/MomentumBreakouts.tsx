@@ -13,6 +13,10 @@ type Props = {
   gapMin?: number;
   /** Allow user to change the threshold via a slider in the panel header. Default true. */
   showThresholdControl?: boolean;
+  /** User's bankroll in USDC (used to suggest stake $). Default 1000. */
+  bankroll?: number;
+  /** Hard cap on suggested stake as % of bankroll. Default 3. */
+  stakeCapPct?: number;
 };
 
 const DEFAULT_GAP_MIN = 0.10;
@@ -103,7 +107,23 @@ function momentumScore(leaderNow: number, gapNow: number, netDelta: number, traj
   return 0.4 * upside + 0.3 * gapNow + 0.3 * netDelta + (TRAJ_BONUS[trajectory] ?? 0);
 }
 
-export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinProp, showThresholdControl = true }: Props) => {
+// Suggest a stake $ for a momentum pick.
+// Long-term strategy: scale by score within [0..MAX_SCORE], cap at stakeCapPct% of bankroll.
+// MAX_SCORE ~ 0.45 = strong upside (50%) + wide gap (30%) + big widening (10%) + accel bonus (5%).
+const MAX_SCORE = 0.45;
+function suggestStake(bankroll: number, stakeCapPct: number, score: number): number {
+  if (!Number.isFinite(bankroll) || bankroll <= 0) return 0;
+  const cap = bankroll * (stakeCapPct / 100);
+  const ratio = Math.max(0, Math.min(1, score / MAX_SCORE));
+  // Floor at 25% of cap so qualified picks always show a non-trivial size.
+  const stake = cap * Math.max(0.25, ratio);
+  return Math.round(stake);
+}
+
+export const MomentumBreakouts = ({
+  markets, outcomes, onSelect, gapMin: gapMinProp, showThresholdControl = true,
+  bankroll = 1000, stakeCapPct = 3,
+}: Props) => {
   const [scanning, setScanning] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [items, setItems] = useState<Movement[]>([]);
@@ -328,13 +348,15 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
         }
         if (merged.length === 0) return null;
         return (
-          <ul className="divide-y divide-border/50">
-            {merged.map((row) =>
-              row.kind === "local"
-                ? <Row key={row.key} m={row.data} onSelect={onSelect} />
-                : <ExternalRow key={row.key} m={row.data} />,
-            )}
-          </ul>
+          <div className="p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {merged.map((row) => {
+              const stake = suggestStake(bankroll, stakeCapPct, row.sortScore);
+              const stakePct = bankroll > 0 ? (stake / bankroll) * 100 : 0;
+              return row.kind === "local"
+                ? <Row key={row.key} m={row.data} onSelect={onSelect} stake={stake} stakePct={stakePct} score={row.sortScore} />
+                : <ExternalRow key={row.key} m={row.data} stake={stake} stakePct={stakePct} score={row.sortScore} />;
+            })}
+          </div>
         );
       })()}
     </div>
@@ -348,7 +370,54 @@ const TRAJ_META: Record<Trajectory, { label: string; badge: string; arrow: strin
   narrowing:    { label: "Narrowing",    badge: "bg-red-500/25 text-red-200 border-red-400/60 shadow-[0_0_8px_hsl(0_72%_55%/0.35)]",              arrow: "text-red-400" },
 };
 
-const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => void }) => {
+type RowExtras = { stake: number; stakePct: number; score: number };
+
+const CardShell = ({
+  onClick, children, clickable,
+}: { onClick?: () => void; children: React.ReactNode; clickable: boolean }) => (
+  <div
+    onClick={onClick}
+    className={cn(
+      "rounded-xl border-2 border-border bg-surface-1 hover:border-primary/40 hover:bg-surface-2/40 transition-colors overflow-hidden",
+      clickable && "cursor-pointer",
+    )}
+  >
+    {children}
+  </div>
+);
+
+const CardHeader = ({
+  city, leader, runner, sourceLabel,
+}: { city: string | null; leader: string; runner: string; sourceLabel: string }) => (
+  <div className="px-4 pt-3 pb-2 border-b border-border/60 bg-surface-2/30">
+    {city && (
+      <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-0.5">{sourceLabel}</div>
+    )}
+    {city && (
+      <div className="text-xl sm:text-2xl font-extrabold text-foreground leading-tight">{city}</div>
+    )}
+    <div className="mt-1 flex items-baseline gap-2 flex-wrap">
+      <span className="text-base font-bold text-emerald-400">{leader}</span>
+      <span className="text-xs text-muted-foreground">vs</span>
+      <span className="text-sm font-semibold text-foreground/80">{runner}</span>
+    </div>
+  </div>
+);
+
+const StakeBar = ({ stake, stakePct }: { stake: number; stakePct: number }) => (
+  <div className="px-4 py-2 bg-primary/10 border-t border-primary/20 flex items-center justify-between">
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Suggested stake</div>
+      <div className="font-mono-num font-bold text-lg text-primary">${stake.toLocaleString()}</div>
+    </div>
+    <div className="text-right">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">% of bankroll</div>
+      <div className="font-mono-num font-semibold text-foreground">{stakePct.toFixed(2)}%</div>
+    </div>
+  </div>
+);
+
+const Row = ({ m, onSelect, stake, stakePct, score }: { m: Movement; onSelect?: (mk: WeatherMarket) => void } & RowExtras) => {
   const [copied, setCopied] = useState(false);
   const entryPct = (m.leaderNow * 100).toFixed(1);
   const upsidePct = ((1 - m.leaderNow) * 100).toFixed(1);
@@ -360,31 +429,31 @@ const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => v
   const meta = TRAJ_META[m.trajectory] ?? TRAJ_META.flat;
   const nowColor = m.trajectory === "narrowing" ? "text-red-400" : m.trajectory === "flat" ? "text-foreground" : "text-emerald-400";
 
+  const openCard = () => {
+    if (m.market.polymarket_url) window.open(m.market.polymarket_url, "_blank", "noopener,noreferrer");
+    else onSelect?.(m.market);
+  };
+
   const copy = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
       await navigator.clipboard.writeText(`${entryPct}%`);
       setCopied(true);
-      toast.success(`Copied ${entryPct}%`);
       setTimeout(() => setCopied(false), 1500);
     } catch { toast.error("Copy failed"); }
   };
 
   return (
-    <li
-      onClick={() => onSelect?.(m.market)}
-      className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 hover:bg-surface-2/50 cursor-pointer"
-    >
-      <div className="flex-1 min-w-0">
+    <CardShell onClick={openCard} clickable>
+      <CardHeader city={m.market.city} leader={m.leader.label} runner={m.runnerUp.label} sourceLabel="In your scanner" />
+      <div className="px-4 py-3 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-foreground">{m.leader.label}</span>
-          <span className="text-xs text-muted-foreground">vs {m.runnerUp.label}</span>
-          <span className={cn("inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-bold uppercase tracking-wide", meta.badge)}>
+          <span className={cn("inline-flex items-center px-2.5 py-1 rounded-md border text-[12px] font-bold uppercase tracking-wide", meta.badge)}>
             {meta.label} {netSign}{netPct}%
           </span>
-          <span className="text-xs text-muted-foreground truncate">· {m.market.city}</span>
+          <span className="text-[10px] text-muted-foreground font-mono-num">score {score.toFixed(3)}</span>
         </div>
-        <div className="mt-1.5 inline-flex items-center gap-2 rounded border border-border bg-background/60 px-2.5 py-1.5">
+        <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
           <Snap label="1h ago" value={gap1hPct} />
@@ -392,26 +461,27 @@ const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => v
           <Snap label="Now" value={gapNowPct} bold valueClass={nowColor} />
           <span className="text-[9px] uppercase tracking-wider text-muted-foreground ml-1">Gap #1 vs #2</span>
         </div>
-      </div>
-      <div className="flex items-center gap-3">
-        <div className="text-right">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Entry</div>
-          <div className="font-mono-num font-semibold text-foreground">{entryPct}%</div>
+        <div className="flex items-center gap-4">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Entry</div>
+            <div className="font-mono-num font-bold text-base text-foreground">{entryPct}%</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Upside</div>
+            <div className="font-mono-num font-bold text-base text-emerald-400">+{upsidePct}%</div>
+          </div>
+          <button onClick={copy} className="ml-auto inline-flex items-center gap-1 rounded border border-border bg-background hover:bg-surface-2 px-2 py-1 text-[11px]">
+            {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+            {copied ? "Copied" : "Copy %"}
+          </button>
         </div>
-        <div className="text-right">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Upside</div>
-          <div className="font-mono-num font-semibold text-emerald-400">+{upsidePct}%</div>
-        </div>
-        <button onClick={copy} className="inline-flex items-center gap-1 rounded border border-border bg-background hover:bg-surface-2 px-2 py-1 text-[11px]">
-          {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-          {copied ? "Copied" : "Copy"}
-        </button>
       </div>
-    </li>
+      <StakeBar stake={stake} stakePct={stakePct} />
+    </CardShell>
   );
 };
 
-const ExternalRow = ({ m }: { m: ExternalMovement }) => {
+const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & RowExtras) => {
   const entryPct = (m.leaderNow * 100).toFixed(1);
   const upsidePct = ((1 - m.leaderNow) * 100).toFixed(1);
   const gap2hPct = (m.gap2h * 100).toFixed(1);
@@ -422,28 +492,21 @@ const ExternalRow = ({ m }: { m: ExternalMovement }) => {
   const meta = TRAJ_META[m.trajectory] ?? TRAJ_META.flat;
   const nowColor = m.trajectory === "narrowing" ? "text-red-400" : m.trajectory === "flat" ? "text-foreground" : "text-emerald-400";
 
-  const openRow = () => {
+  const openCard = () => {
     if (m.polymarket_url) window.open(m.polymarket_url, "_blank", "noopener,noreferrer");
   };
 
   return (
-    <li
-      onClick={openRow}
-      className={cn(
-        "flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 hover:bg-surface-2/50",
-        m.polymarket_url && "cursor-pointer",
-      )}
-    >
-      <div className="flex-1 min-w-0">
+    <CardShell onClick={openCard} clickable={!!m.polymarket_url}>
+      <CardHeader city={m.city} leader={m.leader_label} runner={m.runner_label} sourceLabel="From Polymarket" />
+      <div className="px-4 py-3 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-foreground">{m.leader_label}</span>
-          <span className="text-xs text-muted-foreground">vs {m.runner_label}</span>
-          <span className={cn("inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-bold uppercase tracking-wide", meta.badge)}>
+          <span className={cn("inline-flex items-center px-2.5 py-1 rounded-md border text-[12px] font-bold uppercase tracking-wide", meta.badge)}>
             {meta.label} {netSign}{netPct}%
           </span>
-          {m.city && <span className="text-xs text-muted-foreground truncate">· {m.city}</span>}
+          <span className="text-[10px] text-muted-foreground font-mono-num">score {score.toFixed(3)}</span>
         </div>
-        <div className="mt-1.5 inline-flex items-center gap-2 rounded border border-border bg-background/60 px-2.5 py-1.5">
+        <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
           <Snap label="1h ago" value={gap1hPct} />
@@ -451,23 +514,24 @@ const ExternalRow = ({ m }: { m: ExternalMovement }) => {
           <Snap label="Now" value={gapNowPct} bold valueClass={nowColor} />
           <span className="text-[9px] uppercase tracking-wider text-muted-foreground ml-1">Gap #1 vs #2</span>
         </div>
-        <div className="mt-1 text-[10px] text-muted-foreground truncate">{m.event_title}</div>
-      </div>
-      <div className="flex items-center gap-3">
-        <div className="text-right">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Entry</div>
-          <div className="font-mono-num font-semibold text-foreground">{entryPct}%</div>
+        <div className="flex items-center gap-4">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Entry</div>
+            <div className="font-mono-num font-bold text-base text-foreground">{entryPct}%</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Upside</div>
+            <div className="font-mono-num font-bold text-base text-emerald-400">+{upsidePct}%</div>
+          </div>
+          <span className="ml-auto inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground">
+            <ExternalLink className="h-3 w-3" />
+            Open
+          </span>
         </div>
-        <div className="text-right">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Upside</div>
-          <div className="font-mono-num font-semibold text-emerald-400">+{upsidePct}%</div>
-        </div>
-        <span className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground">
-          <ExternalLink className="h-3 w-3" />
-          Open
-        </span>
+        <div className="text-[10px] text-muted-foreground truncate">{m.event_title}</div>
       </div>
-    </li>
+      <StakeBar stake={stake} stakePct={stakePct} />
+    </CardShell>
   );
 };
 
