@@ -255,6 +255,7 @@ const Weather = () => {
         market={detailMarket}
         outcomes={detailMarket ? outcomes[detailMarket.id] ?? [] : []}
         signal={detailMarket ? signals[detailMarket.id] ?? null : null}
+        bankroll={bankroll}
       />
     </div>
   );
