@@ -254,22 +254,28 @@ Deno.serve(async (req) => {
     const agreement = Math.max(0, 1 - tvd);
     const confidence = confidenceFor(agreement);
 
+    // Confidence-adjusted edge: a 60% model probability when ECMWF and GFS
+    // disagree (low agreement) is NOT a true 60% — shrink the edge toward 0
+    // by `agreement`. This is what the UI shows + what we rank "best" on so
+    // users never see "low confidence + huge edge" again.
     // Persist per-outcome updates + suggested sizes
-    let bestEdge = -Infinity;
+    let bestAdjEdge = -Infinity;
     let bestLabel: string | null = null;
     let bestSize = 0;
     let bestPModel = 0;
     let bestPrice: number | null = null;
+    let bestRawEdge: number | null = null;
     const distribution: any[] = [];
 
     for (const x of enriched) {
-      const size = x.edge != null ? suggestedSize(x.edge, agreement) : 0;
+      const adjEdge = x.edge != null ? x.edge * agreement : null;
+      const size = adjEdge != null ? suggestedSize(adjEdge, agreement) : 0;
       await supabase.from("weather_outcomes").update({
         p_ecmwf: x.pEcmwf,
         p_noaa: x.pNoaa,
         p_model: x.pModel,
         polymarket_price: x.price,
-        edge: x.edge,
+        edge: adjEdge,
         suggested_size_percent: size,
       }).eq("id", x.o.id);
 
@@ -277,16 +283,18 @@ Deno.serve(async (req) => {
         label: x.o.label,
         p_model: x.pModel,
         p_market: x.price,
-        edge: x.edge,
+        edge: adjEdge,
+        raw_edge: x.edge,
         suggested_size_percent: size,
       });
 
-      if (x.edge != null && x.edge > bestEdge) {
-        bestEdge = x.edge;
+      if (adjEdge != null && adjEdge > bestAdjEdge) {
+        bestAdjEdge = adjEdge;
         bestLabel = x.o.label;
         bestSize = size;
         bestPModel = x.pModel;
         bestPrice = x.price;
+        bestRawEdge = x.edge;
       }
     }
 
@@ -303,9 +311,13 @@ Deno.serve(async (req) => {
       agreement,
       confidence_level: confidence,
       best_outcome_label: bestLabel,
-      best_edge: Number.isFinite(bestEdge) ? bestEdge : null,
+      best_edge: Number.isFinite(bestAdjEdge) ? bestAdjEdge : null,
       best_suggested_size_percent: bestSize,
-      distribution: { outcomes: distribution, verify_flag: verifyFlag },
+      distribution: {
+        outcomes: distribution,
+        verify_flag: verifyFlag,
+        best_raw_edge: bestRawEdge,
+      },
     });
 
     await supabase.from("weather_markets").update({ updated_at: new Date().toISOString() }).eq("id", m.id);
@@ -315,7 +327,8 @@ Deno.serve(async (req) => {
       agreement,
       confidence_level: confidence,
       best_outcome_label: bestLabel,
-      best_edge: Number.isFinite(bestEdge) ? bestEdge : null,
+      best_edge: Number.isFinite(bestAdjEdge) ? bestAdjEdge : null,
+      best_raw_edge: bestRawEdge,
       best_suggested_size_percent: bestSize,
       verify_flag: verifyFlag,
       distribution,
