@@ -17,10 +17,13 @@ type Movement = {
   priceNow: number;       // 0-1
   priceThen: number;      // 0-1, ~2h ago
   delta: number;          // priceNow - priceThen, in price (0-1)
-  gap: number;            // priceNow - runnerUp price, in price (0-1)
-  deltaPct: number;       // (priceNow - priceThen) / priceThen — relative move
+  gap: number;            // current priceNow - runnerUp price (0-1)
+  gapThen: number | null; // gap ~2h ago (0-1) — null if no runner-up history
+  gapDelta: number;       // gap - gapThen (positive = widening)
+  deltaPct: number;       // (priceNow - priceThen) / priceThen — relative move on leader
   liveAsk: number | null; // 0-1
-  isBreakout: boolean;    // passes all thresholds
+  isBreakout: boolean;
+  trigger: "rise" | "gap-widening" | "both" | null;
 };
 
 // Two independent breakout triggers (either fires):
@@ -109,23 +112,41 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         const gap = priceNow - (runnerUp?.polymarket_price ?? 0);
 
         const hist = await fetchHistory(leader.clob_token_id!);
+        const [hist, runnerHist] = await Promise.all([
+          fetchHistory(leader.clob_token_id!),
+          runnerUp?.clob_token_id ? fetchHistory(runnerUp.clob_token_id) : Promise.resolve([] as HistPoint[]),
+        ]);
         const priceThen = priceAt(hist, targetThen);
-        if (priceThen == null) return; // no history → skip
+        if (priceThen == null) return;
         const delta = priceNow - priceThen;
         const deltaPct = priceThen > 0.001 ? (priceNow - priceThen) / priceThen : 0;
 
-        const isBreakout =
-          deltaPct >= RISE_PCT_THRESHOLD &&
-          gap >= GAP_THRESHOLD &&
-          priceNow <= MAX_ENTRY_PRICE;
+        const runnerThen = runnerHist.length > 0 ? priceAt(runnerHist, targetThen) : null;
+        const gapThen = runnerThen != null ? priceThen - runnerThen : null;
+        const gapDelta = gapThen != null ? gap - gapThen : 0;
+
+        const passesRise = deltaPct >= RISE_PCT_THRESHOLD;
+        const passesGapWidening = gapThen != null && gapThen > 0 && gapDelta >= GAP_WIDENING_THRESHOLD;
+        const passesGuards = gap >= GAP_THRESHOLD && priceNow <= MAX_ENTRY_PRICE;
+        const isBreakout = passesGuards && (passesRise || passesGapWidening);
+        const trigger: Movement["trigger"] = !isBreakout ? null
+          : passesRise && passesGapWidening ? "both"
+          : passesRise ? "rise" : "gap-widening";
 
         const liveAsk = isBreakout ? await fetchAsk(leader.clob_token_id!) : null;
 
-        found.push({ market: m, leader, runnerUp, priceNow, priceThen, delta, deltaPct, gap, liveAsk, isBreakout });
+        found.push({ market: m, leader, runnerUp, priceNow, priceThen, delta, deltaPct, gap, gapThen, gapDelta, liveAsk, isBreakout, trigger });
       }));
       done += batch.length;
       setProgress(Math.round((done / eligible.length) * 100));
     }
+
+    // Sort: breakouts first, then by max(|deltaPct|, |gapDelta|*5) — both signals weighted similarly
+    found.sort((a, b) => {
+      if (a.isBreakout !== b.isBreakout) return a.isBreakout ? -1 : 1;
+      const score = (m: Movement) => Math.max(Math.abs(m.deltaPct), Math.abs(m.gapDelta) * 5);
+      return score(b) - score(a);
+    });
 
     // Sort by absolute 2h % move desc — biggest relative movers first.
     found.sort((a, b) => Math.abs(b.deltaPct) - Math.abs(a.deltaPct));
