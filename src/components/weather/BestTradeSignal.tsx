@@ -219,6 +219,15 @@ const BestCard = ({ pick, bankroll, onSelect }: { pick: ScoredOutcome; bankroll:
           <div className="text-muted-foreground">Fetching live book…</div>
         )}
       </div>
+
+      <div className="mt-2">
+        <PositionCalculator
+          bankrollUsdc={bankroll}
+          sizePct={Number(o.suggested_size_percent ?? 0)}
+          bid={bid}
+          mid={mid}
+        />
+      </div>
     </div>
   );
 };
