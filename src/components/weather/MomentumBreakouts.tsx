@@ -220,7 +220,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider">Momentum</div>
             <div className="text-[10px] text-muted-foreground">
-              Gap #1 vs #2 ≥{Math.round(gapMin * 100)}% now AND 1h ago. Sorted by upside × gap.
+              Gap #1 vs #2 ≥{Math.round(gapMin * 100)}% now AND 1h ago. Sorted by avg(upside%, gap%).
             </div>
           </div>
         </div>
