@@ -91,6 +91,49 @@ export const MinVolumeInput = ({
   );
 };
 
+// Cap on max single-trade size as % of bankroll. Variance protection — even with
+// a 90%-suggested edge, capping at 2% prevents one bad resolution from wiping months.
+export const MaxTradeCapInput = ({
+  userId, maxPct, onChange,
+}: { userId: string; maxPct: number; onChange: (n: number) => void }) => {
+  const [value, setValue] = useState(String(maxPct));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { setValue(String(maxPct)); }, [maxPct]);
+
+  const save = async () => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0 || n > 100) {
+      toast.error("Enter a cap between 0 and 100 (%)");
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase
+      .from("config").update({ max_trade_pct: n }).eq("user_id", userId);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    onChange(n);
+    toast.success(`Max trade capped at ${n}%`);
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2/40 px-2 py-1">
+      <Shield className="h-3.5 w-3.5 text-muted-foreground" />
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Max Trade</span>
+      <Input
+        value={value}
+        onChange={(e) => setValue(e.target.value.replace(/[^0-9.]/g, ""))}
+        onBlur={save}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+        inputMode="decimal"
+        className="h-6 w-12 px-1.5 text-xs font-mono-num bg-transparent border-0 focus-visible:ring-0"
+      />
+      <span className="text-xs text-muted-foreground">%</span>
+      {saving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+    </div>
+  );
+};
+
 export const computePositionPlan = (
   bankrollUsdc: number,
   sizePct: number,
