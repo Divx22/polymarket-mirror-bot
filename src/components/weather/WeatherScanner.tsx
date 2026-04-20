@@ -24,11 +24,12 @@ type Props = {
   markets: WeatherMarket[];
   outcomes: Record<string, WeatherOutcome[]>;
   signals: Record<string, WeatherSignal>;
+  bankroll: number;
   onReload: () => void | Promise<void>;
   onSelect?: (m: WeatherMarket) => void;
 };
 
-export const WeatherScanner = ({ markets, outcomes, signals, onReload, onSelect }: Props) => {
+export const WeatherScanner = ({ markets, outcomes, signals, bankroll, onReload, onSelect }: Props) => {
   const [scanning, setScanning] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [autoOn, setAutoOn] = useState(false);
