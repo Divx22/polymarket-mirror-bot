@@ -453,7 +453,10 @@ Deno.serve(async (req) => {
       ecmwf_aifs: aifsMax != null,
       graphcast: graphcastMax != null,
       nws: nwsMax != null,
+      metar_floor_c: metarFloor,
+      metar_observation_count: metars?.length ?? 0,
       ensemble_member_count: ensembleValues.length,
+      uses_order_book: enriched.some((x) => x.ask != null),
     };
 
     await supabase.from("weather_signals").insert({
