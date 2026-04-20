@@ -192,6 +192,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
         leader_label: r.leader_label,
         runner_label: r.runner_label,
         leaderNow: r.leader_now,
+        gap2h: r.gap_2h ?? r.gap_1h,
         gap1h: r.gap_1h,
         gapNow: r.gap_now,
         netDelta: r.net_delta,
