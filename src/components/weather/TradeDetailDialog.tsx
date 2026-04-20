@@ -13,38 +13,56 @@ import {
 } from "@/lib/weather";
 import { cn } from "@/lib/utils";
 
+const computeShares = (bankroll: number, sizePct: number, price: number | null) => {
+  const value = Math.max(0, (bankroll * sizePct) / 100);
+  if (!price || price <= 0) return { value, shares: 0 };
+  return { value, shares: Math.floor(value / price) };
+};
+
 export const TradeDetailDialog = ({
   open,
   onOpenChange,
   market,
   outcomes,
   signal,
+  bankroll,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   market: WeatherMarket | null;
   outcomes: WeatherOutcome[];
   signal: WeatherSignal | null;
+  bankroll: number;
 }) => {
   if (!market) return null;
 
   const sorted = [...outcomes].sort((a, b) => (b.edge ?? -Infinity) - (a.edge ?? -Infinity));
   const best = sorted.find((o) => (o.edge ?? -Infinity) >= 0.07) ?? null;
+  const bestPlan = best
+    ? computeShares(bankroll, Number(best.suggested_size_percent ?? 0), best.polymarket_price ?? null)
+    : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl w-[calc(100vw-1rem)] max-h-[90vh] overflow-y-auto p-3 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base">
+          <DialogTitle className="text-base pr-6">
             {market.market_question}
-            {market.polymarket_url && (
-              <a href={market.polymarket_url} target="_blank" rel="noreferrer"
-                 className="text-muted-foreground hover:text-foreground">
-                <ExternalLink className="h-4 w-4" />
-              </a>
-            )}
           </DialogTitle>
         </DialogHeader>
+
+        {/* Big Polymarket CTA */}
+        {market.polymarket_url && (
+          <a
+            href={market.polymarket_url}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center justify-center gap-2 w-full rounded-md bg-primary text-primary-foreground font-semibold py-3 px-4 hover:opacity-90 transition-opacity shadow-sm"
+          >
+            <ExternalLink className="h-5 w-5" />
+            Open on Polymarket
+          </a>
+        )}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
           <Stat label="City" value={market.city} />
@@ -62,17 +80,37 @@ export const TradeDetailDialog = ({
           />
         </div>
 
-        {best && (
-          <div className="border border-emerald-500/30 bg-emerald-500/10 rounded p-3 flex items-center gap-3">
-            <Sparkles className="h-5 w-5 text-emerald-400" />
-            <div className="flex-1">
-              <div className="text-xs text-muted-foreground">Best Trade Opportunity</div>
-              <div className="font-medium">
+        {best && bestPlan && (
+          <div className="border border-emerald-500/30 bg-emerald-500/10 rounded-md p-3 sm:p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-emerald-400 shrink-0" />
+              <div className="font-semibold text-sm sm:text-base">
                 Buy YES <span className="text-emerald-400">{best.label}</span>
-                {" — Edge "}
-                <span className={edgeColor(best.edge)}>{pct(best.edge)}</span>
-                {" — Size "}{best.suggested_size_percent ?? 0}%
               </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="bg-background/40 rounded p-2">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Spend</div>
+                <div className="font-mono-num font-bold text-base sm:text-lg">
+                  ${bestPlan.value.toFixed(2)}
+                </div>
+              </div>
+              <div className="bg-background/40 rounded p-2">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Shares</div>
+                <div className="font-mono-num font-bold text-base sm:text-lg">
+                  {bestPlan.shares.toLocaleString()}
+                </div>
+              </div>
+              <div className="bg-background/40 rounded p-2">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Price</div>
+                <div className="font-mono-num font-bold text-base sm:text-lg">
+                  {best.polymarket_price != null ? `${(best.polymarket_price * 100).toFixed(0)}¢` : "—"}
+                </div>
+              </div>
+            </div>
+            <div className="text-[11px] text-muted-foreground text-center">
+              Edge <span className={cn("font-semibold", edgeColor(best.edge))}>{pct(best.edge)}</span>
+              {" · "}Size {best.suggested_size_percent ?? 0}% of ${bankroll.toLocaleString()}
             </div>
           </div>
         )}
@@ -82,44 +120,43 @@ export const TradeDetailDialog = ({
           <TableHeader>
             <TableRow>
               <TableHead>Outcome</TableHead>
-              <TableHead className="text-right">Model %</TableHead>
-              <TableHead className="text-right">Market %</TableHead>
-              <TableHead className="text-right">Edge %</TableHead>
-              <TableHead className="text-right">Size %</TableHead>
-              <TableHead></TableHead>
+              <TableHead className="text-right">Edge</TableHead>
+              <TableHead className="text-right">Price</TableHead>
+              <TableHead className="text-right">Spend</TableHead>
+              <TableHead className="text-right">Shares</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {sorted.map((o) => {
               const isBest = best?.id === o.id;
+              const sz = Number(o.suggested_size_percent ?? 0);
+              const { value, shares } = computeShares(bankroll, sz, o.polymarket_price ?? null);
               return (
                 <TableRow key={o.id} className={cn(isBest && "bg-emerald-500/5")}>
-                  <TableCell className="font-medium">{o.label}</TableCell>
-                  <TableCell className="text-right">{pct(o.p_model)}</TableCell>
-                  <TableCell className="text-right">{pct(o.polymarket_price)}</TableCell>
-                  <TableCell className={cn("text-right font-medium", edgeColor(o.edge))}>
+                  <TableCell className="font-medium">
+                    {o.label}
+                    <div className="text-[10px] text-muted-foreground">
+                      Model {pct(o.p_model, 0)} · Mkt {pct(o.polymarket_price, 0)}
+                    </div>
+                  </TableCell>
+                  <TableCell className={cn("text-right font-medium font-mono-num", edgeColor(o.edge))}>
                     {pct(o.edge)}
                   </TableCell>
-                  <TableCell className="text-right">
-                    {o.suggested_size_percent ? `${o.suggested_size_percent}%` : "—"}
+                  <TableCell className="text-right font-mono-num">
+                    {o.polymarket_price != null ? `${(o.polymarket_price * 100).toFixed(0)}¢` : "—"}
                   </TableCell>
-                  <TableCell>
-                    {o.clob_token_id && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => navigator.clipboard.writeText(o.clob_token_id!)}
-                      >
-                        Copy token
-                      </Button>
-                    )}
+                  <TableCell className="text-right font-mono-num">
+                    {value > 0 ? `$${value.toFixed(2)}` : "—"}
+                  </TableCell>
+                  <TableCell className="text-right font-mono-num font-semibold">
+                    {shares > 0 ? shares.toLocaleString() : "—"}
                   </TableCell>
                 </TableRow>
               );
             })}
             {sorted.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                   No outcomes yet. Refresh to compute probabilities.
                 </TableCell>
               </TableRow>
@@ -128,10 +165,11 @@ export const TradeDetailDialog = ({
         </Table>
         </div>
 
-        <div className="border-t border-border pt-3 text-sm text-muted-foreground">
-          <div className="font-medium text-foreground mb-1">Manual execution</div>
-          Place limit orders below ask. Scale into position in 2–3 parts. Re-check
-          forecast within 6h of event time.
+        <div className="border-t border-border pt-3 text-xs text-muted-foreground">
+          <div className="font-medium text-foreground mb-1">How to execute</div>
+          Click <span className="text-foreground font-medium">Open on Polymarket</span> above, then place a limit
+          order at or just below the listed price for the exact share count shown.
+          Scale into the position in 2–3 parts. Re-check the forecast within 6h of event time.
         </div>
       </DialogContent>
     </Dialog>
