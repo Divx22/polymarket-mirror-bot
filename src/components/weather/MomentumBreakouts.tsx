@@ -89,7 +89,7 @@ function priceAt(hist: HistPoint[], targetTs: number): number | null {
   return best.p;
 }
 
-export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
+export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinProp, showThresholdControl = true }: Props) => {
   const [scanning, setScanning] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [items, setItems] = useState<Movement[]>([]);
@@ -225,10 +225,38 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider">Momentum</div>
             <div className="text-[10px] text-muted-foreground">
-              Gap #1 vs #2 ≥{Math.round(GAP_MIN * 100)}% now AND 1h ago. 2h shown for context.
+              Gap #1 vs #2 ≥{Math.round(gapMin * 100)}% now AND 1h ago. Sorted by upside × gap.
             </div>
           </div>
         </div>
+        {showThresholdControl && (
+          <div className="hidden md:flex items-center gap-2 mr-2">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Min gap</span>
+            <input
+              type="range"
+              min={5}
+              max={30}
+              step={1}
+              value={Math.round(gapMin * 100)}
+              onChange={(e) => setGapMin(Number(e.target.value) / 100)}
+              className="w-24 accent-primary"
+              aria-label="Minimum gap percentage"
+            />
+            <input
+              type="number"
+              min={5}
+              max={50}
+              step={1}
+              value={Math.round(gapMin * 100)}
+              onChange={(e) => {
+                const v = Math.max(1, Math.min(50, Number(e.target.value) || 0));
+                setGapMin(v / 100);
+              }}
+              className="w-12 rounded border border-border bg-background px-1.5 py-0.5 text-xs font-mono-num text-foreground"
+            />
+            <span className="text-[10px] text-muted-foreground">%</span>
+          </div>
+        )}
         <div className="flex items-center gap-1.5">
           <button
             onClick={discover}
