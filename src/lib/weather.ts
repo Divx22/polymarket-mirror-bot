@@ -17,6 +17,23 @@ export type WeatherMarket = {
   resolution_lon: number | null;
 };
 
+// Within this window, weather is essentially deterministic and any apparent
+// "edge" is likely a settlement quirk we don't understand (station rounding,
+// observation timing, etc.). Suppress these from Best Trade.
+export const SETTLEMENT_RISK_HOURS = 6;
+
+export const hoursToResolution = (eventTime: string | null | undefined): number | null => {
+  if (!eventTime) return null;
+  const t = new Date(eventTime).getTime();
+  if (!Number.isFinite(t)) return null;
+  return (t - Date.now()) / 3_600_000;
+};
+
+export const isSettlementRisk = (eventTime: string | null | undefined): boolean => {
+  const h = hoursToResolution(eventTime);
+  return h != null && h <= SETTLEMENT_RISK_HOURS && h > -1; // exclude already-resolved (>1h past)
+};
+
 // Cap a suggested-size percent at the user's max_trade_pct (default 2%).
 // Returns { capped, original } so UI can show "Capped from 4% → 2%".
 export const applyMaxTradeCap = (
