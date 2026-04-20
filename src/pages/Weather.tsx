@@ -6,6 +6,7 @@ import { LogOut, RefreshCw, Loader2, Trash2, ArrowLeft, Sparkles } from "lucide-
 import { toast } from "sonner";
 import { AddMarketDialog } from "@/components/weather/AddMarketDialog";
 import { TradeDetailDialog } from "@/components/weather/TradeDetailDialog";
+import { BestTradeSignal } from "@/components/weather/BestTradeSignal";
 import {
   WeatherMarket, WeatherOutcome, WeatherSignal,
   pct, edgeColor, confidenceColor,
