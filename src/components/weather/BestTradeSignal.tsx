@@ -22,12 +22,13 @@ type Props = {
   bankroll: number;
   minVolume?: number;
   mismatchOnly?: boolean;
+  maxTradePct?: number;
   onSelect?: (market: WeatherMarket) => void;
 };
 
 const MIN_EDGE = 0.07;
 
-export const BestTradeSignal = ({ markets, outcomes, signals, bankroll, minVolume = 0, mismatchOnly = false, onSelect }: Props) => {
+export const BestTradeSignal = ({ markets, outcomes, signals, bankroll, minVolume = 0, mismatchOnly = false, maxTradePct = 2, onSelect }: Props) => {
   // Flatten all outcomes with their parent market + signal context, filter by edge + volume + mismatch
   const scored: ScoredOutcome[] = [];
   for (const m of markets) {
