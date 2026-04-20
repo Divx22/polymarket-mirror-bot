@@ -290,10 +290,18 @@ Deno.serve(async (req) => {
       .from("stations").select("*").ilike("city", m.city).maybeSingle();
     const station: Station | null = (stationRow as Station | null) ?? null;
 
-    const lat = station?.latitude ?? m.latitude;
-    const lon = station?.longitude ?? m.longitude;
+    // Per-market resolution station override takes precedence over the city default.
+    // This lets users target the EXACT station Polymarket settles on
+    // (e.g. NYC-Central Park vs NYC-LaGuardia) instead of the city's airport.
+    const overrideCode = (market as any).resolution_station_code as string | null;
+    const overrideLat = (market as any).resolution_lat as number | null;
+    const overrideLon = (market as any).resolution_lon as number | null;
+    const hasOverride = overrideCode && overrideLat != null && overrideLon != null;
+
+    const lat = hasOverride ? Number(overrideLat) : (station?.latitude ?? m.latitude);
+    const lon = hasOverride ? Number(overrideLon) : (station?.longitude ?? m.longitude);
     const timezone = station?.timezone ?? "UTC";
-    const stationCode = station?.station_code ?? null;
+    const stationCode = hasOverride ? overrideCode : (station?.station_code ?? null);
     const localDay = localYMD(new Date(m.event_time), timezone);
     const usMarket = isUS(Number(lat), Number(lon));
 
