@@ -142,9 +142,64 @@ export const BestTradeSignal = ({ markets, outcomes, signals, bankroll, minVolum
           </ul>
         </div>
       )}
+      {subThreshold.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowSubThreshold((v) => !v)}
+            className="inline-flex items-center gap-1 rounded border border-border bg-surface-2/60 hover:bg-surface-2 px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showSubThreshold ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+            {showSubThreshold ? "Hide sub-threshold" : `Show ${subThreshold.length} sub-threshold`}
+          </button>
+          {showSubThreshold && (
+            <div className="mt-2">
+              <SubThresholdList items={subThreshold.slice(0, 10)} onSelect={onSelect} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
+
+const SubThresholdList = ({
+  items, onSelect,
+}: {
+  items: (ScoredOutcome & { reason: string })[];
+  onSelect?: (m: WeatherMarket) => void;
+}) => (
+  <div className="rounded-lg border border-dashed border-border bg-card/50 overflow-hidden">
+    <div className="px-4 py-2 text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border/60 bg-surface-2/30">
+      Sub-threshold (not actionable — for context only)
+    </div>
+    <ul className="divide-y divide-border/40">
+      {items.map((p) => (
+        <li
+          key={p.outcome.id}
+          onClick={() => onSelect?.(p.market)}
+          className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 px-3 sm:px-4 py-2.5 text-sm hover:bg-surface-2/40 cursor-pointer opacity-75"
+        >
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <AlertCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="truncate font-medium">{p.outcome.label}</div>
+              <div className="truncate text-[11px] text-muted-foreground">
+                {p.market.city} · {p.reason}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 sm:gap-4 text-xs font-mono-num pl-5 sm:pl-0">
+            <span className="text-muted-foreground">M {pct(p.outcome.p_model, 0)}</span>
+            <span className="text-muted-foreground">P {pct(p.outcome.polymarket_price, 0)}</span>
+            <span className={cn("font-semibold w-12 sm:w-14 text-right", edgeColor(p.outcome.edge))}>
+              {pct(p.outcome.edge)}
+            </span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  </div>
+);
 
 const BestCard = ({ pick, bankroll, maxTradePct = 2, onSelect }: { pick: ScoredOutcome; bankroll: number; maxTradePct?: number; onSelect?: (m: WeatherMarket) => void }) => {
   const { outcome: o, market: m, signal } = pick;
