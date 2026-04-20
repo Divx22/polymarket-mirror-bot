@@ -29,6 +29,7 @@ const Weather = () => {
   const [detailMarket, setDetailMarket] = useState<WeatherMarket | null>(null);
   const [bankroll, setBankroll] = useState<number>(1000);
   const [minVolume, setMinVolume] = useState<number>(25000);
+  const [maxTradePct, setMaxTradePct] = useState<number>(2);
   const [mismatchOnly, setMismatchOnly] = useState(false);
 
   useEffect(() => {
