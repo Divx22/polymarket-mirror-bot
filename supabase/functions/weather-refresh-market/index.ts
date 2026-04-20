@@ -309,39 +309,49 @@ Deno.serve(async (req) => {
     ]);
 
     // Fetch all forecasts in parallel. Each .catch(null) so a single model
-    // outage doesn't kill the whole refresh.
-    const [ecmwfEns, gefs, ifsDet, aifsDet, graphcastDet, nwsHours] = await Promise.all([
+    // outage doesn't kill the whole refresh. METAR pulled for any station
+    // (works globally — ICAO codes); only used if event is today/tomorrow.
+    const eventLocalDay = localDay;
+    const todayLocal = localYMD(new Date(), timezone);
+    const useMetar = eventLocalDay <= todayLocal; // event is today or in the past
+    const [ecmwfEns, gefs, ifsDet, aifsDet, graphcastDet, nwsHours, metars] = await Promise.all([
       fetchEnsemble(lat, lon, timezone, "ecmwf_ifs025").catch(() => null),
       fetchEnsemble(lat, lon, timezone, "gfs025").catch(() => null),
       fetchOpenMeteoModel("https://api.open-meteo.com/v1/forecast", lat, lon, timezone, "ecmwf_ifs025").catch(() => null),
       fetchOpenMeteoModel("https://api.open-meteo.com/v1/forecast", lat, lon, timezone, "ecmwf_aifs025").catch(() => null),
       fetchOpenMeteoModel("https://api.open-meteo.com/v1/forecast", lat, lon, timezone, "graphcast").catch(() => null),
       usMarket ? fetchNwsHourly(Number(lat), Number(lon)) : Promise.resolve(null),
+      useMetar ? fetchMetar(stationCode, 30) : Promise.resolve([] as { time: string; tempC: number }[]),
     ]);
 
-    // Build a combined "ensemble values" array of per-member daily-max temps,
-    // bias-corrected per source. Treat each deterministic model as a 1-member
-    // contributor — adds calibration without overwhelming the true ensembles.
+    // METAR floor: max temp observed so far today at the station. The daily
+    // max can NEVER be lower than this — it's already happened. Massive
+    // variance reduction late in the day.
+    const metarFloor = useMetar ? metarObservedMaxForLocalDay(metars, timezone, localDay) : null;
+    const applyFloor = (vals: number[]) =>
+      metarFloor != null ? vals.map((v) => Math.max(v, metarFloor)) : vals;
+
     const ensembleValues: number[] = [];
     if (ecmwfEns) {
       const idxs = localDayIndices(ecmwfEns.time, localDay);
-      ensembleValues.push(...memberDailyMax(ecmwfEns.members, idxs, biasEcmwf));
+      ensembleValues.push(...applyFloor(memberDailyMax(ecmwfEns.members, idxs, biasEcmwf)));
     }
     if (gefs) {
       const idxs = localDayIndices(gefs.time, localDay);
-      ensembleValues.push(...memberDailyMax(gefs.members, idxs, biasGfs));
+      ensembleValues.push(...applyFloor(memberDailyMax(gefs.members, idxs, biasGfs)));
     }
     const aifsMax = aifsDet ? deterministicDailyMax(aifsDet.time, aifsDet.temp, localDay, biasAifs) : null;
-    if (aifsMax != null) ensembleValues.push(aifsMax);
+    if (aifsMax != null) ensembleValues.push(metarFloor != null ? Math.max(aifsMax, metarFloor) : aifsMax);
     const graphcastMax = graphcastDet ? deterministicDailyMax(graphcastDet.time, graphcastDet.temp, localDay, biasGraphcast) : null;
-    if (graphcastMax != null) ensembleValues.push(graphcastMax);
+    if (graphcastMax != null) ensembleValues.push(metarFloor != null ? Math.max(graphcastMax, metarFloor) : graphcastMax);
 
-    // Independent comparison sources for agreement check
-    const ifsMax = ifsDet ? deterministicDailyMax(ifsDet.time, ifsDet.temp, localDay, biasEcmwf) : null;
-    const nwsMax = nwsHours && stationCode ? (() => {
+    const ifsMaxRaw = ifsDet ? deterministicDailyMax(ifsDet.time, ifsDet.temp, localDay, biasEcmwf) : null;
+    const ifsMax = ifsMaxRaw != null && metarFloor != null ? Math.max(ifsMaxRaw, metarFloor) : ifsMaxRaw;
+    const nwsMaxRaw = nwsHours && stationCode ? (() => {
       const v = nwsDailyMaxForLocalDay(nwsHours, timezone, localDay);
       return v != null ? v - biasNws : null;
     })() : null;
+    const nwsMax = nwsMaxRaw != null && metarFloor != null ? Math.max(nwsMaxRaw, metarFloor) : nwsMaxRaw;
 
     // For agreement: NWS (US) is the gold standard since it's literally the
     // settlement source. For non-US, fall back to deterministic IFS.
@@ -353,8 +363,20 @@ Deno.serve(async (req) => {
         const pRef = referenceMax != null
           ? ((referenceMax >= (o.bucket_min_c ?? -Infinity) && referenceMax <= (o.bucket_max_c ?? Infinity)) ? 1 : 0)
           : pModelRaw;
-        const price = o.clob_token_id ? await fetchPrice(o.clob_token_id) : null;
-        return { o, pEcmwf: pModelRaw, pNoaa: pRef, pModel: pModelRaw, price, edge: null as number | null };
+        // Use order book best_ask as the realistic BUY price (you can't fill
+        // at midpoint if the spread is wide). Fall back to midpoint if book
+        // unavailable.
+        const [book, mid] = o.clob_token_id
+          ? await Promise.all([fetchBook(o.clob_token_id), fetchPrice(o.clob_token_id)])
+          : [null, null];
+        const askPrice = book?.best_ask ?? mid;
+        const bidPrice = book?.best_bid ?? mid;
+        return {
+          o, pEcmwf: pModelRaw, pNoaa: pRef, pModel: pModelRaw,
+          price: askPrice, midpoint: mid, bid: bidPrice, ask: book?.best_ask ?? null,
+          ask_size: book?.ask_size ?? null, bid_size: book?.bid_size ?? null,
+          edge: null as number | null,
+        };
       })
     );
 
