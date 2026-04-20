@@ -8,6 +8,7 @@ import { AddMarketDialog } from "@/components/weather/AddMarketDialog";
 import { TradeDetailDialog } from "@/components/weather/TradeDetailDialog";
 import { BestTradeSignal } from "@/components/weather/BestTradeSignal";
 import { WeatherScanner } from "@/components/weather/WeatherScanner";
+import { BankrollInput } from "@/components/weather/PositionCalculator";
 import {
   WeatherMarket, WeatherOutcome, WeatherSignal,
   pct, edgeColor, confidenceColor,
@@ -23,6 +24,7 @@ const Weather = () => {
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [detailMarket, setDetailMarket] = useState<WeatherMarket | null>(null);
+  const [bankroll, setBankroll] = useState<number>(1000);
 
   useEffect(() => {
     document.title = "Weather Edge Trader";
@@ -39,11 +41,13 @@ const Weather = () => {
 
   const load = useCallback(async () => {
     if (!userId) return;
-    const [{ data: ms }, { data: os }, { data: sigs }] = await Promise.all([
+    const [{ data: ms }, { data: os }, { data: sigs }, { data: cfg }] = await Promise.all([
       supabase.from("weather_markets").select("*").eq("active", true).order("event_time"),
       supabase.from("weather_outcomes").select("*").order("display_order"),
       supabase.from("weather_signals").select("*").order("created_at", { ascending: false }),
+      supabase.from("config").select("bankroll_usdc").eq("user_id", userId).maybeSingle(),
     ]);
+    if (cfg?.bankroll_usdc != null) setBankroll(Number(cfg.bankroll_usdc));
     setMarkets((ms ?? []) as WeatherMarket[]);
     const grouped: Record<string, WeatherOutcome[]> = {};
     (os ?? []).forEach((o: any) => {
@@ -123,6 +127,7 @@ const Weather = () => {
             <h1 className="text-sm font-semibold tracking-wide">Weather Edge Trader</h1>
           </div>
           <div className="flex items-center gap-2">
+            <BankrollInput userId={userId} bankroll={bankroll} onChange={setBankroll} />
             <Button variant="outline" size="sm" onClick={refreshAll} disabled={refreshingAll || markets.length === 0}>
               {refreshingAll ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
               Refresh all
@@ -148,6 +153,7 @@ const Weather = () => {
           markets={markets}
           outcomes={outcomes}
           signals={signals}
+          bankroll={bankroll}
           onSelect={(m) => setDetailMarket(m)}
         />
 

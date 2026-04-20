@@ -6,6 +6,7 @@ import {
   pct, edgeColor, confidenceColor,
 } from "@/lib/weather";
 import { cn } from "@/lib/utils";
+import { PositionCalculator } from "./PositionCalculator";
 
 export type ScoredOutcome = {
   outcome: WeatherOutcome;
@@ -17,12 +18,13 @@ type Props = {
   markets: WeatherMarket[];
   outcomes: Record<string, WeatherOutcome[]>;
   signals: Record<string, WeatherSignal>;
+  bankroll: number;
   onSelect?: (market: WeatherMarket) => void;
 };
 
 const MIN_EDGE = 0.07;
 
-export const BestTradeSignal = ({ markets, outcomes, signals, onSelect }: Props) => {
+export const BestTradeSignal = ({ markets, outcomes, signals, bankroll, onSelect }: Props) => {
   // Flatten all outcomes with their parent market + signal context, filter by edge
   const scored: ScoredOutcome[] = [];
   for (const m of markets) {
@@ -55,7 +57,7 @@ export const BestTradeSignal = ({ markets, outcomes, signals, onSelect }: Props)
 
   return (
     <div className="space-y-3">
-      <BestCard pick={best} onSelect={onSelect} />
+      <BestCard pick={best} bankroll={bankroll} onSelect={onSelect} />
       {others.length > 0 && (
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="px-4 py-2 text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border bg-surface-2/40">
@@ -98,7 +100,7 @@ export const BestTradeSignal = ({ markets, outcomes, signals, onSelect }: Props)
   );
 };
 
-const BestCard = ({ pick, onSelect }: { pick: ScoredOutcome; onSelect?: (m: WeatherMarket) => void }) => {
+const BestCard = ({ pick, bankroll, onSelect }: { pick: ScoredOutcome; bankroll: number; onSelect?: (m: WeatherMarket) => void }) => {
   const { outcome: o, market: m, signal } = pick;
   const conf = signal?.confidence_level ?? null;
   const [book, setBook] = useState<{ bid: number | null; ask: number | null } | null>(null);
@@ -216,6 +218,15 @@ const BestCard = ({ pick, onSelect }: { pick: ScoredOutcome; onSelect?: (m: Weat
         ) : (
           <div className="text-muted-foreground">Fetching live book…</div>
         )}
+      </div>
+
+      <div className="mt-2">
+        <PositionCalculator
+          bankrollUsdc={bankroll}
+          sizePct={Number(o.suggested_size_percent ?? 0)}
+          bid={bid}
+          mid={mid}
+        />
       </div>
     </div>
   );
