@@ -114,7 +114,7 @@ export const BestTradeSignal = ({ markets, outcomes, signals, bankroll, minVolum
   );
 };
 
-const BestCard = ({ pick, bankroll, onSelect }: { pick: ScoredOutcome; bankroll: number; onSelect?: (m: WeatherMarket) => void }) => {
+const BestCard = ({ pick, bankroll, maxTradePct = 2, onSelect }: { pick: ScoredOutcome; bankroll: number; maxTradePct?: number; onSelect?: (m: WeatherMarket) => void }) => {
   const { outcome: o, market: m, signal } = pick;
   const conf = signal?.confidence_level ?? null;
   const [book, setBook] = useState<{ bid: number | null; ask: number | null } | null>(null);
