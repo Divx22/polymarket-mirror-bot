@@ -314,10 +314,10 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
 };
 
 const TRAJ_META: Record<Trajectory, { label: string; badge: string; arrow: string }> = {
-  accelerating: { label: "Accelerating", badge: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40", arrow: "text-emerald-400" },
-  widening:     { label: "Widening",     badge: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30", arrow: "text-emerald-400" },
-  flat:         { label: "Flat",         badge: "bg-muted text-muted-foreground border-border",             arrow: "text-muted-foreground" },
-  narrowing:    { label: "Narrowing",    badge: "bg-red-500/15 text-red-400 border-red-500/30",             arrow: "text-red-400" },
+  accelerating: { label: "Accelerating", badge: "bg-emerald-500/25 text-emerald-200 border-emerald-400/60 shadow-[0_0_8px_hsl(142_72%_48%/0.35)]", arrow: "text-emerald-400" },
+  widening:     { label: "Widening",     badge: "bg-emerald-500/20 text-emerald-200 border-emerald-400/50",                                       arrow: "text-emerald-400" },
+  flat:         { label: "Flat",         badge: "bg-amber-500/20 text-amber-200 border-amber-400/50",                                             arrow: "text-amber-300" },
+  narrowing:    { label: "Narrowing",    badge: "bg-red-500/25 text-red-200 border-red-400/60 shadow-[0_0_8px_hsl(0_72%_55%/0.35)]",              arrow: "text-red-400" },
 };
 
 const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => void }) => {
