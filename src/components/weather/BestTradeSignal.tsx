@@ -153,6 +153,14 @@ const BestCard = ({ pick, bankroll, onSelect }: { pick: ScoredOutcome; bankroll:
       onClick={() => onSelect?.(m)}
       className="rounded-lg border border-emerald-500/40 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent p-3 sm:p-5 cursor-pointer hover:border-emerald-500/60 transition-colors"
     >
+      {signal?.favorite_mismatch && signal.market_favorite_label && (
+        <div className="mb-3 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-[11px] text-emerald-300 leading-relaxed flex items-start gap-1.5">
+          <span>⚡</span>
+          <span>
+            Market favorite is <span className="font-semibold text-foreground">{signal.market_favorite_label}</span> — your model disagrees.
+          </span>
+        </div>
+      )}
       <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
         <div className="flex items-center gap-2 min-w-0">
           <Sparkles className="h-5 w-5 text-emerald-400 shrink-0" />
