@@ -57,7 +57,7 @@ export const BestTradeSignal = ({ markets, outcomes, signals, bankroll, onSelect
 
   return (
     <div className="space-y-3">
-      <BestCard pick={best} onSelect={onSelect} />
+      <BestCard pick={best} bankroll={bankroll} onSelect={onSelect} />
       {others.length > 0 && (
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="px-4 py-2 text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border bg-surface-2/40">
@@ -100,7 +100,7 @@ export const BestTradeSignal = ({ markets, outcomes, signals, bankroll, onSelect
   );
 };
 
-const BestCard = ({ pick, onSelect }: { pick: ScoredOutcome; onSelect?: (m: WeatherMarket) => void }) => {
+const BestCard = ({ pick, bankroll, onSelect }: { pick: ScoredOutcome; bankroll: number; onSelect?: (m: WeatherMarket) => void }) => {
   const { outcome: o, market: m, signal } = pick;
   const conf = signal?.confidence_level ?? null;
   const [book, setBook] = useState<{ bid: number | null; ask: number | null } | null>(null);
