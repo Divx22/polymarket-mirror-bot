@@ -119,13 +119,15 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         ]);
         const leader1h = priceAt(leaderHist, target1h);
         const runner1h = priceAt(runnerHist, target1h);
-        const leader2h = priceAt(leaderHist, target2h);
-        const runner2h = priceAt(runnerHist, target2h);
-        if (leader1h == null || runner1h == null || leader2h == null || runner2h == null) return;
+        if (leader1h == null || runner1h == null) return;
 
         const gap1h = leader1h - runner1h;
-        const gap2h = leader2h - runner2h;
-        if (gap1h < GAP_MIN || gap2h < GAP_MIN) return; // all 3 must qualify
+        if (gap1h < GAP_MIN) return; // qualify on now + 1h ago only
+
+        // 2h shown for context; falls back to gap1h if unavailable
+        const leader2h = priceAt(leaderHist, target2h);
+        const runner2h = priceAt(runnerHist, target2h);
+        const gap2h = (leader2h != null && runner2h != null) ? (leader2h - runner2h) : gap1h;
 
         const d1 = gap1h - gap2h;       // change 2h→1h
         const d2 = gapNow - gap1h;      // change 1h→now
@@ -171,7 +173,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider">Momentum</div>
             <div className="text-[10px] text-muted-foreground">
-              Gap #1 vs #2 ≥{Math.round(GAP_MIN * 100)}% at all 3 snapshots (2h, 1h, now). Badge = trajectory.
+              Gap #1 vs #2 ≥{Math.round(GAP_MIN * 100)}% now AND 1h ago. 2h shown for context.
             </div>
           </div>
         </div>
