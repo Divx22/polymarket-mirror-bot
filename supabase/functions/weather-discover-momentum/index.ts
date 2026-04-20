@@ -125,6 +125,16 @@ function eventEndTime(ev: any): number | null {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
+    // Optional body: { gap_min?: number } in 0..1 range. Falls back to DEFAULT_GAP_MIN.
+    let gapMin = DEFAULT_GAP_MIN;
+    try {
+      if (req.method === "POST") {
+        const body = await req.json().catch(() => null);
+        const v = Number(body?.gap_min);
+        if (Number.isFinite(v) && v > 0 && v < 1) gapMin = v;
+      }
+    } catch { /* ignore */ }
+
     const events = await discoverEvents();
     const now = Date.now();
     const target1h = now - 3_600_000;
