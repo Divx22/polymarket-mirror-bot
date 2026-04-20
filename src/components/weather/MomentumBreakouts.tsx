@@ -238,7 +238,7 @@ const Row = ({ m, onSelect }: { m: Movement; onSelect?: (mk: WeatherMarket) => v
   const gapNowPct = (m.gapNow * 100).toFixed(1);
   const netSign = m.netDelta >= 0 ? "+" : "";
   const netPct = (m.netDelta * 100).toFixed(1);
-  const meta = TRAJ_META[m.trajectory];
+  const meta = TRAJ_META[m.trajectory] ?? TRAJ_META.flat;
   const nowColor = m.trajectory === "narrowing"
     ? "text-red-400"
     : m.trajectory === "flat"
