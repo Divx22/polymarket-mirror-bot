@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Sparkles, TrendingUp, AlertCircle } from "lucide-react";
+import { Sparkles, TrendingUp, AlertCircle, Copy, Check } from "lucide-react";
+import { toast } from "sonner";
 import {
   type WeatherMarket, type WeatherOutcome, type WeatherSignal,
   pct, edgeColor,
