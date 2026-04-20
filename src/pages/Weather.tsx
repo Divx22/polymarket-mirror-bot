@@ -11,6 +11,7 @@ import { BestTradeSignal } from "@/components/weather/BestTradeSignal";
 import { WeatherScanner } from "@/components/weather/WeatherScanner";
 import { BankrollInput, MinVolumeInput, MaxTradeCapInput } from "@/components/weather/PositionCalculator";
 import { StationOverridePicker } from "@/components/weather/StationOverridePicker";
+import { ClvPanel } from "@/components/weather/ClvPanel";
 import {
   WeatherMarket, WeatherOutcome, WeatherSignal,
   pct, edgeColor, confidenceColor, formatVolume, applyMaxTradeCap,
@@ -203,6 +204,8 @@ const Weather = () => {
           maxTradePct={maxTradePct}
           onSelect={(m) => setDetailMarket(m)}
         />
+
+        <ClvPanel />
 
         <section className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">

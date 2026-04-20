@@ -14,6 +14,82 @@ export type Database = {
   }
   public: {
     Tables: {
+      clv_scores: {
+        Row: {
+          asset_id: string
+          closing_price: number
+          clv_cents: number
+          detected_trade_id: string
+          entry_price: number
+          event_time: string | null
+          id: string
+          notes: Json | null
+          scored_at: string
+          shares: number | null
+          side: string
+          source: string
+          user_id: string
+          weather_market_id: string | null
+          weather_outcome_id: string | null
+        }
+        Insert: {
+          asset_id: string
+          closing_price: number
+          clv_cents: number
+          detected_trade_id: string
+          entry_price: number
+          event_time?: string | null
+          id?: string
+          notes?: Json | null
+          scored_at?: string
+          shares?: number | null
+          side: string
+          source?: string
+          user_id: string
+          weather_market_id?: string | null
+          weather_outcome_id?: string | null
+        }
+        Update: {
+          asset_id?: string
+          closing_price?: number
+          clv_cents?: number
+          detected_trade_id?: string
+          entry_price?: number
+          event_time?: string | null
+          id?: string
+          notes?: Json | null
+          scored_at?: string
+          shares?: number | null
+          side?: string
+          source?: string
+          user_id?: string
+          weather_market_id?: string | null
+          weather_outcome_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clv_scores_detected_trade_id_fkey"
+            columns: ["detected_trade_id"]
+            isOneToOne: true
+            referencedRelation: "detected_trades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clv_scores_weather_market_id_fkey"
+            columns: ["weather_market_id"]
+            isOneToOne: false
+            referencedRelation: "weather_markets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clv_scores_weather_outcome_id_fkey"
+            columns: ["weather_outcome_id"]
+            isOneToOne: false
+            referencedRelation: "weather_outcomes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       config: {
         Row: {
           auto_execute: boolean
