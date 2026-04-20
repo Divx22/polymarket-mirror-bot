@@ -127,6 +127,7 @@ const Weather = () => {
             <h1 className="text-sm font-semibold tracking-wide">Weather Edge Trader</h1>
           </div>
           <div className="flex items-center gap-2">
+            <BankrollInput userId={userId} bankroll={bankroll} onChange={setBankroll} />
             <Button variant="outline" size="sm" onClick={refreshAll} disabled={refreshingAll || markets.length === 0}>
               {refreshingAll ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
               Refresh all
@@ -152,6 +153,7 @@ const Weather = () => {
           markets={markets}
           outcomes={outcomes}
           signals={signals}
+          bankroll={bankroll}
           onSelect={(m) => setDetailMarket(m)}
         />
 
