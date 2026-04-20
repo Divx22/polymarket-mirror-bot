@@ -90,6 +90,19 @@ function priceAt(hist: HistPoint[], targetTs: number): number | null {
   return best.p;
 }
 
+// Momentum-weighted score: 0.4·upside + 0.3·gapNow + 0.3·netDelta + trajectory bonus.
+// Higher = stronger momentum pick.
+const TRAJ_BONUS: Record<Trajectory, number> = {
+  accelerating: 0.05,
+  widening: 0.02,
+  flat: 0,
+  narrowing: -0.05,
+};
+function momentumScore(leaderNow: number, gapNow: number, netDelta: number, trajectory: Trajectory): number {
+  const upside = 1 - leaderNow;
+  return 0.4 * upside + 0.3 * gapNow + 0.3 * netDelta + (TRAJ_BONUS[trajectory] ?? 0);
+}
+
 export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinProp, showThresholdControl = true }: Props) => {
   const [scanning, setScanning] = useState(false);
   const [discovering, setDiscovering] = useState(false);
@@ -165,9 +178,11 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
       setProgress(Math.round((done / eligible.length) * 100));
     }
 
-    // Sort by average of upside% and gap%. Highest combined first.
-    const score = (leaderNow: number, gapNow: number) => ((1 - leaderNow) + gapNow) / 2;
-    found.sort((a, b) => score(b.leaderNow, b.gapNow) - score(a.leaderNow, a.gapNow));
+    // Momentum-weighted sort.
+    found.sort((a, b) =>
+      momentumScore(b.leaderNow, b.gapNow, b.netDelta, b.trajectory) -
+      momentumScore(a.leaderNow, a.gapNow, a.netDelta, a.trajectory),
+    );
 
     setItems(found);
     setScannedAt(Date.now());
@@ -198,9 +213,11 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
         netDelta: r.net_delta,
         trajectory: r.trajectory,
       }));
-      // Same average-score sort as local results.
-      const score = (leaderNow: number, gapNow: number) => ((1 - leaderNow) + gapNow) / 2;
-      mapped.sort((a, b) => score(b.leaderNow, b.gapNow) - score(a.leaderNow, a.gapNow));
+      // Same momentum-weighted sort as local results.
+      mapped.sort((a, b) =>
+        momentumScore(b.leaderNow, b.gapNow, b.netDelta, b.trajectory) -
+        momentumScore(a.leaderNow, a.gapNow, a.netDelta, a.trajectory),
+      );
       setExternals(mapped);
     } catch (e: any) {
       console.error("Discover failed", e);
@@ -222,7 +239,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider">Momentum</div>
             <div className="text-[10px] text-muted-foreground">
-              Gap #1 vs #2 ≥{Math.round(gapMin * 100)}% now AND 1h ago. Sorted by avg(upside%, gap%).
+              Gap #1 vs #2 ≥{Math.round(gapMin * 100)}% now AND 1h ago. Sorted by momentum score (upside + gap + widening + trajectory).
             </div>
           </div>
         </div>
@@ -282,7 +299,6 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
       )}
 
       {(() => {
-        const score = (leaderNow: number, gapNow: number) => ((1 - leaderNow) + gapNow) / 2;
         const localSlugs = new Set(
           items.map((it) => it.market.polymarket_event_slug).filter(Boolean) as string[],
         );
@@ -295,11 +311,11 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
         const merged: Merged[] = [
           ...items.map((it): Merged => ({
             kind: "local", key: `l-${it.market.id}`,
-            sortScore: score(it.leaderNow, it.gapNow), data: it,
+            sortScore: momentumScore(it.leaderNow, it.gapNow, it.netDelta, it.trajectory), data: it,
           })),
           ...dedupedExternals.map((e, i): Merged => ({
             kind: "ext", key: `e-${e.event_slug ?? i}`,
-            sortScore: score(e.leaderNow, e.gapNow), data: e,
+            sortScore: momentumScore(e.leaderNow, e.gapNow, e.netDelta, e.trajectory), data: e,
           })),
         ].sort((a, b) => b.sortScore - a.sortScore);
 

@@ -51,10 +51,16 @@ function tokensFromMarket(m: any): string[] {
 async function discoverEvents(): Promise<any[]> {
   const seen = new Map<string, any>();
   const urls = [
-    "https://gamma-api.polymarket.com/events?tag_slug=weather&closed=false&active=true&limit=100",
-    "https://gamma-api.polymarket.com/events?tag_slug=climate&closed=false&active=true&limit=50",
-    "https://gamma-api.polymarket.com/events?closed=false&active=true&limit=50&query=temperature",
-    "https://gamma-api.polymarket.com/events?closed=false&active=true&limit=50&query=highest%20temp",
+    "https://gamma-api.polymarket.com/events?tag_slug=weather&closed=false&active=true&limit=200",
+    "https://gamma-api.polymarket.com/events?tag_slug=climate&closed=false&active=true&limit=100",
+    "https://gamma-api.polymarket.com/events?closed=false&active=true&limit=100&query=temperature",
+    "https://gamma-api.polymarket.com/events?closed=false&active=true&limit=100&query=highest%20temp",
+    "https://gamma-api.polymarket.com/events?closed=false&active=true&limit=100&query=lowest%20temp",
+    "https://gamma-api.polymarket.com/events?closed=false&active=true&limit=100&query=hottest",
+    "https://gamma-api.polymarket.com/events?closed=false&active=true&limit=100&query=coldest",
+    "https://gamma-api.polymarket.com/events?closed=false&active=true&limit=100&query=weather",
+    "https://gamma-api.polymarket.com/events?closed=false&active=true&limit=100&query=rain",
+    "https://gamma-api.polymarket.com/events?closed=false&active=true&limit=100&query=snow",
   ];
   for (const url of urls) {
     try {
@@ -64,7 +70,7 @@ async function discoverEvents(): Promise<any[]> {
       const arr = Array.isArray(j) ? j : (j?.events ?? []);
       for (const ev of arr) {
         const title = String(ev?.title ?? "").toLowerCase();
-        if (!/temperature|temp|°|degree|hot|cold/.test(title)) continue;
+        if (!/temperature|temp|°|degree|hot|cold|weather|rain|snow|precip/.test(title)) continue;
         if (ev?.id && !seen.has(String(ev.id))) seen.set(String(ev.id), ev);
       }
     } catch { /* skip */ }
