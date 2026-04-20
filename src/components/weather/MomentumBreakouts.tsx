@@ -173,7 +173,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider">Momentum</div>
             <div className="text-[10px] text-muted-foreground">
-              Gap #1 vs #2 ≥{Math.round(GAP_MIN * 100)}% at all 3 snapshots (2h, 1h, now). Badge = trajectory.
+              Gap #1 vs #2 ≥{Math.round(GAP_MIN * 100)}% now AND 1h ago. 2h shown for context.
             </div>
           </div>
         </div>
