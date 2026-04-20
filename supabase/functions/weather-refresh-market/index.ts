@@ -421,7 +421,12 @@ Deno.serve(async (req) => {
       distribution.push({
         label: x.o.label,
         p_model: x.pModel,
-        p_market: x.price,
+        p_market: x.price,        // realistic ASK price used for edge
+        p_midpoint: x.midpoint,
+        best_bid: x.bid,
+        best_ask: x.ask,
+        ask_size: x.ask_size,
+        bid_size: x.bid_size,
         edge: adjEdge,
         raw_edge: x.edge,
         suggested_size_percent: size,
