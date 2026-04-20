@@ -189,16 +189,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
     </div>
   );
 };
-      {visible.length > 0 && (
-        <ul className="divide-y divide-border/50">
-          {visible.map((b) => (
-            <BreakoutRow key={b.market.id} b={b} onSelect={onSelect} />
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-};
+
 
 const BreakoutRow = ({ b, onSelect }: { b: Movement; onSelect?: (m: WeatherMarket) => void }) => {
   const [copied, setCopied] = useState(false);
