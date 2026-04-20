@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { ExternalLink, Sparkles } from "lucide-react";
+import { ExternalLink, Sparkles, Copy, Check, Zap } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 import {
   type WeatherMarket, type WeatherOutcome, type WeatherSignal,
   pct, edgeColor, confidenceColor,
@@ -81,34 +83,7 @@ export const TradeDetailDialog = ({
         </div>
 
         {signal && (signal.market_favorite_label || signal.model_favorite_label) && (
-          <div className="rounded-md border border-border bg-surface-2/40 p-3 space-y-1.5">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Market vs Model</div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <div className="text-muted-foreground">Model says</div>
-                <div className="font-medium">
-                  {signal.model_favorite_label ?? "—"}{" "}
-                  <span className="font-mono-num text-muted-foreground">
-                    ({pct(signal.model_favorite_prob, 0)})
-                  </span>
-                </div>
-              </div>
-              <div>
-                <div className="text-muted-foreground">Market says</div>
-                <div className="font-medium">
-                  {signal.market_favorite_label ?? "—"}{" "}
-                  <span className="font-mono-num text-muted-foreground">
-                    ({signal.market_favorite_price != null ? `${(signal.market_favorite_price * 100).toFixed(0)}¢` : "—"})
-                  </span>
-                </div>
-              </div>
-            </div>
-            {signal.favorite_mismatch && (
-              <div className="text-[11px] text-emerald-400 pt-1">
-                ⚡ The market is betting on a different outcome than the forecast.
-              </div>
-            )}
-          </div>
+          <MismatchPanel signal={signal} outcomes={sorted} bankroll={bankroll} />
         )}
 
         {best && bestPlan && (
@@ -212,6 +187,121 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
     <div className="border border-border rounded p-2">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="font-medium">{value}</div>
+    </div>
+  );
+}
+
+function MismatchPanel({
+  signal, outcomes, bankroll,
+}: {
+  signal: WeatherSignal;
+  outcomes: WeatherOutcome[];
+  bankroll: number;
+}) {
+  const [copied, setCopied] = useState<"price" | "shares" | null>(null);
+
+  // Find the outcome that matches the model's favorite label, so we can
+  // suggest BUYING IT at the market's underpriced rate.
+  const modelFav =
+    outcomes.find((o) => o.label === signal.model_favorite_label) ?? null;
+
+  const price = modelFav?.polymarket_price ?? null;
+  // Default size: use the outcome's suggested size if positive, otherwise
+  // a sensible 1% so the user always sees an actionable share count.
+  const sizePct = Number(modelFav?.suggested_size_percent ?? 0) > 0
+    ? Number(modelFav!.suggested_size_percent)
+    : 1;
+  const { value: spend, shares } = computeShares(bankroll, sizePct, price);
+  const priceCents = price != null ? (price * 100).toFixed(1) : null;
+
+  const copy = async (kind: "price" | "shares", text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(kind);
+      toast.success(`${kind === "price" ? "Price" : "Shares"} copied`);
+      setTimeout(() => setCopied(null), 1500);
+    } catch {
+      toast.error("Copy failed");
+    }
+  };
+
+  return (
+    <div className="rounded-md border border-border bg-surface-2/40 p-3 space-y-2.5">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Market vs Model</div>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div>
+          <div className="text-muted-foreground">Model says</div>
+          <div className="font-medium">
+            {signal.model_favorite_label ?? "—"}{" "}
+            <span className="font-mono-num text-muted-foreground">
+              ({pct(signal.model_favorite_prob, 0)})
+            </span>
+          </div>
+        </div>
+        <div>
+          <div className="text-muted-foreground">Market says</div>
+          <div className="font-medium">
+            {signal.market_favorite_label ?? "—"}{" "}
+            <span className="font-mono-num text-muted-foreground">
+              ({signal.market_favorite_price != null ? `${(signal.market_favorite_price * 100).toFixed(0)}¢` : "—"})
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {signal.favorite_mismatch && (
+        <div className="text-[11px] text-emerald-400">
+          ⚡ The market is betting on a different outcome than the forecast.
+        </div>
+      )}
+
+      {modelFav && price != null && (
+        <div className="border border-emerald-500/30 bg-emerald-500/10 rounded-md p-2.5 space-y-2">
+          <div className="flex items-center gap-2 text-xs">
+            <Zap className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+            <span className="font-semibold">
+              Buy YES <span className="text-emerald-400">{modelFav.label}</span>
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="bg-background/40 rounded p-2">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Spend</div>
+              <div className="font-mono-num font-bold text-sm">${spend.toFixed(2)}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => copy("shares", String(shares))}
+              className="bg-background/40 rounded p-2 hover:bg-background/60 transition-colors text-left"
+              title="Click to copy share count"
+            >
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1">
+                Shares
+                {copied === "shares"
+                  ? <Check className="h-2.5 w-2.5 text-emerald-400" />
+                  : <Copy className="h-2.5 w-2.5" />}
+              </div>
+              <div className="font-mono-num font-bold text-sm">{shares.toLocaleString()}</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => copy("price", priceCents!)}
+              className="bg-background/40 rounded p-2 hover:bg-background/60 transition-colors text-left"
+              title="Click to copy limit price (cents)"
+            >
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center justify-center gap-1">
+                Price
+                {copied === "price"
+                  ? <Check className="h-2.5 w-2.5 text-emerald-400" />
+                  : <Copy className="h-2.5 w-2.5" />}
+              </div>
+              <div className="font-mono-num font-bold text-sm">{priceCents}¢</div>
+            </button>
+          </div>
+          <div className="text-[10px] text-muted-foreground text-center">
+            Size {sizePct}% of ${bankroll.toLocaleString()} · Tap Shares or Price to copy
+          </div>
+        </div>
+      )}
     </div>
   );
 }
