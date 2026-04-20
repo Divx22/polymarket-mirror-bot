@@ -1,31 +1,58 @@
 
-Honest answer: the on-chain trade event we read from Polygon **doesn't carry the original order size** — it only emits the matched fill (taker amount, maker amount, price). The "original order" lived only in Polymarket's off-chain CLOB order book before being matched.
 
-To get original order size we'd need to either:
+## Plan: Volume Filter + Favorite Mismatch Signal
 
-**Option A — Polymarket Data API (`/trades` endpoint).**
-Polymarket exposes `https://data-api.polymarket.com/trades?user=<addr>` which returns each trade with extra fields including the order it filled. From there we can call `https://clob.polymarket.com/order/<order_id>` (or the Data API's order endpoint) to fetch the original `size` and `size_matched`. This requires no auth for public data.
+### 1. Database migration
+Add columns:
+- `weather_markets.event_volume_24h numeric`
+- `weather_signals`: `market_favorite_label text`, `market_favorite_price numeric`, `model_favorite_label text`, `model_favorite_prob numeric`, `favorite_mismatch boolean`
+- `config.min_volume_usd numeric default 25000`
 
-**Option B — Index by `order_id` from the on-chain event.**
-The Exchange contract's `OrderFilled` event emits an `orderHash`. We can group fills by `orderHash` to at least show "this is fill 3 of N for the same order". But to get the *original posted size* we still need the CLOB API.
+### 2. Edge function — `weather-refresh-market`
+- Pull `volume24hr` (event-level) from Polymarket gamma API → store on `weather_markets.event_volume_24h`.
+- After computing outcomes, derive and persist on the new `weather_signals` row:
+  - `market_favorite_label` / `market_favorite_price` (highest `polymarket_price`)
+  - `model_favorite_label` / `model_favorite_prob` (highest `p_model`)
+  - `favorite_mismatch` (labels differ)
 
-**Recommended: Option A.** Cleanest data, one extra HTTP call per trade, cacheable.
+### 3. `src/lib/weather.ts`
+Extend `WeatherMarket` with `event_volume_24h` and `WeatherSignal` with the four new fields. Add a `formatVolume($25k / $1.2M)` helper.
 
-### Plan
+### 4. `src/pages/Weather.tsx`
+- Header: add **Min Volume $** input (binds to `config.min_volume_usd`) and **Mismatches only** toggle, next to Bankroll.
+- Load `min_volume_usd` from config.
+- Add **Volume** column to table (formatted).
+- Filter logic: hide rows where `best_edge ≥ 7%` AND `event_volume_24h < min_volume_usd` (untradeable). Keep rows with no edge visible regardless.
+- Apply mismatches-only toggle as additional filter.
+- Sort: `favorite_mismatch DESC` → `best_edge DESC` → `event_volume_24h DESC`.
+- Mismatch rows: subtle emerald-tinted background + small "⚡ Mismatch" badge inside the Best Trade cell.
 
-1. **DB migration** — add nullable columns to `detected_trades`:
-   - `order_id text` (Polymarket's order id / hash)
-   - `order_original_size numeric` (original size in shares)
-   - `order_original_usdc numeric` (original size × price)
-   - `is_partial_fill boolean`
+### 5. `src/components/weather/TradeDetailDialog.tsx`
+New "Market vs Model" block above the outcomes table:
+```text
+Model says:    [Outcome A] (62%)
+Market says:   [Outcome B] (48¢)
+⚠ The market is betting on a different outcome than the forecast.
+```
+Warning line only when mismatch is true.
 
-2. **Update `poll-target-wallet`** — switch from raw on-chain logs (or augment) to Polymarket Data API `/trades?user=…` which already returns `order_id`, `maker_amount`, `taker_amount`, plus we then GET `/order/{order_id}` to fetch original size. Store all three new fields when inserting.
+### 6. `src/components/weather/BestTradeSignal.tsx`
+When the surfaced top trade has `favorite_mismatch=true`, prepend a one-line banner: "Market favorite is **[X]** — your model disagrees."
 
-3. **Update `TradesFeed` UI** — add an "Order" column showing `fill / total` (e.g. `$0.22 / $50.00`) with a small "partial" badge when `is_partial_fill = true`. Tooltip with the order id.
+### 7. `src/components/weather/PositionCalculator.tsx`
+Add a `MinVolumeInput` sibling to `BankrollInput` (same pattern, writes to `config.min_volume_usd`).
 
-4. **Backfill** — for existing rows, run a one-time enrichment via the same lookup (best-effort, skip if order not found).
+### Out of scope (intentional)
+- Per-outcome volume (Polymarket data unreliable).
+- Dedicated "Mismatch" column (redundant with row highlight + badge on 390px viewport).
+- Existing 7% edge floor + confidence filter remain untouched.
 
-### Risks / notes
-- Data API may rate-limit; add small delay/batch.
-- Some on-chain trades are AMM/sweep matches without a CLOB order id — show "—" in those cases.
-- No DB columns exist yet, so this is additive and safe.
+### Files touched
+- New migration
+- `supabase/functions/weather-refresh-market/index.ts`
+- `src/lib/weather.ts`
+- `src/pages/Weather.tsx`
+- `src/components/weather/TradeDetailDialog.tsx`
+- `src/components/weather/BestTradeSignal.tsx`
+- `src/components/weather/PositionCalculator.tsx`
+
