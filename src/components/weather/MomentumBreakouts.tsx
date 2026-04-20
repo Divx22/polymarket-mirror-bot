@@ -17,7 +17,7 @@ type Props = {
 //     widening      — net (now - 2h) > FLAT_BAND (steady up trend)
 //     flat          — |now - 2h| ≤ FLAT_BAND
 //     narrowing     — net (now - 2h) < -FLAT_BAND
-const GAP_MIN = 0.15;
+const GAP_MIN = 0.10;
 const MAX_ENTRY_PRICE = 0.95;
 const MIN_HOURS_TO_EVENT = 0.5;
 const FLAT_BAND = 0.01; // ±1% rounds to "flat"
