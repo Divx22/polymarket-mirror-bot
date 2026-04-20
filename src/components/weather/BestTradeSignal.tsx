@@ -206,8 +206,11 @@ const BestCard = ({ pick, bankroll, onSelect }: { pick: ScoredOutcome; bankroll:
 
       {limitPrice != null && (
         <div className="rounded border border-border/60 bg-background/40 px-3 py-2 text-xs">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-            Entry Guidance
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Entry Guidance
+            </div>
+            <CopyPriceButton priceCents={limitPrice * 100} />
           </div>
           <div className="leading-relaxed">
             Place a <span className="font-semibold text-foreground">limit BUY</span> at{" "}
