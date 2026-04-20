@@ -77,6 +77,7 @@ export const TradeDetailDialog = ({
           </div>
         )}
 
+        <div className="overflow-x-auto -mx-3 sm:mx-0">
         <Table>
           <TableHeader>
             <TableRow>
@@ -125,6 +126,7 @@ export const TradeDetailDialog = ({
             )}
           </TableBody>
         </Table>
+        </div>
 
         <div className="border-t border-border pt-3 text-sm text-muted-foreground">
           <div className="font-medium text-foreground mb-1">Manual execution</div>
