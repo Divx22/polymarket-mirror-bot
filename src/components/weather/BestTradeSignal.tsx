@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Sparkles, TrendingUp, AlertCircle } from "lucide-react";
+import { Sparkles, TrendingUp, AlertCircle, Copy, Check } from "lucide-react";
+import { toast } from "sonner";
 import {
   type WeatherMarket, type WeatherOutcome, type WeatherSignal,
   pct, edgeColor,
@@ -205,8 +206,11 @@ const BestCard = ({ pick, bankroll, onSelect }: { pick: ScoredOutcome; bankroll:
 
       {limitPrice != null && (
         <div className="rounded border border-border/60 bg-background/40 px-3 py-2 text-xs">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-            Entry Guidance
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Entry Guidance
+            </div>
+            <CopyPriceButton priceCents={limitPrice * 100} />
           </div>
           <div className="leading-relaxed">
             Place a <span className="font-semibold text-foreground">limit BUY</span> at{" "}
@@ -248,3 +252,29 @@ const Metric = ({
     {sub && <div className="text-[10px] text-muted-foreground">{sub}</div>}
   </div>
 );
+
+const CopyPriceButton = ({ priceCents }: { priceCents: number }) => {
+  const [copied, setCopied] = useState(false);
+  const text = priceCents.toFixed(1); // e.g. "24.5" — paste-ready into Polymarket cents field
+  const onClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      toast.success(`Copied ${text}¢`);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error("Copy failed");
+    }
+  };
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-1 rounded border border-border/60 bg-background/60 hover:bg-surface-2 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+    >
+      {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+      {copied ? "Copied" : "Copy price"}
+    </button>
+  );
+};
+
