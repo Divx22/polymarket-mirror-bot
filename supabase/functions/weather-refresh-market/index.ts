@@ -613,6 +613,63 @@ Deno.serve(async (req) => {
       ...(eventVolume24h != null ? { event_volume_24h: eventVolume24h } : {}),
     }).eq("id", m.id);
 
+    // ----- Forecast snapshots for bias learning -----
+    // Capture each model's predicted daily-max for this market's event_time,
+    // along with how many hours in advance the prediction was made. Later,
+    // weather-resolve-bias compares snapshot.forecast_temp_c vs the actual
+    // observed METAR daily max and inserts the error into forecast_bias.
+    try {
+      const leadHoursRaw = (Date.parse(m.event_time) - Date.now()) / 3600000;
+      // Only snapshot when the prediction is meaningfully in the future
+      // (>=1h lead). Past or near-past predictions aren't useful bias signal.
+      if (leadHoursRaw >= 1) {
+        const lead = Number(leadHoursRaw.toFixed(2));
+        const snapshots: any[] = [];
+        const push = (model: string, val: number | null) => {
+          if (val == null || !Number.isFinite(val)) return;
+          snapshots.push({
+            user_id: m.user_id,
+            market_id: m.id,
+            station_code: stationCode,
+            model_name: model,
+            forecast_temp_c: Number(val.toFixed(2)),
+            forecast_lead_hours: lead,
+            event_time: m.event_time,
+          });
+        };
+        // ifsMax/aifsMax/etc. are post-bias-corrected. We want the RAW
+        // forecast (pre-correction) so the bias we measure later isn't
+        // double-counted. Re-compute raw daily max here from the same
+        // already-fetched data.
+        const ifsRaw = ifsDet ? deterministicDailyMax(ifsDet.time, ifsDet.temp, localDay, 0) : null;
+        const aifsRaw = aifsDet ? deterministicDailyMax(aifsDet.time, aifsDet.temp, localDay, 0) : null;
+        const graphcastRaw = graphcastDet ? deterministicDailyMax(graphcastDet.time, graphcastDet.temp, localDay, 0) : null;
+        const gefsMembersRaw = gefs ? memberDailyMax(gefs.members, localDayIndices(gefs.time, localDay), 0) : [];
+        const gefsMeanRaw = gefsMembersRaw.length
+          ? gefsMembersRaw.reduce((a, b) => a + b, 0) / gefsMembersRaw.length
+          : null;
+        const nwsRaw = nwsHours ? nwsDailyMaxForLocalDay(nwsHours, timezone, localDay) : null;
+        const nbmRaw = nbmHours ? (() => {
+          let max = -Infinity;
+          for (const h of nbmHours) {
+            if (localYMD(new Date(h.validTime), timezone) === localDay && h.tempC > max) max = h.tempC;
+          }
+          return Number.isFinite(max) ? max : null;
+        })() : null;
+        push("ecmwf_ifs025", ifsRaw);
+        push("ecmwf_aifs025", aifsRaw);
+        push("graphcast", graphcastRaw);
+        push("gfs_seamless", gefsMeanRaw);
+        push("nws", nwsRaw);
+        push("nbm", nbmRaw);
+        if (snapshots.length) {
+          await supabase.from("forecast_snapshots").insert(snapshots);
+        }
+      }
+    } catch (e) {
+      console.warn("snapshot-log failed (non-fatal):", (e as Error).message);
+    }
+
     // ----- Paper-trade auto-logging for calibration -----
     // For every outcome with positive edge, log one paper entry per UTC day.
     // Categorized as 'qualified' (the >=7% best pick) or 'sub_threshold' (everything else).
