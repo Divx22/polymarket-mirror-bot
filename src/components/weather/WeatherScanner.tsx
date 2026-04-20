@@ -6,9 +6,10 @@ import { Loader2, RefreshCw, Search, Sparkles, AlertCircle } from "lucide-react"
 import { toast } from "sonner";
 import {
   type WeatherMarket, type WeatherOutcome, type WeatherSignal,
-  pct, edgeColor, confidenceColor,
+  pct, edgeColor,
 } from "@/lib/weather";
 import { cn } from "@/lib/utils";
+import { ConfidenceExplainer } from "./ConfidenceExplainer";
 
 const PAGE_SIZE = 15;
 const AUTO_REFRESH_MS = 90_000;
