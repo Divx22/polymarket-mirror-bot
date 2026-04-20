@@ -198,9 +198,8 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
       // Same combined-score sort as local results.
       mapped.sort((a, b) => ((1 - b.leaderNow) * b.gapNow) - ((1 - a.leaderNow) * a.gapNow));
       setExternals(mapped);
-      toast.success(`Discover scanned ${data?.scanned ?? 0} · ${mapped.length} qualified`);
     } catch (e: any) {
-      toast.error(`Discover failed: ${e?.message ?? e}`);
+      console.error("Discover failed", e);
     } finally {
       setDiscovering(false);
     }
