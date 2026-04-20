@@ -24,11 +24,12 @@ type Props = {
   markets: WeatherMarket[];
   outcomes: Record<string, WeatherOutcome[]>;
   signals: Record<string, WeatherSignal>;
+  bankroll: number;
   onReload: () => void | Promise<void>;
   onSelect?: (m: WeatherMarket) => void;
 };
 
-export const WeatherScanner = ({ markets, outcomes, signals, onReload, onSelect }: Props) => {
+export const WeatherScanner = ({ markets, outcomes, signals, bankroll, onReload, onSelect }: Props) => {
   const [scanning, setScanning] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [autoOn, setAutoOn] = useState(false);
@@ -215,6 +216,13 @@ export const WeatherScanner = ({ markets, outcomes, signals, onReload, onSelect 
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono-num">
                         {r.outcome.suggested_size_percent ?? 0}%
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono-num font-semibold text-foreground">
+                        {(() => {
+                          const sz = Number(r.outcome.suggested_size_percent ?? 0);
+                          const v = (bankroll * sz) / 100;
+                          return v > 0 ? `$${v.toFixed(2)}` : "—";
+                        })()}
                       </td>
                       <td className="px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
                         {verify ? (

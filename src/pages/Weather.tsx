@@ -145,6 +145,7 @@ const Weather = () => {
           markets={markets}
           outcomes={outcomes}
           signals={signals}
+          bankroll={bankroll}
           onReload={load}
           onSelect={(m) => setDetailMarket(m)}
         />
@@ -168,14 +169,15 @@ const Weather = () => {
                   <th className="text-right px-3 py-2 font-medium">Outcomes</th>
                   <th className="text-left px-3 py-2 font-medium">Best Trade</th>
                   <th className="text-right px-3 py-2 font-medium">Edge</th>
-                  <th className="text-right px-3 py-2 font-medium">Size</th>
+                  <th className="text-right px-3 py-2 font-medium">Size %</th>
+                  <th className="text-right px-3 py-2 font-medium">Trade $</th>
                   <th className="text-center px-3 py-2 font-medium">Conf.</th>
                   <th className="text-right px-4 py-2 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {markets.length === 0 && (
-                  <tr><td colSpan={9} className="text-center py-12 text-muted-foreground">
+                  <tr><td colSpan={10} className="text-center py-12 text-muted-foreground">
                     No markets yet. Click "Add market" to get started.
                   </td></tr>
                 )}
@@ -209,6 +211,11 @@ const Weather = () => {
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono-num">
                         {best?.suggested_size_percent ? `${best.suggested_size_percent}%` : "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono-num font-semibold text-foreground">
+                        {best?.suggested_size_percent
+                          ? `$${((bankroll * Number(best.suggested_size_percent)) / 100).toFixed(2)}`
+                          : "—"}
                       </td>
                       <td className="px-3 py-2.5 text-center">
                         {s?.confidence_level ? (
