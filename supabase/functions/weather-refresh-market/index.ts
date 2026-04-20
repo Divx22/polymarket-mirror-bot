@@ -176,6 +176,59 @@ async function fetchPrice(tokenId: string): Promise<number | null> {
   } catch { return null; }
 }
 
+// Order book — returns realistic fill prices, not midpoint.
+// best_ask = price you'd pay to BUY YES; best_bid = price you'd receive to SELL.
+// Edge calculation should use best_ask for BUY signals (you're hitting the ask).
+async function fetchBook(tokenId: string): Promise<{ best_bid: number | null; best_ask: number | null; ask_size: number | null; bid_size: number | null } | null> {
+  try {
+    const r = await fetch(`https://clob.polymarket.com/book?token_id=${tokenId}`);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const asks: any[] = Array.isArray(j?.asks) ? j.asks : [];
+    const bids: any[] = Array.isArray(j?.bids) ? j.bids : [];
+    // Polymarket returns asks ascending? Sort defensively.
+    const asksSorted = asks.map((a) => ({ p: Number(a.price), s: Number(a.size) }))
+      .filter((a) => Number.isFinite(a.p)).sort((a, b) => a.p - b.p);
+    const bidsSorted = bids.map((b) => ({ p: Number(b.price), s: Number(b.size) }))
+      .filter((b) => Number.isFinite(b.p)).sort((a, b) => b.p - a.p);
+    return {
+      best_ask: asksSorted[0]?.p ?? null,
+      ask_size: asksSorted[0]?.s ?? null,
+      best_bid: bidsSorted[0]?.p ?? null,
+      bid_size: bidsSorted[0]?.s ?? null,
+    };
+  } catch { return null; }
+}
+
+// METAR observations from aviationweather.gov (free, no key).
+// Returns hourly temps for the last `hours` hours. Used to replace already-
+// elapsed forecast hours with actual measurements when the event is today.
+async function fetchMetar(stationCode: string | null, hours: number): Promise<{ time: string; tempC: number }[]> {
+  if (!stationCode) return [];
+  try {
+    const url = `https://aviationweather.gov/api/data/metar?ids=${stationCode}&format=json&hours=${hours}`;
+    const r = await fetch(url);
+    if (!r.ok) return [];
+    const arr: any[] = await r.json();
+    return (arr ?? [])
+      .map((m) => ({ time: m?.reportTime as string, tempC: Number(m?.temp) }))
+      .filter((x) => x.time && Number.isFinite(x.tempC));
+  } catch { return []; }
+}
+
+// Per-station per-hour MAX of METAR readings within the local day so far.
+// Returns the OBSERVED max (already-happened) — we use this as a floor so
+// the daily-max can never go BELOW what's already been measured.
+function metarObservedMaxForLocalDay(
+  metars: { time: string; tempC: number }[], timezone: string, localDay: string,
+): number | null {
+  let max = -Infinity;
+  for (const m of metars) {
+    if (localYMD(new Date(m.time), timezone) === localDay && m.tempC > max) max = m.tempC;
+  }
+  return Number.isFinite(max) ? max : null;
+}
+
 function confidenceFor(agreement: number): "high" | "medium" | "low" {
   if (agreement > 0.85) return "high";
   if (agreement >= 0.7) return "medium";
