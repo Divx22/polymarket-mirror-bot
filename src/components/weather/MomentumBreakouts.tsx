@@ -164,8 +164,9 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
       setProgress(Math.round((done / eligible.length) * 100));
     }
 
-    // Sort by combined score: upside (1 - leader price) × current gap. Highest payoff × widest lead first.
-    found.sort((a, b) => ((1 - b.leaderNow) * b.gapNow) - ((1 - a.leaderNow) * a.gapNow));
+    // Sort by average of upside% and gap%. Highest combined first.
+    const score = (leaderNow: number, gapNow: number) => ((1 - leaderNow) + gapNow) / 2;
+    found.sort((a, b) => score(b.leaderNow, b.gapNow) - score(a.leaderNow, a.gapNow));
 
     setItems(found);
     setScannedAt(Date.now());
@@ -195,8 +196,9 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
         netDelta: r.net_delta,
         trajectory: r.trajectory,
       }));
-      // Same combined-score sort as local results.
-      mapped.sort((a, b) => ((1 - b.leaderNow) * b.gapNow) - ((1 - a.leaderNow) * a.gapNow));
+      // Same average-score sort as local results.
+      const score = (leaderNow: number, gapNow: number) => ((1 - leaderNow) + gapNow) / 2;
+      mapped.sort((a, b) => score(b.leaderNow, b.gapNow) - score(a.leaderNow, a.gapNow));
       setExternals(mapped);
     } catch (e: any) {
       console.error("Discover failed", e);
@@ -218,7 +220,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider">Momentum</div>
             <div className="text-[10px] text-muted-foreground">
-              Gap #1 vs #2 ≥{Math.round(gapMin * 100)}% now AND 1h ago. Sorted by upside × gap.
+              Gap #1 vs #2 ≥{Math.round(gapMin * 100)}% now AND 1h ago. Sorted by avg(upside%, gap%).
             </div>
           </div>
         </div>
