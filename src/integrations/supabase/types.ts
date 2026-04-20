@@ -140,6 +140,42 @@ export type Database = {
         }
         Relationships: []
       }
+      forecast_bias: {
+        Row: {
+          actual_temp_c: number
+          created_at: string
+          error_c: number
+          forecast_lead_hours: number
+          forecast_temp_c: number
+          id: string
+          model_name: string
+          station_code: string
+          valid_at: string
+        }
+        Insert: {
+          actual_temp_c: number
+          created_at?: string
+          error_c: number
+          forecast_lead_hours: number
+          forecast_temp_c: number
+          id?: string
+          model_name: string
+          station_code: string
+          valid_at: string
+        }
+        Update: {
+          actual_temp_c?: number
+          created_at?: string
+          error_c?: number
+          forecast_lead_hours?: number
+          forecast_temp_c?: number
+          id?: string
+          model_name?: string
+          station_code?: string
+          valid_at?: string
+        }
+        Relationships: []
+      }
       markets_cache: {
         Row: {
           asset_id: string
