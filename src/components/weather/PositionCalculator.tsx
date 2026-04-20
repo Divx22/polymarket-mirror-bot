@@ -91,38 +91,47 @@ export const PositionCalculator = ({ bankrollUsdc, sizePct, bid, mid }: CalcProp
   const cents = (p: number | null | undefined) =>
     p == null ? "—" : `${(p * 100).toFixed(1)}¢`;
 
+  const totalCost = plan.shares * (plan.entryMid ?? 0);
+  const payoutIfWin = plan.shares * 1; // each share pays $1 if YES wins
+  const profitIfWin = payoutIfWin - totalCost;
+
   return (
     <div className="rounded border border-border/60 bg-background/40 px-3 py-2 text-xs space-y-2">
       <div className="flex items-center justify-between">
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          Position Plan ({sizePct}% of ${bankrollUsdc.toLocaleString()})
+          How much to bet ({sizePct}% of ${bankrollUsdc.toLocaleString()})
         </div>
         <div className="font-mono-num font-semibold text-foreground">
           ${fmt(plan.positionValue)}
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-2">
-        <Stat label="Entry range" value={`${cents(plan.entryLo)}–${cents(plan.entryHi)}`} />
-        <Stat label="Mid entry" value={cents(plan.entryMid)} />
-        <Stat label="Shares" value={plan.shares.toLocaleString()} />
+
+      <div className="rounded bg-surface-2/40 p-2 leading-relaxed">
+        Spend about <span className="font-semibold text-foreground">${fmt(totalCost)}</span> to buy{" "}
+        <span className="font-semibold text-foreground">{plan.shares.toLocaleString()} YES contracts</span>{" "}
+        at around <span className="font-mono-num text-foreground">{cents(plan.entryMid)}</span> each.
+        If YES wins, each contract pays $1 →{" "}
+        <span className="font-semibold text-emerald-400">
+          ${fmt(payoutIfWin)} back (${fmt(profitIfWin)} profit)
+        </span>.
+        If it loses, you lose what you spent.
       </div>
+
       {plan.shares > 0 && plan.splitBid.shares > 0 && plan.splitMid.shares > 0 && (
-        <div className="rounded border border-border/40 bg-surface-2/30 p-2">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-            Suggested split (better fills)
+        <div className="rounded border border-border/40 bg-surface-2/30 p-2 space-y-1.5">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            Tip: split into 2 orders for better prices
           </div>
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
+          <div className="leading-relaxed text-[11px]">
             <div>
-              <div className="text-muted-foreground">Order 1 · best bid</div>
-              <div className="font-mono-num">
-                {plan.splitBid.shares.toLocaleString()} sh @ {cents(plan.splitBid.price)}
-              </div>
+              <span className="text-muted-foreground">Order 1 (cheaper, may not fill):</span>{" "}
+              buy <span className="font-semibold text-foreground">{plan.splitBid.shares.toLocaleString()}</span>{" "}
+              at <span className="font-mono-num text-foreground">{cents(plan.splitBid.price)}</span>
             </div>
             <div>
-              <div className="text-muted-foreground">Order 2 · midpoint</div>
-              <div className="font-mono-num">
-                {plan.splitMid.shares.toLocaleString()} sh @ {cents(plan.splitMid.price)}
-              </div>
+              <span className="text-muted-foreground">Order 2 (fills now):</span>{" "}
+              buy <span className="font-semibold text-foreground">{plan.splitMid.shares.toLocaleString()}</span>{" "}
+              at <span className="font-mono-num text-foreground">{cents(plan.splitMid.price)}</span>
             </div>
           </div>
         </div>
