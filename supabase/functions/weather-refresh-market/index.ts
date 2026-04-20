@@ -11,11 +11,33 @@ const corsHeaders = {
 type Market = {
   id: string;
   user_id: string;
+  city: string;
   latitude: number;
   longitude: number;
   condition_type: string;
   event_time: string;
 };
+
+type Station = {
+  city: string;
+  station_name: string;
+  station_code: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+};
+
+// Returns YYYY-MM-DD in the given IANA timezone for a given Date.
+function localYMD(d: Date, timezone: string): string {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
+  });
+  const parts = fmt.formatToParts(d);
+  const y = parts.find((p) => p.type === "year")!.value;
+  const m = parts.find((p) => p.type === "month")!.value;
+  const day = parts.find((p) => p.type === "day")!.value;
+  return `${y}-${m}-${day}`;
+}
 
 type Outcome = {
   id: string;
@@ -35,10 +57,13 @@ function pickHourly(times: string[], target: Date): number {
   return best;
 }
 
-async function fetchEnsemble(lat: number, lon: number) {
+// Open-Meteo returns hourly times in the requested timezone (no offset suffix).
+// Passing timezone=<IANA> gives back local-time strings like "2026-04-20T14:00".
+async function fetchEnsemble(lat: number, lon: number, timezone: string) {
   const url =
     `https://ensemble-api.open-meteo.com/v1/ensemble?latitude=${lat}&longitude=${lon}` +
-    `&hourly=temperature_2m&models=ecmwf_ifs025&forecast_days=10&timezone=UTC`;
+    `&hourly=temperature_2m&models=ecmwf_ifs025&forecast_days=10` +
+    `&timezone=${encodeURIComponent(timezone)}`;
   const r = await fetch(url);
   if (!r.ok) throw new Error(`ecmwf-ensemble ${r.status}`);
   const j = await r.json();
@@ -49,25 +74,23 @@ async function fetchEnsemble(lat: number, lon: number) {
   return { time, members };
 }
 
-async function fetchGfs(lat: number, lon: number) {
+async function fetchGfs(lat: number, lon: number, timezone: string) {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-    `&hourly=temperature_2m&models=gfs_seamless&forecast_days=10&timezone=UTC`;
+    `&hourly=temperature_2m&models=gfs_seamless&forecast_days=10` +
+    `&timezone=${encodeURIComponent(timezone)}`;
   const r = await fetch(url);
   if (!r.ok) throw new Error(`gfs ${r.status}`);
   const j = await r.json();
   return { time: j?.hourly?.time ?? [], temp: j?.hourly?.temperature_2m ?? [] };
 }
 
-// For "highest temperature on day X" markets, take the daily MAX across hours,
-// not the value at a single hour. Window = 24h around event_time.
-function dailyMaxIndices(times: string[], target: Date): number[] {
-  const dayMs = 24 * 60 * 60 * 1000;
+// Returns indices for all hours that fall on `localYmd` (00:00–23:59 local time).
+// `times[i]` is a local-time string like "2026-04-20T14:00" (Open-Meteo with timezone=...).
+function localDayIndices(times: string[], localYmd: string): number[] {
   const out: number[] = [];
-  const t = target.getTime();
   for (let i = 0; i < times.length; i++) {
-    const d = new Date(times[i]).getTime();
-    if (d >= t - dayMs / 2 && d <= t + dayMs / 2) out.push(i);
+    if (times[i].startsWith(localYmd)) out.push(i);
   }
   return out;
 }
@@ -155,20 +178,31 @@ Deno.serve(async (req) => {
     const outcomes = (outs ?? []) as Outcome[];
     if (!outcomes.length) throw new Error("no outcomes for this market");
 
-    const target = new Date(m.event_time);
+    // Settlement alignment: look up the official station for this city.
+    // Forecasts use the station's coordinates and timezone — NOT the market's
+    // generic geocoded lat/lon — so the daily MAX matches Polymarket's
+    // resolution source exactly. Local day = 00:00–23:59 in station timezone.
+    const { data: stationRow } = await supabase
+      .from("stations").select("*").ilike("city", m.city).maybeSingle();
+    const station: Station | null = (stationRow as Station | null) ?? null;
 
-    // Fetch ensemble + GFS
+    const lat = station?.latitude ?? m.latitude;
+    const lon = station?.longitude ?? m.longitude;
+    const timezone = station?.timezone ?? "UTC";
+    const localDay = localYMD(new Date(m.event_time), timezone);
+
+    // Fetch ensemble + GFS in the station's local timezone
     const [ens, gfs] = await Promise.all([
-      fetchEnsemble(m.latitude, m.longitude),
-      fetchGfs(m.latitude, m.longitude).catch(() => ({ time: [] as string[], temp: [] as number[] })),
+      fetchEnsemble(lat, lon, timezone),
+      fetchGfs(lat, lon, timezone).catch(() => ({ time: [] as string[], temp: [] as number[] })),
     ]);
 
-    // For "highest temp on day" markets, use daily-max distribution
-    const ensIdxs = dailyMaxIndices(ens.time, target);
+    // Per-member MAX over the FULL local day at the station (00:00–23:59)
+    const ensIdxs = localDayIndices(ens.time, localDay);
     const ensValues = memberDailyMax(ens.members, ensIdxs);
 
-    // GFS deterministic daily max
-    const gfsIdxs = dailyMaxIndices(gfs.time, target);
+    // GFS deterministic local-day MAX
+    const gfsIdxs = localDayIndices(gfs.time, localDay);
     let gfsMax: number | null = null;
     if (gfsIdxs.length) {
       gfsMax = -Infinity;
@@ -285,6 +319,9 @@ Deno.serve(async (req) => {
       best_suggested_size_percent: bestSize,
       verify_flag: verifyFlag,
       distribution,
+      station: station
+        ? { code: station.station_code, name: station.station_name, timezone, local_day: localDay }
+        : { code: null, name: null, timezone, local_day: localDay, warning: `No station mapped for "${m.city}"` },
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     return new Response(JSON.stringify({ error: String((e as Error).message ?? e) }), {
