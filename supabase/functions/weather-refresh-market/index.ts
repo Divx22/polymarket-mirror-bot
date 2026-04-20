@@ -180,13 +180,17 @@ Deno.serve(async (req) => {
     }
 
     // Compute distributions
+    // IMPORTANT: P_model = ECMWF ensemble only. GFS is a single deterministic
+    // scenario, not a probability distribution — using it to *blend* probabilities
+    // artificially inflates confidence. Instead we use GFS-vs-ECMWF agreement
+    // purely as a confidence signal (see `agreement` below).
     const enriched = await Promise.all(
       outcomes.map(async (o) => {
         const pEcmwf = probInBucket(ensValues, o.bucket_min_c, o.bucket_max_c);
         const pNoaa = gfsMax != null
           ? ((gfsMax >= (o.bucket_min_c ?? -Infinity) && gfsMax <= (o.bucket_max_c ?? Infinity)) ? 1 : 0)
-          : pEcmwf; // fallback: trust ECMWF
-        const pModel = 0.55 * pEcmwf + 0.45 * pNoaa;
+          : pEcmwf;
+        const pModel = pEcmwf; // ECMWF only — no blending
         const price = o.clob_token_id ? await fetchPrice(o.clob_token_id) : null;
         const edge = price != null ? pModel - price : null;
         return { o, pEcmwf, pNoaa, pModel, price, edge };
@@ -196,11 +200,10 @@ Deno.serve(async (req) => {
     // Normalize ECMWF probabilities to sum to 1 across outcomes (handles bucket overlap/gaps)
     const sumEc = enriched.reduce((s, x) => s + x.pEcmwf, 0);
     if (sumEc > 0) {
-      for (const x of enriched) x.pEcmwf = x.pEcmwf / sumEc;
-    }
-    const sumModel = enriched.reduce((s, x) => s + x.pModel, 0);
-    if (sumModel > 0) {
-      for (const x of enriched) x.pModel = x.pModel / sumModel;
+      for (const x of enriched) {
+        x.pEcmwf = x.pEcmwf / sumEc;
+        x.pModel = x.pEcmwf;
+      }
     }
     // Recompute edges with normalized probs
     for (const x of enriched) {
