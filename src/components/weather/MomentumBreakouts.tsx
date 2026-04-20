@@ -10,7 +10,7 @@ type Props = {
   onSelect?: (m: WeatherMarket) => void;
 };
 
-type Breakout = {
+type Movement = {
   market: WeatherMarket;
   leader: WeatherOutcome;
   runnerUp: WeatherOutcome | null;
@@ -19,6 +19,7 @@ type Breakout = {
   delta: number;          // priceNow - priceThen, in price (0-1)
   gap: number;            // priceNow - runnerUp price, in price (0-1)
   liveAsk: number | null; // 0-1
+  isBreakout: boolean;    // passes all thresholds
 };
 
 // Thresholds (balanced): leader must have risen ≥15¢ in last 2h AND lead #2 by ≥15¢.
