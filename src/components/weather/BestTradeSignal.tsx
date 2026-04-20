@@ -174,6 +174,16 @@ const BestCard = ({ pick, onSelect }: { pick: ScoredOutcome; onSelect?: (m: Weat
         />
       </div>
 
+      <div className="rounded border border-border/60 bg-background/40 px-3 py-2 text-[11px] text-muted-foreground mb-2 leading-relaxed">
+        <span className="text-foreground font-medium">How edge is computed:</span>{" "}
+        We pull the live <span className="text-foreground">ECMWF 51-member ensemble</span> + GFS
+        deterministic forecast from Open-Meteo, count how many members land in this temperature
+        bucket on the event day, then blend (55% ECMWF / 45% GFS) to get{" "}
+        <span className="text-foreground">Model Prob.</span> Edge ={" "}
+        <span className="text-foreground">Model Prob − Market Price</span>. Positive = market is
+        underpricing this outcome vs. forecast consensus.
+      </div>
+
       <div className="rounded border border-border/60 bg-background/40 px-3 py-2 text-xs">
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">
           Entry Guidance
