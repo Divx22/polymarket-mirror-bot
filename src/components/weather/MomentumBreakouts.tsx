@@ -178,9 +178,11 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect, gapMin: gapMinP
       setProgress(Math.round((done / eligible.length) * 100));
     }
 
-    // Sort by average of upside% and gap%. Highest combined first.
-    const score = (leaderNow: number, gapNow: number) => ((1 - leaderNow) + gapNow) / 2;
-    found.sort((a, b) => score(b.leaderNow, b.gapNow) - score(a.leaderNow, a.gapNow));
+    // Momentum-weighted sort.
+    found.sort((a, b) =>
+      momentumScore(b.leaderNow, b.gapNow, b.netDelta, b.trajectory) -
+      momentumScore(a.leaderNow, a.gapNow, a.netDelta, a.trajectory),
+    );
 
     setItems(found);
     setScannedAt(Date.now());
