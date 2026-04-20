@@ -96,6 +96,8 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
   const [externals, setExternals] = useState<ExternalMovement[]>([]);
   const [scannedAt, setScannedAt] = useState<number | null>(null);
   const [progress, setProgress] = useState(0);
+  // Threshold (0–1). Editable via slider when showThresholdControl is true.
+  const [gapMin, setGapMin] = useState<number>(gapMinProp ?? DEFAULT_GAP_MIN);
 
   const scan = async () => {
     setScanning(true);
@@ -128,7 +130,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         const leaderNow = enriched[0].mid;
         const gapNow = leaderNow - enriched[1].mid;
 
-        if (gapNow < GAP_MIN) return;
+        if (gapNow < gapMin) return;
         if (leaderNow > MAX_ENTRY_PRICE) return;
 
         const [leaderHist, runnerHist] = await Promise.all([
@@ -140,7 +142,7 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         if (leader1h == null || runner1h == null) return;
 
         const gap1h = leader1h - runner1h;
-        if (gap1h < GAP_MIN) return;
+        if (gap1h < gapMin) return;
 
         const leader2h = priceAt(leaderHist, target2h);
         const runner2h = priceAt(runnerHist, target2h);
@@ -162,8 +164,8 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
       setProgress(Math.round((done / eligible.length) * 100));
     }
 
-    const rank: Record<Trajectory, number> = { accelerating: 0, widening: 1, flat: 2, narrowing: 3 };
-    found.sort((a, b) => rank[a.trajectory] - rank[b.trajectory] || b.netDelta - a.netDelta);
+    // Sort by combined score: upside (1 - leader price) × current gap. Highest payoff × widest lead first.
+    found.sort((a, b) => ((1 - b.leaderNow) * b.gapNow) - ((1 - a.leaderNow) * a.gapNow));
 
     setItems(found);
     setScannedAt(Date.now());
@@ -172,14 +174,16 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
       const accel = found.filter(f => f.trajectory === "accelerating").length;
       toast.success(`${found.length} qualified · ${accel} accelerating`);
     } else {
-      toast.info(`No markets in your scanner qualified`);
+      toast.info(`No markets in your scanner qualified at ≥${Math.round(gapMin * 100)}%`);
     }
   };
 
   const discover = async () => {
     setDiscovering(true);
     try {
-      const { data, error } = await supabase.functions.invoke("weather-discover-momentum");
+      const { data, error } = await supabase.functions.invoke("weather-discover-momentum", {
+        body: { gap_min: gapMin },
+      });
       if (error) throw error;
       const results = (data?.results ?? []) as any[];
       const mapped: ExternalMovement[] = results.map((r) => ({
@@ -197,8 +201,8 @@ export const MomentumBreakouts = ({ markets, outcomes, onSelect }: Props) => {
         netDelta: r.net_delta,
         trajectory: r.trajectory,
       }));
-      const rank: Record<Trajectory, number> = { accelerating: 0, widening: 1, flat: 2, narrowing: 3 };
-      mapped.sort((a, b) => rank[a.trajectory] - rank[b.trajectory] || b.netDelta - a.netDelta);
+      // Same combined-score sort as local results.
+      mapped.sort((a, b) => ((1 - b.leaderNow) * b.gapNow) - ((1 - a.leaderNow) * a.gapNow));
       setExternals(mapped);
       toast.success(`Discover scanned ${data?.scanned ?? 0} · ${mapped.length} qualified`);
     } catch (e: any) {
