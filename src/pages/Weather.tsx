@@ -9,10 +9,11 @@ import { AddMarketDialog } from "@/components/weather/AddMarketDialog";
 import { TradeDetailDialog } from "@/components/weather/TradeDetailDialog";
 import { BestTradeSignal } from "@/components/weather/BestTradeSignal";
 import { WeatherScanner } from "@/components/weather/WeatherScanner";
-import { BankrollInput, MinVolumeInput } from "@/components/weather/PositionCalculator";
+import { BankrollInput, MinVolumeInput, MaxTradeCapInput } from "@/components/weather/PositionCalculator";
+import { StationOverridePicker } from "@/components/weather/StationOverridePicker";
 import {
   WeatherMarket, WeatherOutcome, WeatherSignal,
-  pct, edgeColor, confidenceColor, formatVolume,
+  pct, edgeColor, confidenceColor, formatVolume, applyMaxTradeCap,
 } from "@/lib/weather";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +29,7 @@ const Weather = () => {
   const [detailMarket, setDetailMarket] = useState<WeatherMarket | null>(null);
   const [bankroll, setBankroll] = useState<number>(1000);
   const [minVolume, setMinVolume] = useState<number>(25000);
+  const [maxTradePct, setMaxTradePct] = useState<number>(2);
   const [mismatchOnly, setMismatchOnly] = useState(false);
 
   useEffect(() => {
@@ -49,10 +51,11 @@ const Weather = () => {
       supabase.from("weather_markets").select("*").eq("active", true).order("event_time"),
       supabase.from("weather_outcomes").select("*").order("display_order"),
       supabase.from("weather_signals").select("*").order("created_at", { ascending: false }),
-      supabase.from("config").select("bankroll_usdc, min_volume_usd").eq("user_id", userId).maybeSingle(),
+      supabase.from("config").select("bankroll_usdc, min_volume_usd, max_trade_pct").eq("user_id", userId).maybeSingle(),
     ]);
     if (cfg?.bankroll_usdc != null) setBankroll(Number(cfg.bankroll_usdc));
     if ((cfg as any)?.min_volume_usd != null) setMinVolume(Number((cfg as any).min_volume_usd));
+    if ((cfg as any)?.max_trade_pct != null) setMaxTradePct(Number((cfg as any).max_trade_pct));
     setMarkets((ms ?? []) as WeatherMarket[]);
     const grouped: Record<string, WeatherOutcome[]> = {};
     (os ?? []).forEach((o: any) => {
@@ -159,6 +162,7 @@ const Weather = () => {
           <div className="flex items-center gap-2 flex-wrap">
             <BankrollInput userId={userId} bankroll={bankroll} onChange={setBankroll} />
             <MinVolumeInput userId={userId} minVolume={minVolume} onChange={setMinVolume} />
+            <MaxTradeCapInput userId={userId} maxPct={maxTradePct} onChange={setMaxTradePct} />
             <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2/40 px-2 py-1">
               <Zap className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Mismatch</span>
@@ -195,6 +199,7 @@ const Weather = () => {
           bankroll={bankroll}
           minVolume={minVolume}
           mismatchOnly={mismatchOnly}
+          maxTradePct={maxTradePct}
           onSelect={(m) => setDetailMarket(m)}
         />
 
@@ -268,9 +273,17 @@ const Weather = () => {
                         {best?.suggested_size_percent ? `${best.suggested_size_percent}%` : "—"}
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono-num font-semibold text-foreground">
-                        {best?.suggested_size_percent
-                          ? `$${((bankroll * Number(best.suggested_size_percent)) / 100).toFixed(2)}`
-                          : "—"}
+                        {(() => {
+                          if (!best?.suggested_size_percent) return "—";
+                          const { capped, wasCapped } = applyMaxTradeCap(best.suggested_size_percent, maxTradePct);
+                          const dollars = (bankroll * capped) / 100;
+                          return (
+                            <span title={wasCapped ? `Capped from ${best.suggested_size_percent}% to ${maxTradePct}%` : undefined}>
+                              ${dollars.toFixed(2)}
+                              {wasCapped && <span className="ml-1 text-[9px] text-amber-400">⛨</span>}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-3 py-2.5 text-center">
                         {s?.confidence_level ? (
@@ -280,7 +293,14 @@ const Weather = () => {
                         ) : <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="px-4 py-2.5 text-right">
-                        <div className="inline-flex gap-1">
+                        <div className="inline-flex items-center gap-1">
+                          <StationOverridePicker
+                            marketId={m.id}
+                            city={m.city}
+                            currentCode={m.resolution_station_code}
+                            currentName={m.resolution_station_name}
+                            onChange={load}
+                          />
                           <Button size="sm" variant="ghost" disabled={refreshing === m.id} onClick={() => refresh(m.id)}>
                             {refreshing === m.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                           </Button>

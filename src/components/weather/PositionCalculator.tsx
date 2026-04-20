@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Wallet, Loader2, Droplet } from "lucide-react";
+import { Wallet, Loader2, Droplet, Shield } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { applyMaxTradeCap } from "@/lib/weather";
 
 type Props = {
   userId: string;
@@ -90,6 +91,49 @@ export const MinVolumeInput = ({
   );
 };
 
+// Cap on max single-trade size as % of bankroll. Variance protection — even with
+// a 90%-suggested edge, capping at 2% prevents one bad resolution from wiping months.
+export const MaxTradeCapInput = ({
+  userId, maxPct, onChange,
+}: { userId: string; maxPct: number; onChange: (n: number) => void }) => {
+  const [value, setValue] = useState(String(maxPct));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { setValue(String(maxPct)); }, [maxPct]);
+
+  const save = async () => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0 || n > 100) {
+      toast.error("Enter a cap between 0 and 100 (%)");
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase
+      .from("config").update({ max_trade_pct: n }).eq("user_id", userId);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    onChange(n);
+    toast.success(`Max trade capped at ${n}%`);
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2/40 px-2 py-1">
+      <Shield className="h-3.5 w-3.5 text-muted-foreground" />
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Max Trade</span>
+      <Input
+        value={value}
+        onChange={(e) => setValue(e.target.value.replace(/[^0-9.]/g, ""))}
+        onBlur={save}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+        inputMode="decimal"
+        className="h-6 w-12 px-1.5 text-xs font-mono-num bg-transparent border-0 focus-visible:ring-0"
+      />
+      <span className="text-xs text-muted-foreground">%</span>
+      {saving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+    </div>
+  );
+};
+
 export const computePositionPlan = (
   bankrollUsdc: number,
   sizePct: number,
@@ -120,11 +164,13 @@ type CalcProps = {
   sizePct: number;
   bid: number | null;
   mid: number | null;
+  maxTradePct?: number;
 };
 
-export const PositionCalculator = ({ bankrollUsdc, sizePct, bid, mid }: CalcProps) => {
-  const plan = computePositionPlan(bankrollUsdc, sizePct, bid, mid);
-  if (sizePct <= 0 || bankrollUsdc <= 0) return null;
+export const PositionCalculator = ({ bankrollUsdc, sizePct, bid, mid, maxTradePct = 2 }: CalcProps) => {
+  const { capped: effectivePct, wasCapped } = applyMaxTradeCap(sizePct, maxTradePct);
+  const plan = computePositionPlan(bankrollUsdc, effectivePct, bid, mid);
+  if (effectivePct <= 0 || bankrollUsdc <= 0) return null;
 
   const fmt = (n: number | null | undefined, dp = 2) =>
     n == null || !Number.isFinite(n) ? "—" : n.toFixed(dp);
@@ -137,14 +183,23 @@ export const PositionCalculator = ({ bankrollUsdc, sizePct, bid, mid }: CalcProp
 
   return (
     <div className="rounded border border-border/60 bg-background/40 px-3 py-2 text-xs space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          How much to bet ({sizePct}% of ${bankrollUsdc.toLocaleString()})
+          How much to bet ({effectivePct}% of ${bankrollUsdc.toLocaleString()})
         </div>
         <div className="font-mono-num font-semibold text-foreground">
           ${fmt(plan.positionValue)}
         </div>
       </div>
+
+      {wasCapped && (
+        <div className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-300 leading-relaxed flex items-center gap-1">
+          <Shield className="h-3 w-3 shrink-0" />
+          <span>
+            Capped from <span className="font-semibold">{sizePct}%</span> → <span className="font-semibold">{maxTradePct}%</span> (variance protection).
+          </span>
+        </div>
+      )}
 
       <div className="rounded bg-surface-2/40 p-2 leading-relaxed">
         Spend about <span className="font-semibold text-foreground">${fmt(totalCost)}</span> to buy{" "}

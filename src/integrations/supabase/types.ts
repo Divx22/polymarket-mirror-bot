@@ -24,6 +24,7 @@ export type Database = {
           id: string
           last_polled_at: string | null
           last_seen_ts: number
+          max_trade_pct: number
           max_usdc_per_trade: number
           min_volume_usd: number
           mirror_mode: string
@@ -45,6 +46,7 @@ export type Database = {
           id?: string
           last_polled_at?: string | null
           last_seen_ts?: number
+          max_trade_pct?: number
           max_usdc_per_trade?: number
           min_volume_usd?: number
           mirror_mode?: string
@@ -66,6 +68,7 @@ export type Database = {
           id?: string
           last_polled_at?: string | null
           last_seen_ts?: number
+          max_trade_pct?: number
           max_usdc_per_trade?: number
           min_volume_usd?: number
           mirror_mode?: string
@@ -705,6 +708,10 @@ export type Database = {
           market_question: string
           polymarket_event_slug: string | null
           polymarket_url: string | null
+          resolution_lat: number | null
+          resolution_lon: number | null
+          resolution_station_code: string | null
+          resolution_station_name: string | null
           updated_at: string
           user_id: string
         }
@@ -721,6 +728,10 @@ export type Database = {
           market_question: string
           polymarket_event_slug?: string | null
           polymarket_url?: string | null
+          resolution_lat?: number | null
+          resolution_lon?: number | null
+          resolution_station_code?: string | null
+          resolution_station_name?: string | null
           updated_at?: string
           user_id: string
         }
@@ -737,6 +748,10 @@ export type Database = {
           market_question?: string
           polymarket_event_slug?: string | null
           polymarket_url?: string | null
+          resolution_lat?: number | null
+          resolution_lon?: number | null
+          resolution_station_code?: string | null
+          resolution_station_name?: string | null
           updated_at?: string
           user_id?: string
         }
