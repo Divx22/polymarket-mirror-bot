@@ -1106,11 +1106,15 @@ const ProjectionPanel = ({
             return (
               <div className={cn(
                 "mt-2 text-[10px] space-y-1",
-                projection.verdict === "STRONG_DISAGREE" ? "text-red-300" : "text-orange-300",
+                projection.verdict === "STRONG_DISAGREE" ? "text-red-300"
+                  : projection.verdict === "WEAK_DISAGREE" ? "text-orange-300"
+                  : "text-muted-foreground",
               )}>
-                <div>
-                  Model favors <span className="font-bold">{projection.modelTopLabel ?? "out of range"}</span>; market favors <span className="font-bold">{projection.marketTopLabel}</span>.
-                </div>
+                {isDisagree && (
+                  <div>
+                    Model favors <span className="font-bold">{projection.modelTopLabel ?? "out of range"}</span>; market favors <span className="font-bold">{projection.marketTopLabel}</span>.
+                  </div>
+                )}
                 {bestRow && (
                   <div className="text-emerald-300">
                     ★ Best trade: <span className="font-bold">{bestRow.label}</span> — market {fmtPct(bestRow.marketPct)}, model {fmtPct(bestRow.modelPct)}, edge <span className="font-bold">+{bestRow.edge}</span>
