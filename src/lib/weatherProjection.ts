@@ -239,13 +239,30 @@ export function compareToMarket(
   );
   if (usable.length === 0) return null;
 
-  // Top 4 by market price desc
-  const top = [...usable].sort((a, b) => (b.marketPrice as number) - (a.marketPrice as number)).slice(0, 4);
+  // Start with top 4 by market price desc, then add any other bucket with |edge| >= 10pp
+  // so high-disagreement tail buckets (e.g. "20°C or below") never get hidden.
+  const sortedByPrice = [...usable].sort((a, b) => (b.marketPrice as number) - (a.marketPrice as number));
+  const baseTop = sortedByPrice.slice(0, 4);
 
-  // Normalize market prices across the top 4 so they sum to ~1 (display purposes only)
+  // Provisional probability mass over ALL usable buckets (for edge detection on extras).
+  const fullMass = usable.map((b) => bucketProbability(proj.meanC, proj.sigmaC, b.bucket_min_c, b.bucket_max_c));
+  const fullMassSum = fullMass.reduce((s, p) => s + p, 0) || 1;
+  const fullMarketSum = usable.reduce((s, b) => s + (b.marketPrice as number), 0) || 1;
+
+  const baseSet = new Set(baseTop);
+  const extras = usable.filter((b, i) => {
+    if (baseSet.has(b)) return false;
+    const modelPctAll = (fullMass[i] / fullMassSum) * 100;
+    const marketPctAll = ((b.marketPrice as number) / fullMarketSum) * 100;
+    return Math.abs(modelPctAll - marketPctAll) >= 10;
+  });
+
+  const top = [...baseTop, ...extras];
+
+  // Normalize market prices across the displayed set so they sum to ~1 (display purposes only)
   const marketSum = top.reduce((s, b) => s + (b.marketPrice as number), 0) || 1;
 
-  // Compute raw model probabilities then renormalize to the same top-4 universe
+  // Compute raw model probabilities then renormalize to the displayed universe
   const rawModel = top.map((b) => bucketProbability(proj.meanC, proj.sigmaC, b.bucket_min_c, b.bucket_max_c));
 
   // Apply directional bias boost (+10%) to buckets on the bias side of projected mean.
