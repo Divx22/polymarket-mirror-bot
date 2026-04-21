@@ -135,6 +135,8 @@ export const MomentumBreakouts = ({
   const [progress, setProgress] = useState(0);
   // Threshold (0–1). Editable via slider when showThresholdControl is true.
   const [gapMin, setGapMin] = useState<number>(gapMinProp ?? DEFAULT_GAP_MIN);
+  // Resolution window in hours. User-selectable: 8 / 12 / 24.
+  const [windowHours, setWindowHours] = useState<WindowHours>(DEFAULT_WINDOW);
 
   const scan = async () => {
     setScanning(true);
@@ -143,7 +145,7 @@ export const MomentumBreakouts = ({
 
     const eligible = markets.filter((m) => {
       const hours = (new Date(m.event_time).getTime() - Date.now()) / 3_600_000;
-      return hours > MIN_HOURS_TO_EVENT;
+      return hours > MIN_HOURS_TO_EVENT && hours <= windowHours;
     });
 
     const found: Movement[] = [];
