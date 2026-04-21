@@ -244,8 +244,9 @@ export function compareToMarket(
   snapshot: WeatherSnapshotLike | null | undefined,
   hoursToPeak: number | null | undefined,
   buckets: BucketLike[],
+  extreme: "min" | "max" = "max",
 ): ProjectionResult | null {
-  const proj = projectPeakTempC(snapshot, hoursToPeak);
+  const proj = projectPeakTempC(snapshot, hoursToPeak, extreme);
   if (!proj) return null;
   const usable = buckets.filter(
     (b) => b.marketPrice != null && Number.isFinite(b.marketPrice) && (b.bucket_min_c != null || b.bucket_max_c != null),
