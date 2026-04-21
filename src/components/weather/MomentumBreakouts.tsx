@@ -951,10 +951,20 @@ const ProjectionPanel = ({
             const tierCls = strong ? "text-emerald-300" : weak ? "text-muted-foreground" : "text-amber-300";
             return (
               <div className="mb-2 space-y-1">
-                <div className={cn("text-[11px] font-bold uppercase tracking-wider", tierCls)}>
-                  Best value: <span className="font-mono-num">{projection.bestValueLabel}</span>
-                  <span className="ml-1 font-mono-num">({tier} +{edge})</span>
-                  {bestPrice != null && <span className="ml-1 font-mono-num text-muted-foreground">@ {bestPrice.toFixed(0)}%</span>}
+                <div className={cn("text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 flex-wrap", tierCls)}>
+                  <span>
+                    Best value: <span className="font-mono-num">{projection.bestValueLabel}</span>
+                    <span className="ml-1 font-mono-num">({tier} +{edge})</span>
+                    {bestPrice != null && <span className="ml-1 font-mono-num text-muted-foreground">@ {bestPrice.toFixed(0)}%</span>}
+                  </span>
+                  {isCounterTrend && (
+                    <span
+                      className="inline-flex items-center px-1.5 py-0.5 rounded border border-amber-400/50 bg-amber-500/15 text-amber-200 text-[9px] font-bold normal-case tracking-normal"
+                      title={`Best value disagrees with market leader (${leaderLabel}). ${mode === "MOMENTUM" ? "Early reversal — actionable." : mode === "TRANSITION" ? "Auto-log blocked; manual CTA still available." : "CERTAINTY: CTA hidden, no fighting trend."}`}
+                    >
+                      ⚠ counter-trend vs leader
+                    </span>
+                  )}
                 </div>
                 {fairPct != null && bestPrice != null && (
                   <div className="text-[10px] text-muted-foreground">
