@@ -543,6 +543,8 @@ const Row = ({ m, onSelect, stake, stakePct, score }: { m: Movement; onSelect?: 
   const netPct = (m.netDelta * 100).toFixed(1);
   const meta = TRAJ_META[m.trajectory] ?? TRAJ_META.flat;
   const nowColor = m.trajectory === "narrowing" ? "text-red-400" : m.trajectory === "flat" ? "text-foreground" : "text-emerald-400";
+  const modelPct = m.leader.p_model != null ? Number(m.leader.p_model) * 100 : null;
+  const modelEdge = modelPct != null ? modelPct - m.leaderNow * 100 : null;
 
   const openCard = () => {
     if (m.market.polymarket_url) window.open(m.market.polymarket_url, "_blank", "noopener,noreferrer");
