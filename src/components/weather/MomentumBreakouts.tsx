@@ -799,6 +799,85 @@ const ProjectionPanel = ({
     }
   };
 
+  return (
+    <div className="rounded-md border border-border bg-background/40">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-surface-2/40"
+        title={headerTitle}
+      >
+        <div className="flex flex-col">
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Projected temp at peak ({ttpStr})</span>
+          <span className="font-mono-num text-sm font-bold text-foreground">
+            {meanDisp.toFixed(1)}{sym} <span className="text-muted-foreground font-normal">±{bandDisp.toFixed(1)}{sym}</span>
+          </span>
+        </div>
+        <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="px-3 pb-3">
+          {projection.bestValueLabel && projection.bestValueEdge != null && projection.bestValueEdge >= 7 && (() => {
+            const bestRow = projection.rows.find((r) => r.label === projection.bestValueLabel);
+            const bestPrice = bestRow?.marketPct ?? null;
+            const fairPct = bestRow?.modelPct ?? null;
+            const edge = projection.bestValueEdge;
+            const strong = edge >= 15 && bestPrice != null && bestPrice <= 70;
+            const weak = edge < 10;
+            const tier = strong ? "STRONG" : weak ? "WEAK" : "MODERATE";
+            const tierCls = strong ? "text-emerald-300" : weak ? "text-muted-foreground" : "text-amber-300";
+            return (
+              <div className="mb-2 space-y-1">
+                <div className={cn("text-[11px] font-bold uppercase tracking-wider", tierCls)}>
+                  Best value: <span className="font-mono-num">{projection.bestValueLabel}</span>
+                  <span className="ml-1 font-mono-num">({tier} +{edge})</span>
+                  {bestPrice != null && <span className="ml-1 font-mono-num text-muted-foreground">@ {bestPrice.toFixed(0)}%</span>}
+                </div>
+                {fairPct != null && bestPrice != null && (
+                  <div className="text-[10px] text-muted-foreground">
+                    Suggested entry (WX fair price): <span className="font-mono-num font-semibold text-foreground">{fairPct.toFixed(0)}%</span>
+                    <span className="mx-1">·</span>
+                    market <span className="font-mono-num">{bestPrice.toFixed(0)}%</span>
+                  </div>
+                )}
+                {!strong && (
+                  <div className="text-[10px] text-muted-foreground">
+                    {weak ? "Edge <10 — not actionable." : `Need edge ≥15 and price ≤70% for a real opportunity${bestPrice != null && bestPrice > 70 ? ` (price ${bestPrice.toFixed(0)}% too high)` : ""}.`}
+                  </div>
+                )}
+                {strong && smartBid > 0 && (
+                  <div
+                    className="text-[10px] text-muted-foreground"
+                    title={`Sized from edge +${edge}pp · confidence ${confidence}% · bankroll $${bankroll.toLocaleString()} · cap ${stakeCapPct}%`}
+                  >
+                    Smart bid: <span className="font-mono-num font-semibold text-foreground">${smartBid.toLocaleString()}</span>
+                    <span className="ml-1 font-mono-num">({smartBidPct.toFixed(1)}% of bankroll)</span>
+                  </div>
+                )}
+                <button
+                  onClick={onMarkTraded}
+                  disabled={logging || logged}
+                  className={cn(
+                    "mt-1 inline-flex items-center gap-1.5 rounded border px-2 py-1 text-[11px] font-semibold transition-colors",
+                    logged
+                      ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200"
+                      : "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20",
+                  )}
+                  title={`Log this opportunity (${projection.bestValueLabel}) as a trade in your /trades log`}
+                >
+                  {logging
+                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                    : logged ? <Check className="h-3 w-3" /> : <BookmarkPlus className="h-3 w-3" />}
+                  {logged ? "Logged" : "Mark as traded"}
+                </button>
+                {edge >= 15 && (
+                  <div className="text-[9px] text-muted-foreground italic">
+                    Auto-logged (edge ≥15pp). Review or update outcome on the /trades page.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <table className="w-full text-[11px] font-mono-num">
             <thead>
               <tr className="text-muted-foreground text-[9px] uppercase tracking-wider">
