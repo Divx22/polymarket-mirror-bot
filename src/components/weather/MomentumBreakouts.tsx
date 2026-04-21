@@ -88,30 +88,40 @@ async function fetchMid(tokenId: string): Promise<number | null> {
   } catch { return null; }
 }
 
-/** Fetch recent trades for a token and bucket USDC volume into two 10-minute windows.
- *  Uses Polymarket's public data-api (no auth required). The CLOB /data/trades
- *  endpoint requires an API key and returns 401 in the browser. */
-async function fetchRecentVolume(tokenId: string): Promise<{ last10m: number | null; prev10m: number | null }> {
+/** Fetch recent trades for an outcome and bucket USDC volume into two 15-minute windows.
+ *  Polymarket's public data-api `/trades` filters by **conditionId** (not tokenId),
+ *  so we pass conditionId and then filter rows by `asset === tokenId` client-side.
+ *  Returns null buckets when the underlying API call fails so the UI can show "n/a".
+ *  An empty bucket (real $0) is returned as 0, which the decision engine treats as flat. */
+async function fetchRecentVolume(
+  tokenId: string,
+  conditionId?: string | null,
+): Promise<{ last10m: number | null; prev10m: number | null }> {
+  if (!conditionId) return { last10m: null, prev10m: null };
   try {
-    // data-api.polymarket.com is public; filters by asset (token) id and is paginated.
-    const r = await fetch(`https://data-api.polymarket.com/trades?market=${tokenId}&limit=500&takerOnly=false`);
+    const r = await fetch(
+      `https://data-api.polymarket.com/trades?market=${conditionId}&limit=500&takerOnly=false`,
+    );
     if (!r.ok) return { last10m: null, prev10m: null };
     const j = await r.json();
     const trades: any[] = Array.isArray(j) ? j : (j?.data ?? []);
     const now = Date.now();
-    const t10 = now - 10 * 60_000;
-    const t20 = now - 20 * 60_000;
+    // 15-min buckets give quiet weather markets a better chance of usable signal
+    // while still being recent enough to reflect momentum.
+    const t15 = now - 15 * 60_000;
+    const t30 = now - 30 * 60_000;
     let last = 0, prev = 0;
     for (const tr of trades) {
+      if (String(tr?.asset ?? "") !== tokenId) continue; // condition has 2 tokens; keep ours
       const tsRaw = Number(tr?.timestamp ?? tr?.match_time ?? tr?.t ?? 0);
       // data-api returns seconds; normalize either way.
       const ts = tsRaw > 1e12 ? tsRaw : tsRaw * 1000;
-      if (!Number.isFinite(ts) || ts < t20) continue;
+      if (!Number.isFinite(ts) || ts < t30) continue;
       const price = Number(tr?.price ?? 0);
       const size = Number(tr?.size ?? tr?.shares ?? 0);
       const usdc = Number.isFinite(price) && Number.isFinite(size) ? price * size : 0;
-      if (ts >= t10) last += usdc;
-      else if (ts >= t20) prev += usdc;
+      if (ts >= t15) last += usdc;
+      else if (ts >= t30) prev += usdc;
     }
     return { last10m: last, prev10m: prev };
   } catch {
@@ -231,7 +241,7 @@ export const MomentumBreakouts = ({
         else if (netDelta < -FLAT_BAND) trajectory = "narrowing";
         else trajectory = "flat";
 
-        const vol = await fetchRecentVolume(leader.clob_token_id!);
+        const vol = await fetchRecentVolume(leader.clob_token_id!, leader.condition_id ?? null);
 
         found.push({ source: "local", market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory, volLast: vol.last10m, volPrev: vol.prev10m });
       }));
