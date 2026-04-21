@@ -4,7 +4,7 @@
 
 import type { WeatherSnapshotLike } from "./weather";
 
-export type MarketVerdict = "AGREE" | "NEUTRAL" | "DISAGREE" | "UNKNOWN";
+export type MarketVerdict = "AGREE" | "NEUTRAL" | "WEAK_DISAGREE" | "STRONG_DISAGREE" | "UNKNOWN";
 
 export type BucketLike = {
   label: string;
@@ -31,6 +31,8 @@ export type ProjectionResult = {
   verdict: MarketVerdict;
   marketTopLabel: string | null;
   modelTopLabel: string | null;
+  bestValueLabel: string | null; // bucket with highest positive edge (model − market)
+  bestValueEdge: number | null;  // pp; null when no positive edge exists
 };
 
 export const cToF = (c: number): number => c * 9 / 5 + 32;
@@ -43,7 +45,13 @@ export function projectPeakTempC(
 ): { meanC: number; bandC: number; sigmaC: number } | null {
   if (!s || !Number.isFinite(s.temperature_now)) return null;
   const h = Number.isFinite(hoursToPeak as number) ? Math.max(0, Number(hoursToPeak)) : 0;
-  const forecastSpeed = s.temp_forecast_1h != null ? s.temp_forecast_1h - s.temperature_now : 0;
+  const rawForecastSpeed = s.temp_forecast_1h != null ? s.temp_forecast_1h - s.temperature_now : 0;
+  // Dampen late-stage growth — temperature is non-linear near peak and flattens.
+  let damp = 1;
+  if (h <= 0) damp = 0;
+  else if (h < 1) damp = 0.25;
+  else if (h < 2) damp = 0.5;
+  const forecastSpeed = rawForecastSpeed * damp;
   const meanC = s.temperature_now + forecastSpeed * h;
 
   // Band: base 1°F + cloud/wind contributions, capped 1–4°F → convert to °C
@@ -133,13 +141,20 @@ export function compareToMarket(
 
   let verdict: MarketVerdict = "UNKNOWN";
   if (marketTop && modelTop) {
-    if (marketTop.label !== modelTop.label) verdict = "DISAGREE";
-    else {
+    if (marketTop.label !== modelTop.label) {
+      // Strength-filtered: edge magnitude on the model's top bucket determines severity.
+      const modelRow = rows.find((r) => r.label === modelTop.label)!;
+      verdict = modelRow.edge >= 15 ? "STRONG_DISAGREE" : "WEAK_DISAGREE";
+    } else {
       // Same #1; check edge magnitude on market #1 row
       const row = rows.find((r) => r.label === marketTop.label)!;
       verdict = Math.abs(row.edge) <= 10 ? "AGREE" : "NEUTRAL";
     }
   }
+
+  // Best value: bucket with the highest positive edge (model − market).
+  const positives = rows.filter((r) => r.edge > 0).sort((a, b) => b.edge - a.edge);
+  const best = positives[0] ?? null;
 
   return {
     meanC: proj.meanC,
@@ -150,5 +165,7 @@ export function compareToMarket(
     verdict,
     marketTopLabel: marketTop?.label ?? null,
     modelTopLabel: modelTop?.label ?? null,
+    bestValueLabel: best?.label ?? null,
+    bestValueEdge: best?.edge ?? null,
   };
 }

@@ -640,10 +640,11 @@ const ModeBadge = ({ mode }: { mode: MomentumMode }) => {
 };
 
 const VERDICT_META: Record<MarketVerdict, { cls: string; label: string; dot: string }> = {
-  AGREE:    { cls: "bg-emerald-500/15 text-emerald-200 border-emerald-400/50", label: "AGREE",    dot: "🟢" },
-  NEUTRAL:  { cls: "bg-amber-500/15 text-amber-200 border-amber-400/50",       label: "NEUTRAL",  dot: "🟡" },
-  DISAGREE: { cls: "bg-red-500/15 text-red-200 border-red-400/50",             label: "DISAGREE", dot: "🔴" },
-  UNKNOWN:  { cls: "bg-muted text-muted-foreground border-border",             label: "N/A",      dot: "⚪" },
+  AGREE:           { cls: "bg-emerald-500/15 text-emerald-200 border-emerald-400/50", label: "AGREE",           dot: "🟢" },
+  NEUTRAL:         { cls: "bg-amber-500/15 text-amber-200 border-amber-400/50",       label: "NEUTRAL",         dot: "🟡" },
+  WEAK_DISAGREE:   { cls: "bg-orange-500/15 text-orange-200 border-orange-400/50",    label: "WEAK DISAGREE",   dot: "🟠" },
+  STRONG_DISAGREE: { cls: "bg-red-500/15 text-red-200 border-red-400/50",             label: "STRONG DISAGREE", dot: "🔴" },
+  UNKNOWN:         { cls: "bg-muted text-muted-foreground border-border",             label: "N/A",             dot: "⚪" },
 };
 
 const VerdictBadge = ({ verdict, title }: { verdict: MarketVerdict; title?: string }) => {
@@ -692,6 +693,15 @@ const ProjectionPanel = ({
       </button>
       {open && (
         <div className="px-3 pb-3">
+          {projection.bestValueLabel && projection.bestValueEdge != null && projection.bestValueEdge >= 7 && (
+            <div className={cn(
+              "mb-2 text-[11px] font-bold uppercase tracking-wider",
+              projection.bestValueEdge >= 15 ? "text-emerald-300" : "text-amber-300",
+            )}>
+              Best value: <span className="font-mono-num">{projection.bestValueLabel}</span>
+              <span className="ml-1 font-mono-num">(+{projection.bestValueEdge} edge)</span>
+            </div>
+          )}
           <table className="w-full text-[11px] font-mono-num">
             <thead>
               <tr className="text-muted-foreground text-[9px] uppercase tracking-wider">
@@ -706,11 +716,13 @@ const ProjectionPanel = ({
                 const edgeColor = r.edge >= 10 ? "text-emerald-400"
                   : r.edge <= -10 ? "text-red-400"
                   : "text-muted-foreground";
+                const isBest = r.label === projection.bestValueLabel && r.edge > 0;
                 return (
                   <tr key={r.label} className="border-t border-border/40">
                     <td className="py-1 text-foreground">
                       {r.label}
                       {r.isProjected && <span className="ml-1 text-[9px] text-blue-300">← projection</span>}
+                      {isBest && <span className="ml-1 text-[9px] text-emerald-300">★ best value</span>}
                     </td>
                     <td className="py-1 text-right text-foreground">{r.marketPct.toFixed(0)}%</td>
                     <td className="py-1 text-right text-foreground">{r.modelPct.toFixed(0)}%</td>
@@ -722,8 +734,11 @@ const ProjectionPanel = ({
               })}
             </tbody>
           </table>
-          {projection.verdict === "DISAGREE" && projection.modelTopLabel && projection.marketTopLabel && (
-            <div className="mt-2 text-[10px] text-red-300">
+          {(projection.verdict === "STRONG_DISAGREE" || projection.verdict === "WEAK_DISAGREE") && projection.modelTopLabel && projection.marketTopLabel && (
+            <div className={cn(
+              "mt-2 text-[10px]",
+              projection.verdict === "STRONG_DISAGREE" ? "text-red-300" : "text-orange-300",
+            )}>
               Model favors <span className="font-bold">{projection.modelTopLabel}</span>; market favors <span className="font-bold">{projection.marketTopLabel}</span>.
             </div>
           )}

@@ -185,7 +185,7 @@ export const classifyMode = (ttpMinutes: number | null | undefined): MomentumMod
   return "MOMENTUM";
 };
 
-export type MarketVerdict = "AGREE" | "NEUTRAL" | "DISAGREE" | "UNKNOWN";
+export type MarketVerdict = "AGREE" | "NEUTRAL" | "WEAK_DISAGREE" | "STRONG_DISAGREE" | "UNKNOWN";
 
 export type DecideActionInput = {
   gap2h: number;
@@ -222,12 +222,13 @@ export const decideAction = ({
   // Verdict-driven (preferred). Falls back to legacy weatherState mapping.
   const verdict: MarketVerdict = marketVerdict
     ?? (weatherState === "STRONG" ? "AGREE"
-      : weatherState === "WEAK" ? "DISAGREE"
+      : weatherState === "WEAK" ? "STRONG_DISAGREE"
       : weatherState === "MODERATE" ? "NEUTRAL"
       : "UNKNOWN");
 
   // Priority: shrinking → TRIM, accel<-5% → TRIM, AGREE+widening → ADD,
-  // DISAGREE veto → HOLD, ENTER on widening near peak, else HOLD.
+  // STRONG_DISAGREE → HOLD (hard veto), WEAK_DISAGREE → block ADD only,
+  // ENTER on widening near peak (allowed under WEAK_DISAGREE), else HOLD.
   let action: MomentumAction;
   if (!widening) {
     action = "TRIM";
@@ -235,7 +236,7 @@ export const decideAction = ({
     action = "TRIM";
   } else if (acceleration > 0 && (volumeChange ?? 0) >= 0 && verdict === "AGREE") {
     action = "ADD";
-  } else if (verdict === "DISAGREE") {
+  } else if (verdict === "STRONG_DISAGREE") {
     action = "HOLD";
   } else if (gapNow > 0.15 && ttp < 120) {
     action = "ENTER";
@@ -270,7 +271,8 @@ export const decideAction = ({
   // Surface verdict via the existing weatherState field for back-compat.
   const stateForBackCompat: WeatherState =
     verdict === "AGREE" ? "STRONG"
-    : verdict === "DISAGREE" ? "WEAK"
+    : verdict === "STRONG_DISAGREE" ? "WEAK"
+    : verdict === "WEAK_DISAGREE" ? "MODERATE"
     : verdict === "NEUTRAL" ? "MODERATE"
     : "UNKNOWN";
 
