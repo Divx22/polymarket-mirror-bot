@@ -724,6 +724,15 @@ const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & Ro
     if (m.polymarket_url) window.open(m.polymarket_url, "_blank", "noopener,noreferrer");
   };
 
+  const peakMs = peakWeatherTimeMs(m.event_time, { city: m.city });
+  const ttpMinutes = peakMs != null
+    ? Math.max(0, (peakMs - Date.now()) / 60000)
+    : (m.event_time ? Math.max(0, (new Date(m.event_time).getTime() - Date.now()) / 60000) : null);
+  const decision = decideAction({
+    gap2h: m.gap2h, gap1h: m.gap1h, gapNow: m.gapNow,
+    volLast: null, volPrev: null, ttpMinutes,
+  });
+
   return (
     <CardShell onClick={openCard} clickable={!!m.polymarket_url}>
       <CardHeader city={m.city} leader={m.leader_label} runner={m.runner_label} sourceLabel="From Polymarket" eventTime={m.event_time} />
@@ -734,6 +743,7 @@ const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & Ro
           </span>
           <span className="text-[10px] text-muted-foreground font-mono-num">score {score.toFixed(3)}</span>
         </div>
+        <ActionBadge decision={decision} degradedHint="External market: live volume not fetched" />
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
