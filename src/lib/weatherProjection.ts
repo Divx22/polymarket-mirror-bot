@@ -36,8 +36,12 @@ export type PeakBias = "LOWER" | "HIGHER" | "NEUTRAL";
 
 export type ProjectionResult = {
   meanC: number;
-  bandC: number;       // ± half-width in °C
-  sigmaC: number;      // band / 1.96
+  bandC: number;       // ± half-width in °C (symmetric back-compat = max(up, down))
+  sigmaC: number;      // band / 1.96 (symmetric back-compat)
+  bandUpC: number;     // upward half-width in °C (mean → higher)
+  bandDownC: number;   // downward half-width in °C (mean → lower)
+  sigmaUpC: number;    // bandUpC / 1.96
+  sigmaDownC: number;  // bandDownC / 1.96
   hoursToPeak: number;
   rows: ProjectionRow[];
   verdict: MarketVerdict;
