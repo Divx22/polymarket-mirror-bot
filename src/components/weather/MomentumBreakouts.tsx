@@ -1002,6 +1002,9 @@ const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & Ro
     volLast: null, volPrev: null, ttpMinutes,
   });
 
+  // External/Discover rows always show UNKNOWN with a specific reason
+  const unknownReason = "Discover row — no projection";
+
   return (
     <CardShell onClick={openCard} clickable={!!m.polymarket_url}>
       <CardHeader title={m.event_title} city={m.city} leader={m.leader_label} runner={m.runner_label} sourceLabel="From Polymarket" eventTime={m.event_time} />
@@ -1016,6 +1019,7 @@ const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & Ro
           <ModeBadge mode={decision.mode} />
           <VerdictBadge verdict="UNKNOWN" title="External market: no weather projection" />
         </div>
+        <UnknownReasonLabel reason={unknownReason} />
         <div className={cn("text-[11px] leading-snug font-medium", MODE_HINT[decision.mode].cls)}>
           {MODE_HINT[decision.mode].tip}
         </div>
