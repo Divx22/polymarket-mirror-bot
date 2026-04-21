@@ -103,10 +103,17 @@ function interpolatePeak(
   };
 }
 
-/** Project peak temp + uncertainty band using full forecast path when available. */
+/** Project peak temp + uncertainty band using full forecast path when available.
+ *
+ * `extreme` controls which daily extreme is being projected:
+ *  - "max" (default): daily HIGH (argmax). Clouds/precip/humidity → cooler.
+ *  - "min": daily LOW (argmin / overnight low). Clouds/precip/humidity → warmer
+ *    (clear, dry nights radiate heat away → colder lows; clouds + humidity trap heat).
+ */
 export function projectPeakTempC(
   s: WeatherSnapshotLike | null | undefined,
   hoursToPeak: number | null | undefined,
+  extreme: "min" | "max" = "max",
 ): {
   meanC: number;
   bandC: number;
@@ -135,31 +142,37 @@ export function projectPeakTempC(
     meanC = s.temperature_now + rawForecastSpeed * damp;
   }
 
-  // Layer 3: Proportional weather adjustments at the peak hour (or current values as fallback).
+  // Layer 3: Proportional weather adjustments at the extreme hour.
+  // Direction depends on which extreme we're projecting.
   const peakCloud = peak?.cloud ?? s.cloud_cover;
   const peakPrecip = peak?.precipitation ?? s.precipitation;
   const peakHum = peak?.humidity ?? s.humidity;
   if (peakCloud != null) {
-    const cloudAdj = ((peakCloud - 50) / 100) * -0.4;
-    const precipAdj = peakPrecip != null ? Math.min(Math.max(peakPrecip, 0), 2) * -0.2 : 0;
-    const humAdj = peakHum != null && peakHum > 80 ? -0.1 : 0;
+    // For HIGHS: clouds/precip/high-humidity push the daytime peak DOWN.
+    // For LOWS: same conditions push the overnight low UP (trap radiative heat).
+    const sign = extreme === "max" ? -1 : +1;
+    const cloudAdj = ((peakCloud - 50) / 100) * 0.4 * sign;
+    const precipAdj = peakPrecip != null ? Math.min(Math.max(peakPrecip, 0), 2) * 0.2 * sign : 0;
+    const humAdj = peakHum != null && peakHum > 80 ? 0.1 * sign : 0;
     let totalAdj = cloudAdj + precipAdj + humAdj;
     totalAdj = Math.max(-0.8, Math.min(0.8, totalAdj));
     meanC += totalAdj;
   }
 
-  // Curve-shape: detect plateau bracketing the peak.
+  // Curve-shape: detect plateau bracketing the extreme.
+  // For a max, plateau → peak slightly lower. For a min, plateau → low slightly higher.
   let plateauDetected = false;
   if (s.forecast_path && s.forecast_path.length >= 2) {
     const a = s.forecast_path.find((p) => p.hour_offset === Math.floor(h));
     const b = s.forecast_path.find((p) => p.hour_offset === Math.ceil(h));
     if (a && b && a !== b && Math.abs(a.temp_c - b.temp_c) < 0.2) {
       plateauDetected = true;
-      meanC -= 0.3;
+      meanC += extreme === "max" ? -0.3 : +0.3;
     }
   }
 
-  // Forecast-vs-reality drift with direction.
+  // Forecast-vs-reality drift with direction. peakBias describes reality vs model
+  // (LOWER = reality cooler than model said), independent of which extreme we're projecting.
   let peakBias: PeakBias = "NEUTRAL";
   let forecastDrift = false;
   if (s.temperature_1h_ago != null && s.temp_forecast_1h != null) {
@@ -171,11 +184,11 @@ export function projectPeakTempC(
     forecastDrift = peakBias !== "NEUTRAL";
   }
 
-  // Apply directional shift to mean.
+  // Apply directional shift to mean (same for min or max — reality is reality).
   if (peakBias === "LOWER") meanC -= 0.3;
   else if (peakBias === "HIGHER") meanC += 0.3;
 
-  // Band: cloud + wind + time-to-peak contributions evaluated at the peak hour.
+  // Band: cloud + wind + time-to-peak contributions evaluated at the extreme hour.
   const peakWind = peak?.wind ?? s.wind_speed;
   const cloudPct = Math.max(0, Math.min(100, peakCloud ?? 0));
   const windKmh = Math.max(0, peakWind ?? 0);
@@ -231,8 +244,9 @@ export function compareToMarket(
   snapshot: WeatherSnapshotLike | null | undefined,
   hoursToPeak: number | null | undefined,
   buckets: BucketLike[],
+  extreme: "min" | "max" = "max",
 ): ProjectionResult | null {
-  const proj = projectPeakTempC(snapshot, hoursToPeak);
+  const proj = projectPeakTempC(snapshot, hoursToPeak, extreme);
   if (!proj) return null;
   const usable = buckets.filter(
     (b) => b.marketPrice != null && Number.isFinite(b.marketPrice) && (b.bucket_min_c != null || b.bucket_max_c != null),

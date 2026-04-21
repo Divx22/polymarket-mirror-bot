@@ -22,48 +22,50 @@ export type OpenMeteoSnapshot = {
   forecast_path: ForecastPathPoint[];
 };
 
-/** Result of scanning the forecast path for the actual peak between now and event_time. */
+/** Result of scanning the forecast path for the temperature extreme between now and event_time. */
 export type PeakScan = {
-  /** Hours from now to the argmax temperature (≥0). */
+  /** Hours from now to the extreme temperature (≥0). */
   hoursToPeak: number;
-  /** Peak temperature (°C). */
+  /** Extreme temperature (°C) — argmax for "max", argmin for "min". */
   peakTempC: number;
-  /** True when the argmax is the current hour (offset 0) — i.e. we're already past the daily peak. */
+  /** True when the extreme is the current hour AND temp isn't moving further that direction next hour. */
   pastPeak: boolean;
-  /** Wall-clock UTC ms of the argmax hour. */
+  /** Wall-clock UTC ms of the extreme hour. */
   peakMs: number;
+  /** Which extreme was scanned. */
+  extreme: "min" | "max";
 };
 
 /**
- * Find the actual peak (argmax temperature) within the forecast path,
- * constrained to the window between "now" and `eventTimeIso`.
+ * Find the actual temperature extreme within the forecast path, constrained
+ * to the window between "now" and `eventTimeIso`.
  *
- * This replaces the older "next local maximum at 4 PM local" heuristic — which
- * mis-fired on markets where the daily peak had already passed (e.g. Beijing
- * resolving at midnight local).
+ * - `extreme="max"` (default): argmax — for "highest temperature" markets.
+ * - `extreme="min"`: argmin — for "lowest temperature" / overnight-low markets.
  *
  * Returns null if the snapshot/path is unusable.
  */
 export function peakFromForecast(
   snapshot: OpenMeteoSnapshot | null | undefined,
   eventTimeIso: string | null | undefined,
+  extreme: "min" | "max" = "max",
 ): PeakScan | null {
   if (!snapshot || !snapshot.forecast_path || snapshot.forecast_path.length === 0) return null;
   const eventMs = eventTimeIso ? Date.parse(eventTimeIso) : NaN;
   const nowMs = Date.now();
-  // Max hours-from-now we'll consider. If event_time is missing/invalid, scan
-  // the entire path; otherwise constrain to (event_time - now).
   const maxHours = Number.isFinite(eventMs)
     ? Math.max(0, (eventMs - nowMs) / 3_600_000)
     : Infinity;
 
   const path = snapshot.forecast_path;
   let bestIdx = 0;
-  let bestTemp = -Infinity;
+  let bestTemp = extreme === "max" ? -Infinity : Infinity;
   for (let i = 0; i < path.length; i++) {
     const p = path[i];
     if (p.hour_offset > maxHours) break;
-    if (Number.isFinite(p.temp_c) && p.temp_c > bestTemp) {
+    if (!Number.isFinite(p.temp_c)) continue;
+    const better = extreme === "max" ? p.temp_c > bestTemp : p.temp_c < bestTemp;
+    if (better) {
       bestTemp = p.temp_c;
       bestIdx = i;
     }
@@ -71,15 +73,20 @@ export function peakFromForecast(
   if (!Number.isFinite(bestTemp)) return null;
 
   const peak = path[bestIdx];
+  // "past peak" → extreme is at hour 0 and the next hour isn't more extreme.
+  let pastPeak = false;
+  if (peak.hour_offset === 0) {
+    const next = path[1];
+    if (!next || !Number.isFinite(next.temp_c)) pastPeak = true;
+    else pastPeak = extreme === "max" ? !(next.temp_c > peak.temp_c) : !(next.temp_c < peak.temp_c);
+  }
+
   return {
     hoursToPeak: Math.max(0, peak.hour_offset),
     peakTempC: peak.temp_c,
-    // We're "past peak" if the argmax in the remaining window is the current
-    // hour AND the temperature isn't still rising in the next hour.
-    pastPeak:
-      peak.hour_offset === 0 &&
-      (path.length < 2 || !(Number.isFinite(path[1].temp_c) && path[1].temp_c > peak.temp_c)),
+    pastPeak,
     peakMs: nowMs + peak.hour_offset * 3_600_000,
+    extreme,
   };
 }
 
