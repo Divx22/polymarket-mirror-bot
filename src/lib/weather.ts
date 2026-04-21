@@ -127,6 +127,8 @@ export const sizeForEdge = (edge: number, agreement = 1): number => {
 // ───────────────────────────────────────────────────────────────────────────
 
 export type MomentumAction = "ENTER" | "ADD" | "HOLD" | "TRIM";
+export type WeatherState = "STRONG" | "MODERATE" | "WEAK" | "UNKNOWN";
+export type MomentumMode = "MOMENTUM" | "TRANSITION" | "CERTAINTY";
 
 export type ActionDecision = {
   action: MomentumAction;
@@ -135,42 +137,96 @@ export type ActionDecision = {
   acceleration: number; // 0–1 units
   volumeChange: number | null; // USDC delta, null when unknown
   degraded: boolean; // true when volume data unavailable
+  mode: MomentumMode;
+  weatherState: WeatherState;
+};
+
+export type WeatherSnapshotLike = {
+  temperature_now: number;
+  temperature_1h_ago: number | null;
+  temp_forecast_1h: number | null;
+  cloud_cover: number | null;
+  precipitation: number | null;
+  humidity: number | null;
+  wind_speed: number | null;
+};
+
+/** Weather score per spec: cloud<30:+2, 30–70:+1, >70:-2; precip>0:-3; humidity>75:-1; wind>20:-1. */
+export const computeWeatherScore = (s: WeatherSnapshotLike | null | undefined): number => {
+  if (!s) return 0;
+  let score = 0;
+  const c = s.cloud_cover;
+  if (c != null) {
+    if (c < 30) score += 2;
+    else if (c <= 70) score += 1;
+    else score -= 2;
+  }
+  if ((s.precipitation ?? 0) > 0) score -= 3;
+  if ((s.humidity ?? 0) > 75) score -= 1;
+  if ((s.wind_speed ?? 0) > 20) score -= 1;
+  return score;
+};
+
+export const classifyWeather = (s: WeatherSnapshotLike | null | undefined): { state: WeatherState; score: number; tempSpeed: number | null; forecastSpeed: number | null } => {
+  if (!s) return { state: "UNKNOWN", score: 0, tempSpeed: null, forecastSpeed: null };
+  const tempSpeed = s.temperature_1h_ago != null ? s.temperature_now - s.temperature_1h_ago : null;
+  const forecastSpeed = s.temp_forecast_1h != null ? s.temp_forecast_1h - s.temperature_now : null;
+  const score = computeWeatherScore(s);
+  let state: WeatherState = "WEAK";
+  if (tempSpeed != null && forecastSpeed != null && tempSpeed >= 0.5 && forecastSpeed >= 0.5 && score >= 1) state = "STRONG";
+  else if (tempSpeed != null && tempSpeed >= 0.3 && score >= 0) state = "MODERATE";
+  return { state, score, tempSpeed, forecastSpeed };
+};
+
+export const classifyMode = (ttpMinutes: number | null | undefined): MomentumMode => {
+  if (ttpMinutes == null || !Number.isFinite(ttpMinutes)) return "MOMENTUM";
+  if (ttpMinutes < 0) return "CERTAINTY";
+  if (ttpMinutes <= 30) return "TRANSITION";
+  return "MOMENTUM";
 };
 
 export type DecideActionInput = {
   gap2h: number;
   gap1h: number;
   gapNow: number;
-  /** USDC traded in [now-10m, now]. Null/undefined when unknown. */
+  /** USDC traded in [now-15m, now]. Null/undefined when unknown. */
   volLast?: number | null;
-  /** USDC traded in [now-20m, now-10m]. Null/undefined when unknown. */
+  /** USDC traded in [now-30m, now-15m]. Null/undefined when unknown. */
   volPrev?: number | null;
   /** Minutes until peak weather (preferred) or until close. */
   ttpMinutes?: number | null;
+  /** Pre-classified weather state. Defaults to UNKNOWN (no veto). */
+  weatherState?: WeatherState;
 };
 
 const fmtPct = (n: number, dp = 1) => `${n >= 0 ? "+" : ""}${(n * 100).toFixed(dp)}%`;
 
 export const decideAction = ({
-  gap2h, gap1h, gapNow, volLast, volPrev, ttpMinutes,
+  gap2h, gap1h, gapNow, volLast, volPrev, ttpMinutes, weatherState = "UNKNOWN",
 }: DecideActionInput): ActionDecision => {
   const m1 = gap1h - gap2h;
   const m2 = gapNow - gap1h;
   const acceleration = m2 - m1;
   const widening = gapNow > gap1h;
   const ttp = ttpMinutes ?? Infinity;
+  const mode = classifyMode(ttpMinutes);
 
   const haveVol = volLast != null && volPrev != null && Number.isFinite(volLast) && Number.isFinite(volPrev);
   const volumeChange: number | null = haveVol ? (Number(volLast) - Number(volPrev)) : null;
   const degraded = !haveVol;
 
-  // Priority order per spec
+  // Priority: shrinking → TRIM, accel<-5% → TRIM, strong-weather ADD,
+  // WEAK weather veto → HOLD, ENTER on widening near peak, else HOLD.
   let action: MomentumAction;
-  if (!widening || acceleration < -0.05 || (volumeChange != null && volumeChange < 0)) {
+  if (!widening) {
     action = "TRIM";
-  } else if (widening && acceleration > 0 && (volumeChange ?? 0) > 0 && ttp < 120) {
+  } else if (acceleration < -0.05 || (volumeChange != null && volumeChange < 0)) {
+    action = "TRIM";
+  } else if (acceleration > 0 && (volumeChange ?? 0) >= 0 && weatherState === "STRONG") {
     action = "ADD";
-  } else if (widening && gapNow > 0.15 && ttp < 120) {
+  } else if (weatherState === "WEAK") {
+    action = "HOLD";
+  } else if (gapNow > 0.15 && ttp < 120) {
     action = "ENTER";
   } else {
     action = "HOLD";
@@ -197,9 +253,10 @@ export const decideAction = ({
     : volumeChange > 0 ? "vol ↑"
     : volumeChange < 0 ? "vol ↓"
     : "vol flat";
-  const reason = `gap ${dir}, ${accelStr}, ${volStr}`;
+  const wxStr = weatherState === "UNKNOWN" ? "" : `, wx ${weatherState.toLowerCase()}`;
+  const reason = `gap ${dir}, ${accelStr}, ${volStr}${wxStr}`;
 
-  return { action, confidence, reason, acceleration, volumeChange, degraded };
+  return { action, confidence, reason, acceleration, volumeChange, degraded, mode, weatherState };
 };
 
 export const formatVolume = (v: number | null | undefined): string => {
