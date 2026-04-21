@@ -938,6 +938,9 @@ export type Database = {
           polymarket_url: string | null
           resolution_lat: number | null
           resolution_lon: number | null
+          resolution_method: string | null
+          resolution_method_detected_at: string | null
+          resolution_method_notes: string | null
           resolution_station_code: string | null
           resolution_station_name: string | null
           updated_at: string
@@ -958,6 +961,9 @@ export type Database = {
           polymarket_url?: string | null
           resolution_lat?: number | null
           resolution_lon?: number | null
+          resolution_method?: string | null
+          resolution_method_detected_at?: string | null
+          resolution_method_notes?: string | null
           resolution_station_code?: string | null
           resolution_station_name?: string | null
           updated_at?: string
@@ -978,6 +984,9 @@ export type Database = {
           polymarket_url?: string | null
           resolution_lat?: number | null
           resolution_lon?: number | null
+          resolution_method?: string | null
+          resolution_method_detected_at?: string | null
+          resolution_method_notes?: string | null
           resolution_station_code?: string | null
           resolution_station_name?: string | null
           updated_at?: string
