@@ -462,8 +462,8 @@ const CountdownBadge = ({
       ? "bg-amber-500/20 text-amber-300 border-amber-400/50"
       : "bg-blue-500/15 text-blue-300 border-blue-400/40";
 
-  const localTime = formatLocalCloseTime(eventTime, city);
-  const peakLocal = formatLocalHour(peakMs, city);
+  const localTime = formatLocalCloseTime(eventTime, loc);
+  const peakLocal = formatLocalHour(peakMs, loc);
   const peakPassed = peakLeft != null && peakLeft.totalMs <= 0;
 
   return (
