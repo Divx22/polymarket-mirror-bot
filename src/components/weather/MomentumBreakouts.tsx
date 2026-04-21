@@ -1357,8 +1357,11 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct,
             const realizedRelevant = realized != null && Number.isFinite(realized) && (
               extreme === "max" ? realized >= projection.meanC - 0.05 : realized <= projection.meanC + 0.05
             );
+            const srcLabel = m.weather.today_extreme_source && m.weather.today_extreme_source !== "open-meteo"
+              ? ` (official ${m.weather.today_extreme_source})`
+              : "";
             const realizedStr = realizedRelevant
-              ? ` · today ${extreme === "min" ? "low" : "high"} so far ${tConv(realized as number).toFixed(1)}${tSym}`
+              ? ` · today ${extreme === "min" ? "low" : "high"} so far ${tConv(realized as number).toFixed(1)}${tSym}${srcLabel}`
               : "";
             return `Open-Meteo ${m.market.city ?? "site"} · now ${nowDisp}${tSym} · ${peakLbl} ${peakDisp}${tSym}${realizedStr} · cloud ${cloud} · precip ${precip} · wind ${wind} · conf ${projection.confidence}%${flagStr}`;
           })()}

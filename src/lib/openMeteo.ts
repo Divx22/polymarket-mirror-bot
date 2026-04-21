@@ -1,5 +1,11 @@
 // Open-Meteo snapshot fetcher with 10-minute in-memory cache.
 // No API key required. See https://open-meteo.com/.
+//
+// When available, today's realized high/low is overridden with values from
+// authoritative METAR-based stations (ECCC SWOB / NOAA NWS) — Polymarket
+// weather markets resolve on official station data, not gridded forecast.
+
+import { fetchOfficialExtremes } from "./officialStation";
 
 export type ForecastPathPoint = {
   hour_offset: number;       // hours from "now" (0 = current hour)
@@ -24,6 +30,8 @@ export type OpenMeteoSnapshot = {
   today_high_so_far_c: number | null;
   /** Min temperature °C observed since local midnight (in API's local tz) through the current hour. Null when unavailable. */
   today_low_so_far_c: number | null;
+  /** Source label for today's extremes. "open-meteo" (gridded) or e.g. "CYYZ" / "KSEA" when overridden by official station. */
+  today_extreme_source?: string;
 };
 
 /** Result of scanning the forecast path for the temperature extreme between now and event_time. */
@@ -185,7 +193,23 @@ export async function fetchOpenMeteoSnapshot(
       forecast_path: path,
       today_high_so_far_c: todayHigh,
       today_low_so_far_c: todayLow,
+      today_extreme_source: todayHigh != null || todayLow != null ? "open-meteo" : undefined,
     };
+
+    // Override today extremes with official station data when available.
+    // Official METAR/SWOB matches what Polymarket actually resolves on, so it
+    // gives the projection a more authoritative anchor than gridded values.
+    try {
+      const official = await fetchOfficialExtremes(lat, lon);
+      if (official) {
+        if (official.today_high_so_far_c != null) snap.today_high_so_far_c = official.today_high_so_far_c;
+        if (official.today_low_so_far_c != null) snap.today_low_so_far_c = official.today_low_so_far_c;
+        snap.today_extreme_source = official.source;
+      }
+    } catch {
+      // Non-fatal — keep gridded values.
+    }
+
     cache.set(key, { at: Date.now(), data: snap });
     return snap;
   } catch {
