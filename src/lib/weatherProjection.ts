@@ -355,7 +355,7 @@ export function compareToMarket(
   const baseTop = sortedByPrice.slice(0, 4);
 
   // Provisional probability mass over ALL usable buckets (for edge detection on extras).
-  const fullMass = usable.map((b) => bucketProbability(proj.meanC, proj.sigmaC, b.bucket_min_c, b.bucket_max_c));
+  const fullMass = usable.map((b) => bucketProbability(proj.meanC, proj.sigmaC, b.bucket_min_c, b.bucket_max_c, proj.sigmaDownC, proj.sigmaUpC));
   const fullMassSum = fullMass.reduce((s, p) => s + p, 0) || 1;
   const fullMarketSum = usable.reduce((s, b) => s + (b.marketPrice as number), 0) || 1;
 
