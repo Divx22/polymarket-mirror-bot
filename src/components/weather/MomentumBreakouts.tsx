@@ -218,7 +218,7 @@ export const MomentumBreakouts = ({
     setDiscovering(true);
     try {
       const { data, error } = await supabase.functions.invoke("weather-discover-momentum", {
-        body: { gap_min: gapMin },
+        body: { gap_min: gapMin, max_hours: windowHours },
       });
       if (error) throw error;
       const results = (data?.results ?? []) as any[];
