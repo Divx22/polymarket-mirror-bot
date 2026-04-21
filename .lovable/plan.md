@@ -1,58 +1,37 @@
 
 
-## Plan: Volume Filter + Favorite Mismatch Signal
+## Why some cards show peak time and others don't
 
-### 1. Database migration
-Add columns:
-- `weather_markets.event_volume_24h numeric`
-- `weather_signals`: `market_favorite_label text`, `market_favorite_price numeric`, `model_favorite_label text`, `model_favorite_prob numeric`, `favorite_mismatch boolean`
-- `config.min_volume_usd numeric default 25000`
+The peak-weather badge only renders when the card's city name is found in the **hardcoded `CITY_TIMEZONES` map** in `src/lib/cityTimezones.ts`. If the city isn't in that ~40-entry list (or the name doesn't match exactly, e.g. "Las Vegas" vs "Vegas", "Kyiv", "Jakarta", "Bangkok", "Cairo", "Vancouver"), `tzForCity` returns `null`, so `peakWeatherTimeMs` returns `null`, and the orange peak badge is hidden.
 
-### 2. Edge function — `weather-refresh-market`
-- Pull `volume24hr` (event-level) from Polymarket gamma API → store on `weather_markets.event_volume_24h`.
-- After computing outcomes, derive and persist on the new `weather_signals` row:
-  - `market_favorite_label` / `market_favorite_price` (highest `polymarket_price`)
-  - `model_favorite_label` / `model_favorite_prob` (highest `p_model`)
-  - `favorite_mismatch` (labels differ)
+Right now the map covers ~40 cities. Anything outside that list silently drops the peak timer.
 
-### 3. `src/lib/weather.ts`
-Extend `WeatherMarket` with `event_volume_24h` and `WeatherSignal` with the four new fields. Add a `formatVolume($25k / $1.2M)` helper.
+## Fix
 
-### 4. `src/pages/Weather.tsx`
-- Header: add **Min Volume $** input (binds to `config.min_volume_usd`) and **Mismatches only** toggle, next to Bankroll.
-- Load `min_volume_usd` from config.
-- Add **Volume** column to table (formatted).
-- Filter logic: hide rows where `best_edge ≥ 7%` AND `event_volume_24h < min_volume_usd` (untradeable). Keep rows with no edge visible regardless.
-- Apply mismatches-only toggle as additional filter.
-- Sort: `favorite_mismatch DESC` → `best_edge DESC` → `event_volume_24h DESC`.
-- Mismatch rows: subtle emerald-tinted background + small "⚡ Mismatch" badge inside the Best Trade cell.
+Make peak time available for **every** city by replacing the hardcoded lookup with a real geo→timezone resolver, using data we already have on each market (`latitude` / `longitude` from `weather_markets`, plus the resolution station coords for momentum cards).
 
-### 5. `src/components/weather/TradeDetailDialog.tsx`
-New "Market vs Model" block above the outcomes table:
-```text
-Model says:    [Outcome A] (62%)
-Market says:   [Outcome B] (48¢)
-⚠ The market is betting on a different outcome than the forecast.
-```
-Warning line only when mismatch is true.
+### Approach
 
-### 6. `src/components/weather/BestTradeSignal.tsx`
-When the surfaced top trade has `favorite_mismatch=true`, prepend a one-line banner: "Market favorite is **[X]** — your model disagrees."
+1. **Add `tz-lookup`** (tiny ~50KB lib, offline, lat/lon → IANA timezone). Works for any point on Earth.
+2. **Update `src/lib/cityTimezones.ts`**:
+   - Add `tzForCoords(lat, lon)` using `tz-lookup`.
+   - Change `tzForCity` callers to a new `resolveTz({ city, lat, lon })` that tries coords first, then the city map as fallback, then returns `null`.
+   - Update `formatLocalCloseTime`, `peakWeatherTimeMs`, `formatLocalHour` to accept an optional `{ lat, lon }` (or a resolved tz string) instead of just city.
+3. **Update `MomentumBreakouts.tsx`**:
+   - Pass `latitude` / `longitude` (local markets) and the discovered coords (external rows — these come back from the discover function; if missing, fall back to city-name lookup) into `CountdownBadge` and `CardHeader`.
+4. **Light normalization** in the city map (lowercase, strip "city of", common aliases) so the fallback path catches more names too.
 
-### 7. `src/components/weather/PositionCalculator.tsx`
-Add a `MinVolumeInput` sibling to `BankrollInput` (same pattern, writes to `config.min_volume_usd`).
+### Result
 
-### Out of scope (intentional)
-- Per-outcome volume (Polymarket data unreliable).
-- Dedicated "Mismatch" column (redundant with row highlight + badge on 390px viewport).
-- Existing 7% edge floor + confidence filter remain untouched.
+Every card with either coords or a recognizable city shows close-local-time + peak-local-time. The orange peak badge will no longer disappear for Bangkok, Vegas, Kyiv, etc.
 
-### Files touched
-- New migration
-- `supabase/functions/weather-refresh-market/index.ts`
-- `src/lib/weather.ts`
-- `src/pages/Weather.tsx`
-- `src/components/weather/TradeDetailDialog.tsx`
-- `src/components/weather/BestTradeSignal.tsx`
-- `src/components/weather/PositionCalculator.tsx`
+### Files
+
+- `src/lib/cityTimezones.ts` — add coord-based resolver, broaden API
+- `src/components/weather/MomentumBreakouts.tsx` — pass lat/lon into badge/header
+- `package.json` — add `tz-lookup` dependency
+
+### Note (separate, minor)
+
+The console warnings about `forwardRef` on `Snap` / `StakeBar` / `ExternalRow` are unrelated to this issue but I can fix them in the same pass if you want.
 
