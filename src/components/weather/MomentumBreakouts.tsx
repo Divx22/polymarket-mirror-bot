@@ -735,9 +735,11 @@ const Row = ({ m, onSelect, stake, stakePct, score }: { m: Movement; onSelect?: 
   const ttpMinutes = peakMs != null
     ? Math.max(0, (peakMs - Date.now()) / 60000)
     : Math.max(0, (new Date(m.market.event_time).getTime() - Date.now()) / 60000);
+  const wx = classifyWeather(m.weather);
   const decision = decideAction({
     gap2h: m.gap2h, gap1h: m.gap1h, gapNow: m.gapNow,
     volLast: m.volLast, volPrev: m.volPrev, ttpMinutes,
+    weatherState: wx.state,
   });
 
   const copy = async (e: React.MouseEvent) => {
