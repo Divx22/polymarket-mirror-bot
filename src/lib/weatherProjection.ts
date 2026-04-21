@@ -196,8 +196,20 @@ export function projectPeakTempC(
   const hoursTerm = Math.min(2.0, Math.sqrt(Math.max(0, h)) * 0.4);
   let bandF = Math.max(1, Math.min(6, 1 + (cloudPct / 100) * 1.5 + (windKmh / 30) * 1 + hoursTerm));
   if (forecastDrift) bandF = Math.min(6, bandF + 0.5);
-  const bandC = bandF * 5 / 9;
-  const sigmaC = bandC / 1.96;
+  let bandC = bandF * 5 / 9;
+  let sigmaC = bandC / 1.96;
+
+  // Past-peak collapse: the daily extreme is essentially realized.
+  // Anchor mean to whichever is more extreme (current temp vs path argmax/min)
+  // and shrink the band to a small residual to reflect remaining intraday wiggle.
+  if (pastPeak) {
+    const realized = extreme === "max"
+      ? Math.max(s.temperature_now, meanC)
+      : Math.min(s.temperature_now, meanC);
+    meanC = realized;
+    bandC = 0.4;       // ±0.4°C residual — small late-day moves still possible
+    sigmaC = bandC / 1.96;
+  }
 
   return { meanC, bandC, sigmaC, peak, forecastDrift, plateauDetected, peakBias };
 }
