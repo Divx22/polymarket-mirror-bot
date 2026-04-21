@@ -217,6 +217,8 @@ export const MomentumBreakouts = ({
   // Resolution window in hours. User-selectable: 8 / 12 / 24.
   const [windowHours, setWindowHours] = useState<WindowHours>(DEFAULT_WINDOW);
   const [detectingIds, setDetectingIds] = useState<Set<string>>(new Set());
+  const [singleUrl, setSingleUrl] = useState<string>("");
+  const [analyzingUrl, setAnalyzingUrl] = useState(false);
 
   const detectResolution = async (marketId: string) => {
     setDetectingIds((s) => new Set(s).add(marketId));
