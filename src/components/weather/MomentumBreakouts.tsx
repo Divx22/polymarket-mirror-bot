@@ -843,7 +843,7 @@ const StakeBar = ({ stake, stakePct }: { stake: number; stakePct: number }) => (
   </div>
 );
 
-const Row = ({ m, outs, onSelect, stake, stakePct, score }: { m: Movement; outs: WeatherOutcome[]; onSelect?: (mk: WeatherMarket) => void } & RowExtras) => {
+const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct }: { m: Movement; outs: WeatherOutcome[]; onSelect?: (mk: WeatherMarket) => void } & RowExtras) => {
   const [copied, setCopied] = useState(false);
   const entryPct = (m.leaderNow * 100).toFixed(1);
   const upsidePct = ((1 - m.leaderNow) * 100).toFixed(1);
