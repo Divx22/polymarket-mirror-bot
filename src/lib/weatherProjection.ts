@@ -211,6 +211,24 @@ export function projectPeakTempC(
     sigmaC = bandC / 1.96;
   }
 
+  // Realized-extreme anchor: today's high/low so far is already locked in.
+  // For "max" markets, projected daily high cannot be lower than what's already been observed.
+  // For "min" markets, projected daily low cannot be higher than what's already been observed.
+  // Only push more extreme — never pull projection back toward current temp.
+  if (extreme === "max" && s.today_high_so_far_c != null && Number.isFinite(s.today_high_so_far_c)) {
+    if (s.today_high_so_far_c > meanC) {
+      meanC = s.today_high_so_far_c;
+      bandC = Math.min(bandC, 0.6);
+      sigmaC = bandC / 1.96;
+    }
+  } else if (extreme === "min" && s.today_low_so_far_c != null && Number.isFinite(s.today_low_so_far_c)) {
+    if (s.today_low_so_far_c < meanC) {
+      meanC = s.today_low_so_far_c;
+      bandC = Math.min(bandC, 0.6);
+      sigmaC = bandC / 1.96;
+    }
+  }
+
   return { meanC, bandC, sigmaC, peak, forecastDrift, plateauDetected, peakBias };
 }
 

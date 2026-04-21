@@ -20,6 +20,10 @@ export type OpenMeteoSnapshot = {
   wind_speed: number | null;
   /** Hourly forecast starting at the current hour (hour_offset=0), up to ~8h ahead. */
   forecast_path: ForecastPathPoint[];
+  /** Max temperature °C observed since local midnight (in API's local tz) through the current hour. Null when unavailable. */
+  today_high_so_far_c: number | null;
+  /** Min temperature °C observed since local midnight (in API's local tz) through the current hour. Null when unavailable. */
+  today_low_so_far_c: number | null;
 };
 
 /** Result of scanning the forecast path for the temperature extreme between now and event_time. */
@@ -154,6 +158,22 @@ export async function fetchOpenMeteoSnapshot(
       }
     }
 
+    // Realized extremes since local midnight, through the current hour (inclusive).
+    let todayHigh: number | null = null;
+    let todayLow: number | null = null;
+    if (idx >= 0) {
+      const todayPrefix = (curTime || times[idx] || "").slice(0, 10); // "YYYY-MM-DD"
+      if (todayPrefix) {
+        for (let i = 0; i <= idx && i < times.length; i++) {
+          if (!times[i]?.startsWith(todayPrefix)) continue;
+          const t = temps[i];
+          if (!Number.isFinite(t)) continue;
+          if (todayHigh == null || t > todayHigh) todayHigh = t;
+          if (todayLow == null || t < todayLow) todayLow = t;
+        }
+      }
+    }
+
     const snap: OpenMeteoSnapshot = {
       temperature_now: Number.isFinite(tempNow) ? tempNow : (temps[idx] ?? NaN),
       temperature_1h_ago: idx > 0 ? (Number.isFinite(temps[idx - 1]) ? temps[idx - 1] : null) : null,
@@ -163,6 +183,8 @@ export async function fetchOpenMeteoSnapshot(
       humidity: idx >= 0 && Number.isFinite(hums[idx]) ? hums[idx] : null,
       wind_speed: idx >= 0 && Number.isFinite(winds[idx]) ? winds[idx] : null,
       forecast_path: path,
+      today_high_so_far_c: todayHigh,
+      today_low_so_far_c: todayLow,
     };
     cache.set(key, { at: Date.now(), data: snap });
     return snap;
