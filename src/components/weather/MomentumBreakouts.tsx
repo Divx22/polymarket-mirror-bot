@@ -1088,7 +1088,7 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
   );
 };
 
-const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & RowExtras) => {
+const ExternalRow = ({ m, stake, stakePct, score, bankroll, stakeCapPct }: { m: ExternalMovement } & RowExtras) => {
   const entryPct = (m.leaderNow * 100).toFixed(1);
   const upsidePct = ((1 - m.leaderNow) * 100).toFixed(1);
   const gap2hPct = (m.gap2h * 100).toFixed(1);
@@ -1103,21 +1103,72 @@ const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & Ro
     if (m.polymarket_url) window.open(m.polymarket_url, "_blank", "noopener,noreferrer");
   };
 
-  const peakMs = peakWeatherTimeMs(m.event_time, { city: m.city });
+  const peakMs = peakWeatherTimeMs(m.event_time, { city: m.city, lat: m.lat, lon: m.lon });
   const ttpMinutes = peakMs != null
     ? Math.max(0, (peakMs - Date.now()) / 60000)
     : (m.event_time ? Math.max(0, (new Date(m.event_time).getTime() - Date.now()) / 60000) : null);
+  const hoursToPeak = ttpMinutes != null ? ttpMinutes / 60 : 0;
+
+  // Build buckets for leader + runner from their labels (we only have two
+  // outcomes in the discover payload; that's enough for compareToMarket).
+  const leaderParsed = parseBucketLabel(m.leader_label);
+  const runnerParsed = parseBucketLabel(m.runner_label);
+  const buckets: BucketLike[] = [
+    { label: m.leader_label, bucket_min_c: leaderParsed.min_c, bucket_max_c: leaderParsed.max_c, marketPrice: m.leaderNow },
+    { label: m.runner_label, bucket_min_c: runnerParsed.min_c, bucket_max_c: runnerParsed.max_c, marketPrice: Math.max(0, m.leaderNow - m.gapNow) },
+  ];
+  // Detect unit from labels (any °F → unify on F, else C).
+  const labelBlob = `${m.leader_label} ${m.runner_label}`;
+  const unit: "C" | "F" = /°\s*F|\bF\b/i.test(labelBlob) ? "F" : (/°\s*C|\bC\b/i.test(labelBlob) ? "C" : "F");
+  const tConv = (c: number) => unit === "F" ? cToF(c) : c;
+  const tSym = unit === "F" ? "°F" : "°C";
+
+  const projection = compareToMarket(m.weather, hoursToPeak, buckets);
+  const verdict: MarketVerdict = projection?.verdict ?? "UNKNOWN";
+
+  let unknownReason = "";
+  if (verdict === "UNKNOWN") {
+    if (!m.lat || !m.lon) unknownReason = `No coordinates for ${m.city ?? "city"}`;
+    else if (!m.weather) unknownReason = "Weather snapshot unavailable";
+    else if (leaderParsed.min_c == null && leaderParsed.max_c == null) unknownReason = "Could not parse bucket bounds from labels";
+    else unknownReason = "Unable to compute projection";
+  }
+
   const decision = decideAction({
     gap2h: m.gap2h, gap1h: m.gap1h, gapNow: m.gapNow,
     volLast: null, volPrev: null, ttpMinutes,
+    marketVerdict: verdict,
   });
 
-  // External/Discover rows always show UNKNOWN with a specific reason
-  const unknownReason = "Discover row — no projection";
+  const verdictTitle = projection
+    ? `Model #1: ${projection.modelTopLabel ?? "—"} · Market #1: ${projection.marketTopLabel ?? "—"}`
+    : "No projection (missing weather or bucket data)";
+
+  const wxSourceLine = (() => {
+    if (!m.weather) return unknownReason || "No live snapshot available";
+    const nowDisp = tConv(m.weather.temperature_now).toFixed(1);
+    const ph = Math.floor(hoursToPeak);
+    const pm = Math.round((hoursToPeak - ph) * 60);
+    const ttp = hoursToPeak > 0 ? (ph > 0 ? `in ${ph}h ${pm.toString().padStart(2, "0")}m` : `in ${pm}m`) : "now";
+    if (!projection) {
+      const f1 = m.weather.temp_forecast_1h != null ? `${tConv(m.weather.temp_forecast_1h).toFixed(1)}${tSym}` : "—";
+      return `Open-Meteo ${m.city ?? "site"} · now ${nowDisp}${tSym} · +1h ${f1}`;
+    }
+    const peakDisp = tConv(projection.meanC).toFixed(1);
+    const peak = projection.peak;
+    const cloud = peak?.cloud != null ? `${Math.round(peak.cloud)}%` : "—";
+    const precip = peak?.precipitation != null ? `${peak.precipitation.toFixed(1)}mm` : "—";
+    const wind = peak?.wind != null ? `${Math.round(peak.wind)}km/h` : "—";
+    const flags: string[] = [];
+    if (projection.forecastDrift) flags.push("⚠ forecast drift");
+    if (projection.plateauDetected) flags.push("≈ plateau");
+    const flagStr = flags.length ? ` · ${flags.join(" · ")}` : "";
+    return `Open-Meteo ${m.city ?? "site"} · now ${nowDisp}${tSym} · peak (${ttp}) ${peakDisp}${tSym} · cloud ${cloud} · precip ${precip} · wind ${wind} · conf ${projection.confidence}%${flagStr}`;
+  })();
 
   return (
     <CardShell onClick={openCard} clickable={!!m.polymarket_url}>
-      <CardHeader title={m.event_title} city={m.city} leader={m.leader_label} runner={m.runner_label} sourceLabel="From Polymarket" eventTime={m.event_time} />
+      <CardHeader title={m.event_title} city={m.city} lat={m.lat} lon={m.lon} leader={m.leader_label} runner={m.runner_label} sourceLabel="From Polymarket" eventTime={m.event_time} />
       <div className="px-4 py-3 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={cn("inline-flex items-center px-2.5 py-1 rounded-md border text-[12px] font-bold uppercase tracking-wide", meta.badge)}>
@@ -1129,12 +1180,15 @@ const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & Ro
           mode={decision.mode}
           modeTip={MODE_HINT[decision.mode].tip}
           modeCls={MODE_HINT[decision.mode].cls}
-          verdict="UNKNOWN"
-          verdictTitle="External market: no weather projection"
-          verdictReason={unknownReason}
-          wxSourceLine="Discover row — temperature snapshot not fetched"
+          verdict={verdict}
+          verdictTitle={verdictTitle}
+          verdictReason={unknownReason || (projection
+            ? `Model ${projection.modelTopLabel ?? "—"} vs market ${projection.marketTopLabel ?? "—"}`
+            : undefined)}
+          wxSourceLine={wxSourceLine}
         />
         <ActionBadge decision={decision} degradedHint="External market: live volume not fetched" />
+        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} />}
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
