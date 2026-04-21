@@ -216,6 +216,26 @@ export const MomentumBreakouts = ({
   const [gapMin, setGapMin] = useState<number>(gapMinProp ?? DEFAULT_GAP_MIN);
   // Resolution window in hours. User-selectable: 8 / 12 / 24.
   const [windowHours, setWindowHours] = useState<WindowHours>(DEFAULT_WINDOW);
+  const [detectingIds, setDetectingIds] = useState<Set<string>>(new Set());
+
+  const detectResolution = async (marketId: string) => {
+    setDetectingIds((s) => new Set(s).add(marketId));
+    try {
+      await supabase.functions.invoke("weather-detect-resolution", { body: { market_id: marketId } });
+      // Force a reload of the page so the updated resolution_method flows through.
+      window.location.reload();
+    } catch (e) {
+      console.error("detect-resolution failed", e);
+    } finally {
+      setDetectingIds((s) => { const n = new Set(s); n.delete(marketId); return n; });
+    }
+  };
+
+  // One-shot backfill on mount: classify any active market without a method yet.
+  useEffect(() => {
+    supabase.functions.invoke("weather-detect-resolution", { body: { all_pending: true } }).catch(() => {});
+  }, []);
+
 
   const scan = async () => {
     setScanning(true);
@@ -506,7 +526,7 @@ export const MomentumBreakouts = ({
               const stake = suggestStake(bankroll, stakeCapPct, row.sortScore);
               const stakePct = bankroll > 0 ? (stake / bankroll) * 100 : 0;
               return row.kind === "local"
-                ? <Row key={row.key} m={row.data} outs={outcomes[row.data.market.id] ?? []} onSelect={onSelect} stake={stake} stakePct={stakePct} score={row.sortScore} bankroll={bankroll} stakeCapPct={stakeCapPct} />
+                ? <Row key={row.key} m={row.data} outs={outcomes[row.data.market.id] ?? []} onSelect={onSelect} stake={stake} stakePct={stakePct} score={row.sortScore} bankroll={bankroll} stakeCapPct={stakeCapPct} onDetectResolution={detectResolution} detectingResolution={detectingIds.has(row.data.market.id)} />
                 : <ExternalRow key={row.key} m={row.data} stake={stake} stakePct={stakePct} score={row.sortScore} bankroll={bankroll} stakeCapPct={stakeCapPct} />;
             })}
           </div>
