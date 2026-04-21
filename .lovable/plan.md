@@ -1,75 +1,73 @@
 
 
-## Add real weather as a decision filter on momentum cards
+## Weather → Market bucket matcher (the "is the leader actually right?" panel)
 
-Layer Open-Meteo data + a weather score onto the existing `decideAction` engine. Existing logic, sort, scan, and UI stay intact — only the action rules and two new badges change.
+Replace the generic `WX: STRONG/WEAK` badge with a **real comparison** between projected peak temperature and the market's top 4 priced buckets. The card answers: *"based on live + forecast weather, where will the temp actually land — and is the market's #1 bucket overpriced or underpriced?"*
 
-### What you'll see
-
-Each momentum card gains **two new pill badges** next to the current action badge:
+### What you'll see on each card
 
 ```
-[ENTER 78%] [MODE: MOMENTUM 🟢] [WEATHER: STRONG 🟢]  gap widening, accel +3%, vol ↑
+PROJECTED PEAK: 58.2°F  ±1.8°F  (in 3h 12m)
+─────────────────────────────────────────────
+            Market   Model    Edge
+58–59°F      22%  →   54%   ✅ +32  ← projection lands here
+56–57°F      62%  →   28%   ⚠️ −34  ← MARKET OVERPRICED
+60–61°F       4%  →   12%      +8
+54–55°F      10%  →    5%      −5
+─────────────────────────────────────────────
+WX VERDICT: DISAGREE  (market #1 ≠ model #1)
 ```
 
-- **MODE** (driven by time-to-peak):
-  - `MOMENTUM` 🟢 when ttp > 30 min
-  - `TRANSITION` 🟡 when 0 ≤ ttp ≤ 30 min
-  - `CERTAINTY` 🔵 when peak already passed
-- **WEATHER** (driven by live + 1h-ahead Open-Meteo):
-  - `STRONG` 🟢 / `MODERATE` 🟡 / `WEAK` 🔴
-  - Tooltip shows `temp_speed`, `forecast_speed`, cloud %, precip, humidity, wind, and the numeric weather_score.
+- **Projected peak**: linear extrapolation `temperature_now + forecast_speed × hours_to_peak`, converted to °F for display.
+- **Confidence band (±)**: width derived from cloud cover + wind: `base 1°F + (cloud_cover/100)×1.5°F + (wind/30)×1°F`, capped 1–4°F. Clear/calm → tight; cloudy/windy → wide.
+- **Model %**: probability mass of a Normal(`projection`, `band/1.96` as σ) inside each bucket's `[bucket_min_c, bucket_max_c]`. Computed in °C using the existing outcome fields.
+- **Top 4 buckets**: outcomes already sorted by display order; we re-sort by market price desc and take top 4.
+- **Edge**: `model_pct − market_pct` (signed percentage points, integer).
 
-### Decision rules (new, additive)
+### WX badge becomes a verdict
 
-Updated priority inside `decideAction`:
+Replaces the current `STRONG/MODERATE/WEAK` badge:
+- 🟢 **AGREE** — model's #1 bucket == market's #1 bucket AND |edge on market #1| ≤ 10pp
+- 🟡 **NEUTRAL** — same #1 bucket but model materially lower (edge ≤ −10pp), or projection falls on a bucket boundary
+- 🔴 **DISAGREE** — model's #1 bucket ≠ market's #1 bucket (the big signal — market is on the wrong temperature)
+- ⚪ **n/a** — no weather snapshot or no `bucket_min_c/max_c` on outcomes (external/Discover cards)
 
-```text
-1. shrinking            → TRIM
-2. acceleration < -5%   → TRIM
-3. widening + accel>0 + weather=STRONG → ADD
-4. widening + weather=WEAK             → HOLD       (NEW: weather veto)
-5. widening + ttp < 120 min            → ENTER
-6. otherwise                           → HOLD
+### Decision rule changes (in `decideAction`)
+
+The verdict feeds the existing engine, replacing the old `weatherState`:
+```
+shrinking                        → TRIM
+acceleration < −5%               → TRIM
+widening + accel>0 + AGREE       → ADD
+widening + DISAGREE              → HOLD          (veto, was: WEAK)
+widening + ttp < 120 min         → ENTER
+otherwise                        → HOLD
 ```
 
-Hard rule: **never ADD when weather=WEAK**, even if volume/acceleration look good.
-
-### Weather fetch (Open-Meteo, no key)
-
-`https://api.open-meteo.com/v1/forecast?latitude=…&longitude=…&hourly=temperature_2m,cloudcover,relativehumidity_2m,precipitation,windspeed_10m&current_weather=true&timezone=auto`
-
-- One fetch per local card (uses `market.latitude/longitude`); cached in component state for 10 min.
-- External (Discover) cards use coords when present, otherwise weather=`UNKNOWN` and the badge shows `n/a` — they remain in degraded mode.
-
-Extracted: `temperature_now`, `temperature_1h_ago`, `temp_forecast_1h`, `cloud_cover`, `precipitation`, `humidity`, `wind_speed` → derived `temp_speed`, `forecast_speed`, `weather_score`, `weather_state`.
-
-Weather score per spec:
-```
-cloud<30:+2, 30–70:+1, >70:-2
-precip>0:-3, humidity>75:-1, wind>20:-1
-```
-
-State per spec (uses °C; Open-Meteo defaults to metric, no conversion needed):
-```
-STRONG   : temp_speed≥0.5 AND forecast_speed≥0.5 AND score≥1
-MODERATE : temp_speed≥0.3 AND score≥0
-WEAK     : otherwise
-```
+Hard rule: **never ADD when the market and model disagree on the leading bucket.**
 
 ### Files
 
-- **`src/lib/weather.ts`** — extend `decideAction` to accept `weatherState?: "STRONG"|"MODERATE"|"WEAK"|"UNKNOWN"` and `mode?: "MOMENTUM"|"TRANSITION"|"CERTAINTY"`. Add helpers: `computeWeatherScore(...)`, `classifyWeather(...)`, `classifyMode(ttpMinutes)`. Apply the WEAK→HOLD veto and surface `mode` + `weather_state` in the returned `ActionDecision`.
-- **`src/lib/openMeteo.ts`** *(new)* — `fetchOpenMeteoSnapshot(lat, lon)` returning the seven extracted fields; in-memory 10-min LRU cache keyed by `lat,lon` rounded to 2 dp.
-- **`src/components/weather/MomentumBreakouts.tsx`**
-  - In the scan batch, after volume fetch, also call `fetchOpenMeteoSnapshot(m.latitude, m.longitude)` and store on `Movement`.
-  - Pass `weatherState` and `mode` into `decideAction`.
-  - Add `<ModeBadge>` and `<WeatherBadge>` next to existing `<ActionBadge>` in `Row` and `ExternalRow` (external uses `UNKNOWN` when no coords).
-- **`src/test/decideAction.test.ts`** *(optional)* — extend with WEAK-veto and mode cases.
+- **`src/lib/weatherProjection.ts`** *(new)* — pure helpers, fully unit-testable:
+  - `projectPeakTempC(snapshot, hoursToPeak)` → `{ mean, band }` in °C
+  - `bucketProbability(meanC, sigmaC, minC, maxC)` → 0–1 (uses error-function approximation for Normal CDF)
+  - `compareToMarket(projection, outcomesTop4)` → `{ rows: {label, marketPct, modelPct, edge}[], verdict: "AGREE"|"NEUTRAL"|"DISAGREE"|"UNKNOWN" }`
+  - `cToF(c)` for display
+
+- **`src/lib/weather.ts`** — change `decideAction` input from `weatherState` to `marketVerdict: "AGREE"|"NEUTRAL"|"DISAGREE"|"UNKNOWN"` (keep the field name `weatherState` on the returned `ActionDecision` for back-compat with consumers, but populate it with the verdict). Update veto rule to fire on `DISAGREE`. Keep `classifyMode` unchanged.
+
+- **`src/components/weather/MomentumBreakouts.tsx`**:
+  - Compute `hoursToPeak` from `peakWeatherTimeMs(market)` (already imported) and pass to `projectPeakTempC`.
+  - Pass top-4 outcomes (sorted by live mid desc, falling back to `polymarket_price`) into `compareToMarket`.
+  - Replace `<WeatherBadge>` with `<VerdictBadge>` (AGREE/NEUTRAL/DISAGREE/n/a) using same pill style.
+  - Add a new collapsible block under the action row: **"Peak projection vs market"** showing the 4-row table above. Collapsed by default to keep card height; expands on click.
+  - External (Discover) cards: no coords + no buckets → verdict `UNKNOWN`, table hidden.
+
+- **`src/components/weather/MomentumBreakouts.tsx` tooltip cleanup** — old WX raw-metrics tooltip moves onto the projection header (hover `PROJECTED PEAK` to see `temp_speed`, `forecast_speed`, cloud %, precip, humidity, wind).
 
 ### Out of scope
 
-- No DB or edge-function changes (Open-Meteo is called from the browser, same pattern as the existing CLOB fetches).
-- No changes to scoring/sort/stake-size logic.
-- No persistence of weather snapshots (recomputed each scan, like volume).
+- No DB or edge-function changes; all projection math runs in the browser using already-fetched data.
+- No changes to scoring, sort, stake-size, or Discover flow.
+- Bucket math handles the existing `bucket_min_c/bucket_max_c` schema only — outcomes without buckets fall through to `UNKNOWN`.
 
