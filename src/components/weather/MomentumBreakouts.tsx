@@ -640,10 +640,11 @@ const ModeBadge = ({ mode }: { mode: MomentumMode }) => {
 };
 
 const VERDICT_META: Record<MarketVerdict, { cls: string; label: string; dot: string }> = {
-  AGREE:    { cls: "bg-emerald-500/15 text-emerald-200 border-emerald-400/50", label: "AGREE",    dot: "🟢" },
-  NEUTRAL:  { cls: "bg-amber-500/15 text-amber-200 border-amber-400/50",       label: "NEUTRAL",  dot: "🟡" },
-  DISAGREE: { cls: "bg-red-500/15 text-red-200 border-red-400/50",             label: "DISAGREE", dot: "🔴" },
-  UNKNOWN:  { cls: "bg-muted text-muted-foreground border-border",             label: "N/A",      dot: "⚪" },
+  AGREE:           { cls: "bg-emerald-500/15 text-emerald-200 border-emerald-400/50", label: "AGREE",           dot: "🟢" },
+  NEUTRAL:         { cls: "bg-amber-500/15 text-amber-200 border-amber-400/50",       label: "NEUTRAL",         dot: "🟡" },
+  WEAK_DISAGREE:   { cls: "bg-orange-500/15 text-orange-200 border-orange-400/50",    label: "WEAK DISAGREE",   dot: "🟠" },
+  STRONG_DISAGREE: { cls: "bg-red-500/15 text-red-200 border-red-400/50",             label: "STRONG DISAGREE", dot: "🔴" },
+  UNKNOWN:         { cls: "bg-muted text-muted-foreground border-border",             label: "N/A",             dot: "⚪" },
 };
 
 const VerdictBadge = ({ verdict, title }: { verdict: MarketVerdict; title?: string }) => {
