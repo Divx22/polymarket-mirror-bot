@@ -443,10 +443,11 @@ const useCountdown = (targetTime: string | null | undefined) => {
 // Countdown badge component — shows local close time + live countdown,
 // plus a secondary "peak weather" countdown (4 PM local in city tz).
 const CountdownBadge = ({
-  eventTime, city, urgent,
-}: { eventTime: string | null | undefined; city?: string | null; urgent?: boolean }) => {
+  eventTime, city, lat, lon, urgent,
+}: { eventTime: string | null | undefined; city?: string | null; lat?: number | null; lon?: number | null; urgent?: boolean }) => {
   const timeLeft = useCountdown(eventTime);
-  const peakMs = peakWeatherTimeMs(eventTime, city);
+  const loc = { city, lat, lon };
+  const peakMs = peakWeatherTimeMs(eventTime, loc);
   const peakIso = peakMs != null ? new Date(peakMs).toISOString() : null;
   const peakLeft = useCountdown(peakIso);
   if (!timeLeft) return null;
