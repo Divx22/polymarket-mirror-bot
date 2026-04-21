@@ -964,14 +964,19 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
           </span>
           <span className="text-[10px] text-muted-foreground font-mono-num">score {score.toFixed(3)}</span>
         </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <ModeBadge mode={decision.mode} />
-          <VerdictBadge verdict={verdict} title={verdictTitle} />
-        </div>
-        {unknownReason && <UnknownReasonLabel reason={unknownReason} />}
-        <div className={cn("text-[11px] leading-snug font-medium", MODE_HINT[decision.mode].cls)}>
-          {MODE_HINT[decision.mode].tip}
-        </div>
+        <SignalBoxes
+          mode={decision.mode}
+          modeTip={MODE_HINT[decision.mode].tip}
+          modeCls={MODE_HINT[decision.mode].cls}
+          verdict={verdict}
+          verdictTitle={verdictTitle}
+          verdictReason={unknownReason || (projection
+            ? `Model ${projection.modelTopLabel ?? "—"} vs market ${projection.marketTopLabel ?? "—"}`
+            : undefined)}
+          wxSourceLine={m.weather
+            ? `Open-Meteo ${m.market.city ?? "site"} · now ${m.weather.temperature_now.toFixed(1)}°C, +1h ${m.weather.temp_forecast_1h != null ? m.weather.temp_forecast_1h.toFixed(1) + "°C" : "—"}`
+            : "No live snapshot available"}
+        />
         <ActionBadge decision={decision} />
         {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} />}
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
