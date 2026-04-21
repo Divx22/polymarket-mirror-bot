@@ -878,6 +878,11 @@ const ProjectionPanel = ({
               </div>
             );
           })()}
+          {projection.outOfRange && (
+            <div className="mb-2 rounded border border-red-400/40 bg-red-500/10 px-2 py-1.5 text-[10px] text-red-200">
+              Model projects ~{meanDisp.toFixed(1)}{sym} — well outside all listed buckets. Market is pricing a peak the forecast doesn't support.
+            </div>
+          )}
           <table className="w-full text-[11px] font-mono-num">
             <thead>
               <tr className="text-muted-foreground text-[9px] uppercase tracking-wider">
@@ -893,6 +898,11 @@ const ProjectionPanel = ({
                   : r.edge <= -10 ? "text-red-400"
                   : "text-muted-foreground";
                 const isBest = r.label === projection.bestValueLabel && r.edge > 0;
+                const fmtPct = (p: number) => {
+                  if (p >= 1) return `${p.toFixed(0)}%`;
+                  if (p >= 0.1) return `<1%`;
+                  return `≈0%`;
+                };
                 return (
                   <tr key={r.label} className="border-t border-border/40">
                     <td className="py-1 text-foreground">
@@ -900,8 +910,8 @@ const ProjectionPanel = ({
                       {r.isProjected && <span className="ml-1 text-[9px] text-blue-300">← projection</span>}
                       {isBest && <span className="ml-1 text-[9px] text-emerald-300">★ best value</span>}
                     </td>
-                    <td className="py-1 text-right text-foreground">{r.marketPct.toFixed(0)}%</td>
-                    <td className="py-1 text-right text-foreground">{r.modelPct.toFixed(0)}%</td>
+                    <td className="py-1 text-right text-foreground">{fmtPct(r.marketPct)}</td>
+                    <td className="py-1 text-right text-foreground">{fmtPct(r.modelPct)}</td>
                     <td className={cn("py-1 text-right font-semibold", edgeColor)}>
                       {r.edge >= 0 ? "+" : ""}{r.edge}
                     </td>
@@ -910,12 +920,12 @@ const ProjectionPanel = ({
               })}
             </tbody>
           </table>
-          {(projection.verdict === "STRONG_DISAGREE" || projection.verdict === "WEAK_DISAGREE") && projection.modelTopLabel && projection.marketTopLabel && (
+          {(projection.verdict === "STRONG_DISAGREE" || projection.verdict === "WEAK_DISAGREE") && projection.marketTopLabel && (
             <div className={cn(
               "mt-2 text-[10px]",
               projection.verdict === "STRONG_DISAGREE" ? "text-red-300" : "text-orange-300",
             )}>
-              Model favors <span className="font-bold">{projection.modelTopLabel}</span>; market favors <span className="font-bold">{projection.marketTopLabel}</span>.
+              Model favors <span className="font-bold">{projection.modelTopLabel ?? "out of range"}</span>; market favors <span className="font-bold">{projection.marketTopLabel}</span>.
             </div>
           )}
         </div>
