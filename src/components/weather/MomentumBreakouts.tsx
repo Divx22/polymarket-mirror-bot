@@ -635,6 +635,15 @@ const Row = ({ m, onSelect, stake, stakePct, score }: { m: Movement; onSelect?: 
     else onSelect?.(m.market);
   };
 
+  const peakMs = peakWeatherTimeMs(m.market.event_time, { city: m.market.city, lat: m.market.latitude, lon: m.market.longitude });
+  const ttpMinutes = peakMs != null
+    ? Math.max(0, (peakMs - Date.now()) / 60000)
+    : Math.max(0, (new Date(m.market.event_time).getTime() - Date.now()) / 60000);
+  const decision = decideAction({
+    gap2h: m.gap2h, gap1h: m.gap1h, gapNow: m.gapNow,
+    volLast: m.volLast, volPrev: m.volPrev, ttpMinutes,
+  });
+
   const copy = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
