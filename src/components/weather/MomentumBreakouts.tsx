@@ -716,10 +716,9 @@ const ProjectionPanel = ({
         title={headerTitle}
       >
         <div className="flex flex-col">
-          <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Projected peak</span>
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Projected temp at peak ({ttpStr})</span>
           <span className="font-mono-num text-sm font-bold text-foreground">
             {meanF.toFixed(1)}°F <span className="text-muted-foreground font-normal">±{bandF.toFixed(1)}°F</span>
-            <span className="ml-2 text-[10px] text-muted-foreground font-normal">({ttpStr})</span>
           </span>
         </div>
         <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />
