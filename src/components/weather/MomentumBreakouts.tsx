@@ -590,7 +590,7 @@ const Row = ({ m, onSelect, stake, stakePct, score }: { m: Movement; onSelect?: 
 
   return (
     <CardShell onClick={openCard} clickable>
-      <CardHeader city={m.market.city} leader={m.leader.label} runner={m.runnerUp.label} sourceLabel="In your scanner" eventTime={m.market.event_time} />
+      <CardHeader city={m.market.city} lat={m.market.latitude} lon={m.market.longitude} leader={m.leader.label} runner={m.runnerUp.label} sourceLabel="In your scanner" eventTime={m.market.event_time} />
       <div className="px-4 py-3 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={cn("inline-flex items-center px-2.5 py-1 rounded-md border text-[12px] font-bold uppercase tracking-wide", meta.badge)}>
