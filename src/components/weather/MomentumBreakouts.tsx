@@ -259,21 +259,48 @@ export const MomentumBreakouts = ({
   };
 
   useEffect(() => {
-    if (markets.length > 0 && scannedAt == null && !scanning) scan();
+    // Re-scan local list whenever the window changes so the visible set matches.
+    if (markets.length > 0 && !scanning) scan();
+    // Also re-filter any externals already loaded.
+    if (externals.length > 0) {
+      const cutoffMs = Date.now() + windowHours * 3_600_000;
+      setExternals((prev) => prev.filter((m) => {
+        if (!m.event_time) return true;
+        const t = Date.parse(m.event_time);
+        return !Number.isFinite(t) || t <= cutoffMs;
+      }));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markets.length]);
+  }, [windowHours]);
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-border bg-surface-2/40">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-border bg-surface-2/40">
         <div className="flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-blue-400" />
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider">Momentum</div>
             <div className="text-[10px] text-muted-foreground">
-              Gap #1 vs #2 ≥{Math.round(gapMin * 100)}% now AND 1h ago. Sorted by momentum score (upside + gap + widening + trajectory).
+              Closing within {windowHours}h. Gap #1 vs #2 ≥{Math.round(gapMin * 100)}% now AND 1h ago.
             </div>
           </div>
+        </div>
+        <div className="flex items-center gap-1 mr-2">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-1">Window</span>
+          {WINDOW_OPTIONS.map((h) => (
+            <button
+              key={h}
+              onClick={() => setWindowHours(h)}
+              className={cn(
+                "px-2 py-0.5 rounded border text-[11px] font-mono-num",
+                windowHours === h
+                  ? "border-primary bg-primary/15 text-primary"
+                  : "border-border bg-background hover:bg-surface-2 text-muted-foreground",
+              )}
+            >
+              {h}h
+            </button>
+          ))}
         </div>
         {showThresholdControl && (
           <div className="hidden md:flex items-center gap-2 mr-2">
