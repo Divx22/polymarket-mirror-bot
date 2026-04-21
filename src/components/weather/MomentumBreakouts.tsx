@@ -545,25 +545,40 @@ const CountdownBadge = ({
           </div>
         )}
       </div>
-      {peakLeft && peakLocal && !peakPassed && (
-        <div className="inline-flex flex-col items-end gap-0.5 px-2 py-1 rounded border bg-orange-500/15 text-orange-300 border-orange-400/40">
-          <div className="inline-flex items-center gap-1 text-[11px] font-mono-num font-semibold">
-            <span aria-hidden>☀</span>
-            {peakPassed ? (
-              <span>peak passed</span>
-            ) : (
-              <>
-                {peakLeft.hours > 0 && <span>{peakLeft.hours}h </span>}
-                <span>{peakLeft.minutes.toString().padStart(2, "0")}m</span>
-                <span className="text-[10px] opacity-70">to peak</span>
-              </>
-            )}
+      {peakLeft && peakLocal && (() => {
+        const sincePeakMs = peakPassed && peakMs != null ? Date.now() - peakMs : 0;
+        const sinceH = Math.floor(sincePeakMs / 3_600_000);
+        const sinceM = Math.floor((sincePeakMs % 3_600_000) / 60_000);
+        // After peak: amber (recent, <2h) → red (stale, ≥2h). Before: orange.
+        const peakColor = peakPassed
+          ? sincePeakMs >= 2 * 3_600_000
+            ? "bg-red-500/20 text-red-300 border-red-400/50"
+            : "bg-amber-500/20 text-amber-300 border-amber-400/50"
+          : "bg-orange-500/15 text-orange-300 border-orange-400/40";
+        return (
+          <div className={cn("inline-flex flex-col items-end gap-0.5 px-2 py-1 rounded border", peakColor)}>
+            <div className="inline-flex items-center gap-1 text-[11px] font-mono-num font-semibold">
+              <span aria-hidden>☀</span>
+              {peakPassed ? (
+                <>
+                  {sinceH > 0 && <span>{sinceH}h </span>}
+                  <span>{sinceM.toString().padStart(2, "0")}m</span>
+                  <span className="text-[10px] opacity-70">past peak</span>
+                </>
+              ) : (
+                <>
+                  {peakLeft.hours > 0 && <span>{peakLeft.hours}h </span>}
+                  <span>{peakLeft.minutes.toString().padStart(2, "0")}m</span>
+                  <span className="text-[10px] opacity-70">to peak</span>
+                </>
+              )}
+            </div>
+            <div className="text-[9px] uppercase tracking-wider opacity-80 leading-none">
+              peak {peakLocal}
+            </div>
           </div>
-          <div className="text-[9px] uppercase tracking-wider opacity-80 leading-none">
-            peak {peakLocal}
-          </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
