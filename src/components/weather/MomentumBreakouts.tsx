@@ -803,6 +803,10 @@ const CardShell = ({
   </div>
 );
 
+const UnknownReasonLabel = ({ reason }: { reason: string }) => (
+  <span className="text-[9px] text-muted-foreground italic">{reason}</span>
+);
+
 const CardHeader = ({
   title, city, lat, lon, leader, runner, sourceLabel, eventTime,
 }: { title?: string | null; city: string | null; lat?: number | null; lon?: number | null; leader: string; runner: string; sourceLabel: string; eventTime?: string | null }) => (
@@ -878,6 +882,18 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
   const projection = compareToMarket(m.weather, hoursToPeak, buckets);
   const verdict: MarketVerdict = projection?.verdict ?? "UNKNOWN";
 
+  // Determine specific reason for UNKNOWN verdict
+  let unknownReason = "";
+  if (verdict === "UNKNOWN") {
+    if (!m.weather) {
+      unknownReason = "Missing weather snapshot";
+    } else if (buckets.filter(b => b.marketPrice != null && (b.bucket_min_c != null || b.bucket_max_c != null)).length === 0) {
+      unknownReason = "Missing bucket prices or bounds";
+    } else {
+      unknownReason = "Unable to compute projection";
+    }
+  }
+
   const decision = decideAction({
     gap2h: m.gap2h, gap1h: m.gap1h, gapNow: m.gapNow,
     volLast: m.volLast, volPrev: m.volPrev, ttpMinutes,
@@ -911,6 +927,7 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
           <ModeBadge mode={decision.mode} />
           <VerdictBadge verdict={verdict} title={verdictTitle} />
         </div>
+        {unknownReason && <UnknownReasonLabel reason={unknownReason} />}
         <div className={cn("text-[11px] leading-snug font-medium", MODE_HINT[decision.mode].cls)}>
           {MODE_HINT[decision.mode].tip}
         </div>
