@@ -131,13 +131,16 @@ function eventEndTime(ev: any): number | null {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    // Optional body: { gap_min?: number } in 0..1 range. Falls back to DEFAULT_GAP_MIN.
+    // Optional body: { gap_min?: number, max_hours?: number }.
     let gapMin = DEFAULT_GAP_MIN;
+    let maxHours = MAX_HOURS;
     try {
       if (req.method === "POST") {
         const body = await req.json().catch(() => null);
         const v = Number(body?.gap_min);
         if (Number.isFinite(v) && v > 0 && v < 1) gapMin = v;
+        const h = Number(body?.max_hours);
+        if (Number.isFinite(h) && h > 0 && h <= 72) maxHours = h;
       }
     } catch { /* ignore */ }
 
@@ -150,7 +153,7 @@ Deno.serve(async (req) => {
       const t = eventEndTime(ev);
       if (t == null) return false;
       const hours = (t - now) / 3_600_000;
-      return hours > MIN_HOURS && hours <= MAX_HOURS;
+      return hours > MIN_HOURS && hours <= maxHours;
     });
 
     type Result = {

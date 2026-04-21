@@ -23,6 +23,9 @@ const DEFAULT_GAP_MIN = 0.10;
 const MAX_ENTRY_PRICE = 0.95;
 const MIN_HOURS_TO_EVENT = 0.5;
 const FLAT_BAND = 0.01;
+const WINDOW_OPTIONS = [8, 12, 24] as const;
+type WindowHours = typeof WINDOW_OPTIONS[number];
+const DEFAULT_WINDOW: WindowHours = 12;
 
 type Trajectory = "accelerating" | "widening" | "flat" | "narrowing";
 type HistPoint = { t: number; p: number };
@@ -132,6 +135,8 @@ export const MomentumBreakouts = ({
   const [progress, setProgress] = useState(0);
   // Threshold (0–1). Editable via slider when showThresholdControl is true.
   const [gapMin, setGapMin] = useState<number>(gapMinProp ?? DEFAULT_GAP_MIN);
+  // Resolution window in hours. User-selectable: 8 / 12 / 24.
+  const [windowHours, setWindowHours] = useState<WindowHours>(DEFAULT_WINDOW);
 
   const scan = async () => {
     setScanning(true);
@@ -140,7 +145,7 @@ export const MomentumBreakouts = ({
 
     const eligible = markets.filter((m) => {
       const hours = (new Date(m.event_time).getTime() - Date.now()) / 3_600_000;
-      return hours > MIN_HOURS_TO_EVENT;
+      return hours > MIN_HOURS_TO_EVENT && hours <= windowHours;
     });
 
     const found: Movement[] = [];
@@ -213,7 +218,7 @@ export const MomentumBreakouts = ({
     setDiscovering(true);
     try {
       const { data, error } = await supabase.functions.invoke("weather-discover-momentum", {
-        body: { gap_min: gapMin },
+        body: { gap_min: gapMin, max_hours: windowHours },
       });
       if (error) throw error;
       const results = (data?.results ?? []) as any[];
@@ -238,7 +243,14 @@ export const MomentumBreakouts = ({
         momentumScore(b.leaderNow, b.gapNow, b.netDelta, b.trajectory) -
         momentumScore(a.leaderNow, a.gapNow, a.netDelta, a.trajectory),
       );
-      setExternals(mapped);
+      // Defensive client-side filter in case the function returns markets outside the window.
+      const cutoffMs = Date.now() + windowHours * 3_600_000;
+      const filtered = mapped.filter((m) => {
+        if (!m.event_time) return true;
+        const t = Date.parse(m.event_time);
+        return !Number.isFinite(t) || t <= cutoffMs;
+      });
+      setExternals(filtered);
     } catch (e: any) {
       console.error("Discover failed", e);
     } finally {
@@ -247,21 +259,48 @@ export const MomentumBreakouts = ({
   };
 
   useEffect(() => {
-    if (markets.length > 0 && scannedAt == null && !scanning) scan();
+    // Re-scan local list whenever the window changes so the visible set matches.
+    if (markets.length > 0 && !scanning) scan();
+    // Also re-filter any externals already loaded.
+    if (externals.length > 0) {
+      const cutoffMs = Date.now() + windowHours * 3_600_000;
+      setExternals((prev) => prev.filter((m) => {
+        if (!m.event_time) return true;
+        const t = Date.parse(m.event_time);
+        return !Number.isFinite(t) || t <= cutoffMs;
+      }));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markets.length]);
+  }, [windowHours]);
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-border bg-surface-2/40">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-border bg-surface-2/40">
         <div className="flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-blue-400" />
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider">Momentum</div>
             <div className="text-[10px] text-muted-foreground">
-              Gap #1 vs #2 ≥{Math.round(gapMin * 100)}% now AND 1h ago. Sorted by momentum score (upside + gap + widening + trajectory).
+              Closing within {windowHours}h. Gap #1 vs #2 ≥{Math.round(gapMin * 100)}% now AND 1h ago.
             </div>
           </div>
+        </div>
+        <div className="flex items-center gap-1 mr-2">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-1">Window</span>
+          {WINDOW_OPTIONS.map((h) => (
+            <button
+              key={h}
+              onClick={() => setWindowHours(h)}
+              className={cn(
+                "px-2 py-0.5 rounded border text-[11px] font-mono-num",
+                windowHours === h
+                  ? "border-primary bg-primary/15 text-primary"
+                  : "border-border bg-background hover:bg-surface-2 text-muted-foreground",
+              )}
+            >
+              {h}h
+            </button>
+          ))}
         </div>
         {showThresholdControl && (
           <div className="hidden md:flex items-center gap-2 mr-2">
