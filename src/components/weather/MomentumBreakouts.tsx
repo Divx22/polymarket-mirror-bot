@@ -851,7 +851,11 @@ const ProjectionPanel = ({
   const [logged, setLogged] = useState(false);
   const autoLoggedKeyRef = useRef<string | null>(null);
   const meanDisp = unit === "F" ? cToF(projection.meanC) : projection.meanC;
-  const bandDisp = unit === "F" ? projection.bandC * 9 / 5 : projection.bandC;
+  const toUnit = (c: number) => unit === "F" ? c * 9 / 5 : c;
+  const bandUpDisp = toUnit(projection.bandUpC);
+  const bandDownDisp = toUnit(projection.bandDownC);
+  const asymmetric = Math.abs(projection.bandUpC - projection.bandDownC) > 0.05;
+  const bandDisp = Math.max(bandUpDisp, bandDownDisp);
   const sym = unit === "F" ? "°F" : "°C";
   const h = Math.floor(projection.hoursToPeak);
   const m = Math.round((projection.hoursToPeak - h) * 60);
@@ -933,7 +937,12 @@ const ProjectionPanel = ({
         <div className="flex flex-col">
           <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Projected temp at peak ({ttpStr})</span>
           <span className="font-mono-num text-sm font-bold text-foreground">
-            {meanDisp.toFixed(1)}{sym} <span className="text-muted-foreground font-normal">±{bandDisp.toFixed(1)}{sym}</span>
+            {meanDisp.toFixed(1)}{sym}{" "}
+            <span className="text-muted-foreground font-normal">
+              {asymmetric
+                ? `(+${bandUpDisp.toFixed(1)} / −${bandDownDisp.toFixed(1)}${sym})`
+                : `±${bandDisp.toFixed(1)}${sym}`}
+            </span>
           </span>
         </div>
         <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />

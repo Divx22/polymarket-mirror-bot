@@ -36,8 +36,12 @@ export type PeakBias = "LOWER" | "HIGHER" | "NEUTRAL";
 
 export type ProjectionResult = {
   meanC: number;
-  bandC: number;       // ± half-width in °C
-  sigmaC: number;      // band / 1.96
+  bandC: number;       // ± half-width in °C (symmetric back-compat = max(up, down))
+  sigmaC: number;      // band / 1.96 (symmetric back-compat)
+  bandUpC: number;     // upward half-width in °C (mean → higher)
+  bandDownC: number;   // downward half-width in °C (mean → lower)
+  sigmaUpC: number;    // bandUpC / 1.96
+  sigmaDownC: number;  // bandDownC / 1.96
   hoursToPeak: number;
   rows: ProjectionRow[];
   verdict: MarketVerdict;
@@ -119,6 +123,10 @@ export function projectPeakTempC(
   meanC: number;
   bandC: number;
   sigmaC: number;
+  bandUpC: number;
+  bandDownC: number;
+  sigmaUpC: number;
+  sigmaDownC: number;
   peak: PeakConditions | null;
   forecastDrift: boolean;
   plateauDetected: boolean;
@@ -198,6 +206,10 @@ export function projectPeakTempC(
   if (forecastDrift) bandF = Math.min(6, bandF + 0.5);
   let bandC = bandF * 5 / 9;
   let sigmaC = bandC / 1.96;
+  // Asymmetric halves — default symmetric, narrowed on the "rare" side post-peak / when realized anchor binds.
+  let bandUpC = bandC;
+  let bandDownC = bandC;
+  let anchorBinding = false;
 
   // Past-peak collapse: the daily extreme is essentially realized.
   // Anchor mean to whichever is more extreme (current temp vs path argmax/min)
@@ -209,6 +221,9 @@ export function projectPeakTempC(
     meanC = realized;
     bandC = 0.4;       // ±0.4°C residual — small late-day moves still possible
     sigmaC = bandC / 1.96;
+    bandUpC = bandC;
+    bandDownC = bandC;
+    anchorBinding = true;
   }
 
   // Realized-extreme anchor: today's high/low so far is already locked in.
@@ -220,16 +235,40 @@ export function projectPeakTempC(
       meanC = s.today_high_so_far_c;
       bandC = Math.min(bandC, 0.6);
       sigmaC = bandC / 1.96;
+      bandUpC = bandC;
+      bandDownC = bandC;
+      anchorBinding = true;
     }
   } else if (extreme === "min" && s.today_low_so_far_c != null && Number.isFinite(s.today_low_so_far_c)) {
     if (s.today_low_so_far_c < meanC) {
       meanC = s.today_low_so_far_c;
       bandC = Math.min(bandC, 0.6);
       sigmaC = bandC / 1.96;
+      bandUpC = bandC;
+      bandDownC = bandC;
+      anchorBinding = true;
     }
   }
 
-  return { meanC, bandC, sigmaC, peak, forecastDrift, plateauDetected, peakBias };
+  // Asymmetric collapse: once anchored to realized extreme, motion in the
+  // "re-extreme" direction is rare; natural reversion dominates.
+  if (anchorBinding) {
+    if (extreme === "max") {
+      bandUpC = 0.2;          // re-peak rare
+      bandDownC = bandC;      // natural cooling
+    } else {
+      bandDownC = 0.2;        // re-trough rare
+      bandUpC = bandC;        // natural warming
+    }
+    // Back-compat scalar = wider half
+    bandC = Math.max(bandUpC, bandDownC);
+    sigmaC = bandC / 1.96;
+  }
+
+  const sigmaUpC = bandUpC / 1.96;
+  const sigmaDownC = bandDownC / 1.96;
+
+  return { meanC, bandC, sigmaC, bandUpC, bandDownC, sigmaUpC, sigmaDownC, peak, forecastDrift, plateauDetected, peakBias };
 }
 
 // Abramowitz & Stegun erf approximation (max error ~1.5e-7)
@@ -250,19 +289,44 @@ const normalCdf = (x: number, mean: number, sigma: number): number => {
   return 0.5 * (1 + erf((x - mean) / (sigma * Math.SQRT2)));
 };
 
-/** Probability mass of N(meanC, sigmaC) inside [minC, maxC]. Open ends supported via ±Infinity. */
+/** Probability mass inside [minC, maxC] under a (possibly split) normal centered at meanC.
+ *  When sigmaUp/sigmaDown differ, uses a split-normal: left half (x<mean) uses sigmaDown,
+ *  right half (x>mean) uses sigmaUp. Each half normalized to 0.5 mass. */
 export function bucketProbability(
   meanC: number,
   sigmaC: number,
   minC: number | null,
   maxC: number | null,
+  sigmaDownC?: number,
+  sigmaUpC?: number,
 ): number {
   const lo = minC == null ? -Infinity : minC;
   const hi = maxC == null ? Infinity : maxC;
   if (hi <= lo) return 0;
-  const pHi = hi === Infinity ? 1 : normalCdf(hi, meanC, sigmaC);
-  const pLo = lo === -Infinity ? 0 : normalCdf(lo, meanC, sigmaC);
-  return Math.max(0, Math.min(1, pHi - pLo));
+
+  const sDown = sigmaDownC ?? sigmaC;
+  const sUp = sigmaUpC ?? sigmaC;
+
+  // Symmetric fast-path
+  if (sDown === sUp) {
+    const pHi = hi === Infinity ? 1 : normalCdf(hi, meanC, sigmaC);
+    const pLo = lo === -Infinity ? 0 : normalCdf(lo, meanC, sigmaC);
+    return Math.max(0, Math.min(1, pHi - pLo));
+  }
+
+  // Split-normal: each half integrates to 0.5.
+  const massBelow = (x: number): number => {
+    if (x === -Infinity) return 0;
+    if (x === Infinity) return 1;
+    if (x <= meanC) {
+      // Left half scaled to 0.5: P(X<=x) = 2*0.5 * N(x; mean, sDown) for x<=mean = N(x; mean, sDown)
+      return normalCdf(x, meanC, sDown);
+    } else {
+      // Right half: 0.5 + (N(x; mean, sUp) - 0.5)
+      return 0.5 + (normalCdf(x, meanC, sUp) - 0.5);
+    }
+  };
+  return Math.max(0, Math.min(1, massBelow(hi) - massBelow(lo)));
 }
 
 const inBucket = (mean: number, minC: number | null, maxC: number | null): boolean => {
@@ -291,7 +355,7 @@ export function compareToMarket(
   const baseTop = sortedByPrice.slice(0, 4);
 
   // Provisional probability mass over ALL usable buckets (for edge detection on extras).
-  const fullMass = usable.map((b) => bucketProbability(proj.meanC, proj.sigmaC, b.bucket_min_c, b.bucket_max_c));
+  const fullMass = usable.map((b) => bucketProbability(proj.meanC, proj.sigmaC, b.bucket_min_c, b.bucket_max_c, proj.sigmaDownC, proj.sigmaUpC));
   const fullMassSum = fullMass.reduce((s, p) => s + p, 0) || 1;
   const fullMarketSum = usable.reduce((s, b) => s + (b.marketPrice as number), 0) || 1;
 
@@ -309,7 +373,7 @@ export function compareToMarket(
   const marketSum = top.reduce((s, b) => s + (b.marketPrice as number), 0) || 1;
 
   // Compute raw model probabilities then renormalize to the displayed universe
-  const rawModel = top.map((b) => bucketProbability(proj.meanC, proj.sigmaC, b.bucket_min_c, b.bucket_max_c));
+  const rawModel = top.map((b) => bucketProbability(proj.meanC, proj.sigmaC, b.bucket_min_c, b.bucket_max_c, proj.sigmaDownC, proj.sigmaUpC));
 
   // Apply directional bias boost (+10%) to buckets on the bias side of projected mean.
   if (proj.peakBias !== "NEUTRAL") {
@@ -390,6 +454,10 @@ export function compareToMarket(
     meanC: proj.meanC,
     bandC: proj.bandC,
     sigmaC: proj.sigmaC,
+    bandUpC: proj.bandUpC,
+    bandDownC: proj.bandDownC,
+    sigmaUpC: proj.sigmaUpC,
+    sigmaDownC: proj.sigmaDownC,
     hoursToPeak: Number.isFinite(hoursToPeak as number) ? Number(hoursToPeak) : 0,
     rows,
     verdict,
