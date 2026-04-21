@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { TrendingUp, Loader2, Copy, Check, RefreshCw, Globe, ExternalLink, Clock, ChevronDown } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { TrendingUp, Loader2, Copy, Check, RefreshCw, Globe, ExternalLink, Clock, ChevronDown, BookmarkPlus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { type WeatherMarket, type WeatherOutcome, decideAction, type ActionDecision, type WeatherState, type MomentumMode } from "@/lib/weather";
@@ -7,6 +7,7 @@ import { fetchOpenMeteoSnapshot, type OpenMeteoSnapshot } from "@/lib/openMeteo"
 import { compareToMarket, cToF, type MarketVerdict, type ProjectionResult, type BucketLike } from "@/lib/weatherProjection";
 import { formatLocalCloseTime, peakWeatherTimeMs, formatLocalHour } from "@/lib/cityTimezones";
 import { parseBucketLabel, geocodeCity } from "@/lib/bucketParser";
+import { logEdgeTrade, fairPriceFromProjection, type LogEdgeTradeInput } from "@/lib/edgeTrades";
 import { cn } from "@/lib/utils";
 
 type Props = {
