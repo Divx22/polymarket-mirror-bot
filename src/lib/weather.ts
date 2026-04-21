@@ -206,7 +206,7 @@ export type DecideActionInput = {
 const fmtPct = (n: number, dp = 1) => `${n >= 0 ? "+" : ""}${(n * 100).toFixed(dp)}%`;
 
 export const decideAction = ({
-  gap2h, gap1h, gapNow, volLast, volPrev, ttpMinutes, weatherState = "UNKNOWN",
+  gap2h, gap1h, gapNow, volLast, volPrev, ttpMinutes, weatherState = "UNKNOWN", marketVerdict,
 }: DecideActionInput): ActionDecision => {
   const m1 = gap1h - gap2h;
   const m2 = gapNow - gap1h;
@@ -219,16 +219,23 @@ export const decideAction = ({
   const volumeChange: number | null = haveVol ? (Number(volLast) - Number(volPrev)) : null;
   const degraded = !haveVol;
 
-  // Priority: shrinking → TRIM, accel<-5% → TRIM, strong-weather ADD,
-  // WEAK weather veto → HOLD, ENTER on widening near peak, else HOLD.
+  // Verdict-driven (preferred). Falls back to legacy weatherState mapping.
+  const verdict: MarketVerdict = marketVerdict
+    ?? (weatherState === "STRONG" ? "AGREE"
+      : weatherState === "WEAK" ? "DISAGREE"
+      : weatherState === "MODERATE" ? "NEUTRAL"
+      : "UNKNOWN");
+
+  // Priority: shrinking → TRIM, accel<-5% → TRIM, AGREE+widening → ADD,
+  // DISAGREE veto → HOLD, ENTER on widening near peak, else HOLD.
   let action: MomentumAction;
   if (!widening) {
     action = "TRIM";
   } else if (acceleration < -0.05 || (volumeChange != null && volumeChange < 0)) {
     action = "TRIM";
-  } else if (acceleration > 0 && (volumeChange ?? 0) >= 0 && weatherState === "STRONG") {
+  } else if (acceleration > 0 && (volumeChange ?? 0) >= 0 && verdict === "AGREE") {
     action = "ADD";
-  } else if (weatherState === "WEAK") {
+  } else if (verdict === "DISAGREE") {
     action = "HOLD";
   } else if (gapNow > 0.15 && ttp < 120) {
     action = "ENTER";
@@ -257,10 +264,17 @@ export const decideAction = ({
     : volumeChange > 0 ? "vol ↑"
     : volumeChange < 0 ? "vol ↓"
     : "vol flat";
-  const wxStr = weatherState === "UNKNOWN" ? "" : `, wx ${weatherState.toLowerCase()}`;
+  const wxStr = verdict === "UNKNOWN" ? "" : `, mkt ${verdict.toLowerCase()}`;
   const reason = `gap ${dir}, ${accelStr}, ${volStr}${wxStr}`;
 
-  return { action, confidence, reason, acceleration, volumeChange, degraded, mode, weatherState };
+  // Surface verdict via the existing weatherState field for back-compat.
+  const stateForBackCompat: WeatherState =
+    verdict === "AGREE" ? "STRONG"
+    : verdict === "DISAGREE" ? "WEAK"
+    : verdict === "NEUTRAL" ? "MODERATE"
+    : "UNKNOWN";
+
+  return { action, confidence, reason, acceleration, volumeChange, degraded, mode, weatherState: stateForBackCompat };
 };
 
 export const formatVolume = (v: number | null | undefined): string => {
