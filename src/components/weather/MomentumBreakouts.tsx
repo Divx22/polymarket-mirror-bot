@@ -630,13 +630,6 @@ const MODE_HINT: Record<MomentumMode, { tip: string; cls: string }> = {
   CERTAINTY:  { tip: "Exit or wait — no new entries; close <90¢, hold ≥95¢.",    cls: "text-blue-300" },
 };
 
-const WEATHER_META: Record<WeatherState, { cls: string; label: string; dot: string }> = {
-  STRONG:   { cls: "bg-emerald-500/15 text-emerald-200 border-emerald-400/50", label: "STRONG",   dot: "🟢" },
-  MODERATE: { cls: "bg-amber-500/15 text-amber-200 border-amber-400/50",       label: "MODERATE", dot: "🟡" },
-  WEAK:     { cls: "bg-red-500/15 text-red-200 border-red-400/50",             label: "WEAK",     dot: "🔴" },
-  UNKNOWN:  { cls: "bg-muted text-muted-foreground border-border",             label: "N/A",      dot: "⚪" },
-};
-
 const ModeBadge = ({ mode }: { mode: MomentumMode }) => {
   const meta = MODE_META[mode];
   return (
@@ -646,22 +639,97 @@ const ModeBadge = ({ mode }: { mode: MomentumMode }) => {
   );
 };
 
-const WeatherBadge = ({ state, snapshot, score, tempSpeed, forecastSpeed }: {
-  state: WeatherState;
-  snapshot: OpenMeteoSnapshot | null;
-  score: number;
-  tempSpeed: number | null;
-  forecastSpeed: number | null;
-}) => {
-  const meta = WEATHER_META[state];
-  const fmt = (v: number | null | undefined, suffix = "") => v == null || !Number.isFinite(v) ? "—" : `${v.toFixed(1)}${suffix}`;
-  const title = snapshot
-    ? `temp Δ1h ${tempSpeed != null ? (tempSpeed >= 0 ? "+" : "") + tempSpeed.toFixed(1) : "—"}°C · forecast Δ1h ${forecastSpeed != null ? (forecastSpeed >= 0 ? "+" : "") + forecastSpeed.toFixed(1) : "—"}°C\ncloud ${fmt(snapshot.cloud_cover, "%")} · precip ${fmt(snapshot.precipitation, "mm")} · humidity ${fmt(snapshot.humidity, "%")} · wind ${fmt(snapshot.wind_speed, "km/h")}\nscore ${score}`
-    : "Live weather unavailable";
+const VERDICT_META: Record<MarketVerdict, { cls: string; label: string; dot: string }> = {
+  AGREE:    { cls: "bg-emerald-500/15 text-emerald-200 border-emerald-400/50", label: "AGREE",    dot: "🟢" },
+  NEUTRAL:  { cls: "bg-amber-500/15 text-amber-200 border-amber-400/50",       label: "NEUTRAL",  dot: "🟡" },
+  DISAGREE: { cls: "bg-red-500/15 text-red-200 border-red-400/50",             label: "DISAGREE", dot: "🔴" },
+  UNKNOWN:  { cls: "bg-muted text-muted-foreground border-border",             label: "N/A",      dot: "⚪" },
+};
+
+const VerdictBadge = ({ verdict, title }: { verdict: MarketVerdict; title?: string }) => {
+  const meta = VERDICT_META[verdict];
   return (
     <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wide", meta.cls)} title={title}>
       <span aria-hidden>{meta.dot}</span>WX · {meta.label}
     </span>
+  );
+};
+
+const ProjectionPanel = ({
+  projection, snapshot,
+}: { projection: ProjectionResult; snapshot: OpenMeteoSnapshot | null }) => {
+  const [open, setOpen] = useState(false);
+  const meanF = cToF(projection.meanC);
+  const bandF = projection.bandC * 9 / 5;
+  const h = Math.floor(projection.hoursToPeak);
+  const m = Math.round((projection.hoursToPeak - h) * 60);
+  const ttpStr = projection.hoursToPeak > 0
+    ? (h > 0 ? `in ${h}h ${m.toString().padStart(2, "0")}m` : `in ${m}m`)
+    : "now";
+  const fmt = (v: number | null | undefined, suffix = "") => v == null || !Number.isFinite(v) ? "—" : `${v.toFixed(1)}${suffix}`;
+  const tempSpeed = snapshot?.temperature_1h_ago != null ? snapshot.temperature_now - snapshot.temperature_1h_ago : null;
+  const forecastSpeed = snapshot?.temp_forecast_1h != null ? snapshot.temp_forecast_1h - snapshot.temperature_now : null;
+  const headerTitle = snapshot
+    ? `temp Δ1h ${tempSpeed != null ? (tempSpeed >= 0 ? "+" : "") + tempSpeed.toFixed(1) : "—"}°C · forecast Δ1h ${forecastSpeed != null ? (forecastSpeed >= 0 ? "+" : "") + forecastSpeed.toFixed(1) : "—"}°C\ncloud ${fmt(snapshot.cloud_cover, "%")} · precip ${fmt(snapshot.precipitation, "mm")} · humidity ${fmt(snapshot.humidity, "%")} · wind ${fmt(snapshot.wind_speed, "km/h")}`
+    : undefined;
+
+  return (
+    <div className="rounded-md border border-border bg-background/40">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-surface-2/40"
+        title={headerTitle}
+      >
+        <div className="flex flex-col">
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Projected peak</span>
+          <span className="font-mono-num text-sm font-bold text-foreground">
+            {meanF.toFixed(1)}°F <span className="text-muted-foreground font-normal">±{bandF.toFixed(1)}°F</span>
+            <span className="ml-2 text-[10px] text-muted-foreground font-normal">({ttpStr})</span>
+          </span>
+        </div>
+        <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="px-3 pb-3">
+          <table className="w-full text-[11px] font-mono-num">
+            <thead>
+              <tr className="text-muted-foreground text-[9px] uppercase tracking-wider">
+                <th className="text-left font-medium py-1">Bucket</th>
+                <th className="text-right font-medium py-1">Market</th>
+                <th className="text-right font-medium py-1">Model</th>
+                <th className="text-right font-medium py-1">Edge</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projection.rows.map((r) => {
+                const edgeColor = r.edge >= 10 ? "text-emerald-400"
+                  : r.edge <= -10 ? "text-red-400"
+                  : "text-muted-foreground";
+                return (
+                  <tr key={r.label} className="border-t border-border/40">
+                    <td className="py-1 text-foreground">
+                      {r.label}
+                      {r.isProjected && <span className="ml-1 text-[9px] text-blue-300">← projection</span>}
+                    </td>
+                    <td className="py-1 text-right text-foreground">{r.marketPct.toFixed(0)}%</td>
+                    <td className="py-1 text-right text-foreground">{r.modelPct.toFixed(0)}%</td>
+                    <td className={cn("py-1 text-right font-semibold", edgeColor)}>
+                      {r.edge >= 0 ? "+" : ""}{r.edge}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {projection.verdict === "DISAGREE" && projection.modelTopLabel && projection.marketTopLabel && (
+            <div className="mt-2 text-[10px] text-red-300">
+              Model favors <span className="font-bold">{projection.modelTopLabel}</span>; market favors <span className="font-bold">{projection.marketTopLabel}</span>.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 };
 
