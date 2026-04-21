@@ -1212,7 +1212,15 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct,
             else if (projection.peakBias === "HIGHER") flags.push("↑ bias higher");
             const flagStr = flags.length ? ` · ${flags.join(" · ")}` : "";
             const peakLbl = pastPeak ? `${extremeLabel} (passed)` : `${extremeLabel} (${ttp})`;
-            return `Open-Meteo ${m.market.city ?? "site"} · now ${nowDisp}${tSym} · ${peakLbl} ${peakDisp}${tSym} · cloud ${cloud} · precip ${precip} · wind ${wind} · conf ${projection.confidence}%${flagStr}`;
+            // Realized extreme so far today — surface when it's anchoring the projection.
+            const realized = extreme === "min" ? m.weather.today_low_so_far_c : m.weather.today_high_so_far_c;
+            const realizedRelevant = realized != null && Number.isFinite(realized) && (
+              extreme === "max" ? realized >= projection.meanC - 0.05 : realized <= projection.meanC + 0.05
+            );
+            const realizedStr = realizedRelevant
+              ? ` · today ${extreme === "min" ? "low" : "high"} so far ${tConv(realized as number).toFixed(1)}${tSym}`
+              : "";
+            return `Open-Meteo ${m.market.city ?? "site"} · now ${nowDisp}${tSym} · ${peakLbl} ${peakDisp}${tSym}${realizedStr} · cloud ${cloud} · precip ${precip} · wind ${wind} · conf ${projection.confidence}%${flagStr}`;
           })()}
           resolutionMethod={m.market.resolution_method}
           onDetectResolution={onDetectResolution ? () => onDetectResolution(m.market.id) : undefined}
