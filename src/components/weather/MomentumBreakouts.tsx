@@ -973,9 +973,27 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
           verdictReason={unknownReason || (projection
             ? `Model ${projection.modelTopLabel ?? "—"} vs market ${projection.marketTopLabel ?? "—"}`
             : undefined)}
-          wxSourceLine={m.weather
-            ? `Open-Meteo ${m.market.city ?? "site"} · now ${m.weather.temperature_now.toFixed(1)}°C, +1h ${m.weather.temp_forecast_1h != null ? m.weather.temp_forecast_1h.toFixed(1) + "°C" : "—"}`
-            : "No live snapshot available"}
+          wxSourceLine={(() => {
+            if (!m.weather) return "No live snapshot available";
+            const nowF = cToF(m.weather.temperature_now).toFixed(1);
+            const ph = Math.floor(hoursToPeak);
+            const pm = Math.round((hoursToPeak - ph) * 60);
+            const ttp = hoursToPeak > 0 ? (ph > 0 ? `in ${ph}h ${pm.toString().padStart(2, "0")}m` : `in ${pm}m`) : "now";
+            if (!projection) {
+              const f1 = m.weather.temp_forecast_1h != null ? `${cToF(m.weather.temp_forecast_1h).toFixed(1)}°F` : "—";
+              return `Open-Meteo ${m.market.city ?? "site"} · now ${nowF}°F · +1h ${f1}`;
+            }
+            const peakF = cToF(projection.meanC).toFixed(1);
+            const peak = projection.peak;
+            const cloud = peak?.cloud != null ? `${Math.round(peak.cloud)}%` : "—";
+            const precip = peak?.precipitation != null ? `${peak.precipitation.toFixed(1)}mm` : "—";
+            const wind = peak?.wind != null ? `${Math.round(peak.wind)}km/h` : "—";
+            const flags: string[] = [];
+            if (projection.forecastDrift) flags.push("⚠ forecast drift");
+            if (projection.plateauDetected) flags.push("≈ plateau");
+            const flagStr = flags.length ? ` · ${flags.join(" · ")}` : "";
+            return `Open-Meteo ${m.market.city ?? "site"} · now ${nowF}°F · peak (${ttp}) ${peakF}°F · cloud ${cloud} · precip ${precip} · wind ${wind} · conf ${projection.confidence}%${flagStr}`;
+          })()}
         />
         <ActionBadge decision={decision} />
         {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} />}

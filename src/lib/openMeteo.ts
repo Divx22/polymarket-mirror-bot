@@ -1,6 +1,15 @@
 // Open-Meteo snapshot fetcher with 10-minute in-memory cache.
 // No API key required. See https://open-meteo.com/.
 
+export type ForecastPathPoint = {
+  hour_offset: number;       // hours from "now" (0 = current hour)
+  temp_c: number;
+  cloud: number | null;      // %
+  precipitation: number | null; // mm
+  humidity: number | null;   // %
+  wind: number | null;       // km/h
+};
+
 export type OpenMeteoSnapshot = {
   temperature_now: number;
   temperature_1h_ago: number | null;
@@ -9,6 +18,8 @@ export type OpenMeteoSnapshot = {
   precipitation: number | null;
   humidity: number | null;
   wind_speed: number | null;
+  /** Hourly forecast starting at the current hour (hour_offset=0), up to ~8h ahead. */
+  forecast_path: ForecastPathPoint[];
 };
 
 const TTL_MS = 10 * 60_000;
@@ -55,6 +66,24 @@ export async function fetchOpenMeteoSnapshot(
       }
     }
 
+    // Build forecast_path: next ~8 hours starting at current hour (offset 0).
+    const path: ForecastPathPoint[] = [];
+    if (idx >= 0) {
+      const end = Math.min(temps.length, idx + 9);
+      for (let i = idx; i < end; i++) {
+        const t = temps[i];
+        if (!Number.isFinite(t)) continue;
+        path.push({
+          hour_offset: i - idx,
+          temp_c: t,
+          cloud: Number.isFinite(clouds[i]) ? clouds[i] : null,
+          precipitation: Number.isFinite(precs[i]) ? precs[i] : null,
+          humidity: Number.isFinite(hums[i]) ? hums[i] : null,
+          wind: Number.isFinite(winds[i]) ? winds[i] : null,
+        });
+      }
+    }
+
     const snap: OpenMeteoSnapshot = {
       temperature_now: Number.isFinite(tempNow) ? tempNow : (temps[idx] ?? NaN),
       temperature_1h_ago: idx > 0 ? (Number.isFinite(temps[idx - 1]) ? temps[idx - 1] : null) : null,
@@ -63,6 +92,7 @@ export async function fetchOpenMeteoSnapshot(
       precipitation: idx >= 0 && Number.isFinite(precs[idx]) ? precs[idx] : null,
       humidity: idx >= 0 && Number.isFinite(hums[idx]) ? hums[idx] : null,
       wind_speed: idx >= 0 && Number.isFinite(winds[idx]) ? winds[idx] : null,
+      forecast_path: path,
     };
     cache.set(key, { at: Date.now(), data: snap });
     return snap;
