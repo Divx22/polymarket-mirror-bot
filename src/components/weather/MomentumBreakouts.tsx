@@ -678,8 +678,14 @@ const VerdictBadge = ({ verdict, title }: { verdict: MarketVerdict; title?: stri
 };
 
 const ProjectionPanel = ({
-  projection, snapshot,
-}: { projection: ProjectionResult; snapshot: OpenMeteoSnapshot | null }) => {
+  projection, snapshot, bankroll, stakeCapPct, confidence,
+}: {
+  projection: ProjectionResult;
+  snapshot: OpenMeteoSnapshot | null;
+  bankroll: number;
+  stakeCapPct: number;
+  confidence: number;
+}) => {
   const [open, setOpen] = useState(false);
   const meanF = cToF(projection.meanC);
   const bandF = projection.bandC * 9 / 5;
@@ -694,6 +700,9 @@ const ProjectionPanel = ({
   const headerTitle = snapshot
     ? `temp Δ1h ${tempSpeed != null ? (tempSpeed >= 0 ? "+" : "") + tempSpeed.toFixed(1) : "—"}°C · forecast Δ1h ${forecastSpeed != null ? (forecastSpeed >= 0 ? "+" : "") + forecastSpeed.toFixed(1) : "—"}°C\ncloud ${fmt(snapshot.cloud_cover, "%")} · precip ${fmt(snapshot.precipitation, "mm")} · humidity ${fmt(snapshot.humidity, "%")} · wind ${fmt(snapshot.wind_speed, "km/h")}`
     : undefined;
+
+  const smartBid = suggestSmartBid(projection.bestValueEdge, confidence, bankroll, stakeCapPct);
+  const smartBidPct = bankroll > 0 ? (smartBid / bankroll) * 100 : 0;
 
   return (
     <div className="rounded-md border border-border bg-background/40">
@@ -715,12 +724,23 @@ const ProjectionPanel = ({
       {open && (
         <div className="px-3 pb-3">
           {projection.bestValueLabel && projection.bestValueEdge != null && projection.bestValueEdge >= 7 && (
-            <div className={cn(
-              "mb-2 text-[11px] font-bold uppercase tracking-wider",
-              projection.bestValueEdge >= 15 ? "text-emerald-300" : "text-amber-300",
-            )}>
-              Best value: <span className="font-mono-num">{projection.bestValueLabel}</span>
-              <span className="ml-1 font-mono-num">(+{projection.bestValueEdge} edge)</span>
+            <div className="mb-2 space-y-1">
+              <div className={cn(
+                "text-[11px] font-bold uppercase tracking-wider",
+                projection.bestValueEdge >= 15 ? "text-emerald-300" : "text-amber-300",
+              )}>
+                Best value: <span className="font-mono-num">{projection.bestValueLabel}</span>
+                <span className="ml-1 font-mono-num">(+{projection.bestValueEdge} edge)</span>
+              </div>
+              {smartBid > 0 && (
+                <div
+                  className="text-[10px] text-muted-foreground"
+                  title={`Sized from edge +${projection.bestValueEdge}pp · confidence ${confidence}% · bankroll $${bankroll.toLocaleString()} · cap ${stakeCapPct}%`}
+                >
+                  Smart bid: <span className="font-mono-num font-semibold text-foreground">${smartBid.toLocaleString()}</span>
+                  <span className="ml-1 font-mono-num">({smartBidPct.toFixed(1)}% of bankroll)</span>
+                </div>
+              )}
             </div>
           )}
           <table className="w-full text-[11px] font-mono-num">
