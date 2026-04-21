@@ -180,15 +180,9 @@ export const peakWeatherTimeMs = (
   const closeMs = Date.parse(closeIso);
   if (!Number.isFinite(closeMs)) return null;
 
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz, hourCycle: "h23",
-    year: "numeric", month: "2-digit", day: "2-digit",
-  }).formatToParts(new Date(closeMs));
-  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? "0");
-  const y = get("year"), m = get("month"), d = get("day");
-
-  const guess = Date.UTC(y, m - 1, d, peakHourLocal, 0, 0);
-  const off = (() => {
+  // Helper: convert a (y,m,d,h) in tz to a UTC ms instant.
+  const localToUtc = (y: number, m: number, d: number, h: number): number => {
+    const guess = Date.UTC(y, m - 1, d, h, 0, 0);
     const dtf = new Intl.DateTimeFormat("en-US", {
       timeZone: tz, hourCycle: "h23",
       year: "numeric", month: "2-digit", day: "2-digit",
@@ -197,9 +191,42 @@ export const peakWeatherTimeMs = (
     const p = dtf.formatToParts(new Date(guess));
     const g = (t: string) => Number(p.find((x) => x.type === t)?.value ?? "0");
     const asUtc = Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute"), g("second"));
-    return asUtc - guess;
-  })();
-  return guess - off;
+    return guess - (asUtc - guess);
+  };
+
+  // Get today's local date in tz (anchored to "now", not to close).
+  const todayParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const get = (t: string) => Number(todayParts.find((p) => p.type === t)?.value ?? "0");
+  let y = get("year"), m = get("month"), d = get("day");
+
+  // Candidate: today's peak hour. If already past it, use tomorrow's.
+  let peak = localToUtc(y, m, d, peakHourLocal);
+  if (peak <= Date.now()) {
+    const next = new Date(Date.UTC(y, m - 1, d) + 86400000);
+    peak = localToUtc(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate(), peakHourLocal);
+  }
+
+  // Constrain to be on/before close. If peak is after close, fall back to the
+  // most recent peak hour at-or-before close.
+  if (peak > closeMs) {
+    const closeParts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz, hourCycle: "h23",
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit",
+    }).formatToParts(new Date(closeMs));
+    const cg = (t: string) => Number(closeParts.find((p) => p.type === t)?.value ?? "0");
+    const cy = cg("year"), cm = cg("month"), cd = cg("day"), ch = cg("hour");
+    // If close hour is >= peak hour, peak is same local day; else previous day.
+    if (ch >= peakHourLocal) {
+      peak = localToUtc(cy, cm, cd, peakHourLocal);
+    } else {
+      const prev = new Date(Date.UTC(cy, cm - 1, cd) - 86400000);
+      peak = localToUtc(prev.getUTCFullYear(), prev.getUTCMonth() + 1, prev.getUTCDate(), peakHourLocal);
+    }
+  }
+  return peak;
 };
 
 // Format a UTC ms instant in resolved local time, e.g. "4:00 PM JST".
