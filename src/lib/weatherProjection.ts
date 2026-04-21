@@ -310,6 +310,7 @@ export function compareToMarket(
     confidence,
     forecastDrift: proj.forecastDrift,
     plateauDetected: proj.plateauDetected,
+    peakBias: proj.peakBias,
     peak: proj.peak,
   };
 }
