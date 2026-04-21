@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { TrendingUp, Loader2, Copy, Check, RefreshCw, Globe, ExternalLink } from "lucide-react";
+import { TrendingUp, Loader2, Copy, Check, RefreshCw, Globe, ExternalLink, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { type WeatherMarket, type WeatherOutcome } from "@/lib/weather";
@@ -409,6 +409,61 @@ const TRAJ_META: Record<Trajectory, { label: string; badge: string; arrow: strin
   narrowing:    { label: "Narrowing",    badge: "bg-red-500/25 text-red-200 border-red-400/60 shadow-[0_0_8px_hsl(0_72%_55%/0.35)]",              arrow: "text-red-400" },
 };
 
+// Countdown timer hook
+const useCountdown = (targetTime: string | null | undefined) => {
+  const [timeLeft, setTimeLeft] = useState<{ hours: number; minutes: number; seconds: number; totalMs: number } | null>(null);
+  
+  useEffect(() => {
+    if (!targetTime) return;
+    const target = new Date(targetTime).getTime();
+    if (!Number.isFinite(target)) return;
+    
+    const tick = () => {
+      const now = Date.now();
+      const diff = target - now;
+      if (diff <= 0) {
+        setTimeLeft({ hours: 0, minutes: 0, seconds: 0, totalMs: 0 });
+        return;
+      }
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      setTimeLeft({ hours, minutes, seconds, totalMs: diff });
+    };
+    
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [targetTime]);
+  
+  return timeLeft;
+};
+
+// Countdown badge component
+const CountdownBadge = ({ eventTime, urgent }: { eventTime: string | null | undefined; urgent?: boolean }) => {
+  const timeLeft = useCountdown(eventTime);
+  if (!timeLeft) return null;
+  
+  const { hours, minutes, seconds, totalMs } = timeLeft;
+  const isUrgent = urgent || totalMs < 2 * 60 * 60 * 1000; // < 2 hours
+  const isWarning = totalMs < 4 * 60 * 60 * 1000; // < 4 hours
+  
+  const colorClass = isUrgent 
+    ? "bg-red-500/20 text-red-300 border-red-400/50" 
+    : isWarning 
+      ? "bg-amber-500/20 text-amber-300 border-amber-400/50" 
+      : "bg-blue-500/15 text-blue-300 border-blue-400/40";
+  
+  return (
+    <div className={cn("inline-flex items-center gap-1.5 px-2 py-1 rounded border text-[11px] font-mono-num font-semibold", colorClass)}>
+      <Clock className="h-3 w-3" />
+      {hours > 0 && <span>{hours}h </span>}
+      <span>{minutes.toString().padStart(2, '0')}m</span>
+      <span className="text-[10px] opacity-70">{seconds.toString().padStart(2, '0')}s</span>
+    </div>
+  );
+};
+
 type RowExtras = { stake: number; stakePct: number; score: number };
 
 const CardShell = ({
@@ -426,19 +481,28 @@ const CardShell = ({
 );
 
 const CardHeader = ({
-  city, leader, runner, sourceLabel,
-}: { city: string | null; leader: string; runner: string; sourceLabel: string }) => (
+  city, leader, runner, sourceLabel, eventTime,
+}: { city: string | null; leader: string; runner: string; sourceLabel: string; eventTime?: string | null }) => (
   <div className="px-4 pt-3 pb-2 border-b border-border/60 bg-surface-2/30">
-    {city && (
-      <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-0.5">{sourceLabel}</div>
-    )}
-    {city && (
-      <div className="text-xl sm:text-2xl font-extrabold text-foreground leading-tight">{city}</div>
-    )}
-    <div className="mt-1 flex items-baseline gap-2 flex-wrap">
-      <span className="text-base font-bold text-emerald-400">{leader}</span>
-      <span className="text-xs text-muted-foreground">vs</span>
-      <span className="text-sm font-semibold text-foreground/80">{runner}</span>
+    <div className="flex items-start justify-between gap-2">
+      <div className="flex-1 min-w-0">
+        {city && (
+          <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-0.5">{sourceLabel}</div>
+        )}
+        {city && (
+          <div className="text-xl sm:text-2xl font-extrabold text-foreground leading-tight">{city}</div>
+        )}
+        <div className="mt-1 flex items-baseline gap-2 flex-wrap">
+          <span className="text-base font-bold text-emerald-400">{leader}</span>
+          <span className="text-xs text-muted-foreground">vs</span>
+          <span className="text-sm font-semibold text-foreground/80">{runner}</span>
+        </div>
+      </div>
+      {eventTime && (
+        <div className="shrink-0">
+          <CountdownBadge eventTime={eventTime} />
+        </div>
+      )}
     </div>
   </div>
 );
@@ -484,7 +548,7 @@ const Row = ({ m, onSelect, stake, stakePct, score }: { m: Movement; onSelect?: 
 
   return (
     <CardShell onClick={openCard} clickable>
-      <CardHeader city={m.market.city} leader={m.leader.label} runner={m.runnerUp.label} sourceLabel="In your scanner" />
+      <CardHeader city={m.market.city} leader={m.leader.label} runner={m.runnerUp.label} sourceLabel="In your scanner" eventTime={m.market.event_time} />
       <div className="px-4 py-3 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={cn("inline-flex items-center px-2.5 py-1 rounded-md border text-[12px] font-bold uppercase tracking-wide", meta.badge)}>
@@ -537,7 +601,7 @@ const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & Ro
 
   return (
     <CardShell onClick={openCard} clickable={!!m.polymarket_url}>
-      <CardHeader city={m.city} leader={m.leader_label} runner={m.runner_label} sourceLabel="From Polymarket" />
+      <CardHeader city={m.city} leader={m.leader_label} runner={m.runner_label} sourceLabel="From Polymarket" eventTime={m.event_time} />
       <div className="px-4 py-3 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={cn("inline-flex items-center px-2.5 py-1 rounded-md border text-[12px] font-bold uppercase tracking-wide", meta.badge)}>
