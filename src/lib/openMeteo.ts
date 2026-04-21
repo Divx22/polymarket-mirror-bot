@@ -38,7 +38,7 @@ export async function fetchOpenMeteoSnapshot(
   if (cached && Date.now() - cached.at < TTL_MS) return cached.data;
 
   try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,cloudcover,relativehumidity_2m,precipitation,windspeed_10m&current_weather=true&timezone=auto`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,cloudcover,relativehumidity_2m,precipitation,windspeed_10m&current_weather=true&forecast_days=3&timezone=auto`;
     const r = await fetch(url);
     if (!r.ok) { cache.set(key, { at: Date.now(), data: null }); return null; }
     const j = await r.json();
@@ -66,10 +66,12 @@ export async function fetchOpenMeteoSnapshot(
       }
     }
 
-    // Build forecast_path: next ~8 hours starting at current hour (offset 0).
+    // Build forecast_path: next ~48 hours starting at current hour (offset 0).
+    // Long horizon needed so multi-hour-out markets (e.g. peak 12h+ away) can find
+    // the actual daytime peak instead of clipping to the last available point.
     const path: ForecastPathPoint[] = [];
     if (idx >= 0) {
-      const end = Math.min(temps.length, idx + 9);
+      const end = Math.min(temps.length, idx + 49);
       for (let i = idx; i < end; i++) {
         const t = temps[i];
         if (!Number.isFinite(t)) continue;
