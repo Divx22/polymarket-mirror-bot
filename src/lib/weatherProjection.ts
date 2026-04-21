@@ -141,13 +141,20 @@ export function compareToMarket(
 
   let verdict: MarketVerdict = "UNKNOWN";
   if (marketTop && modelTop) {
-    if (marketTop.label !== modelTop.label) verdict = "DISAGREE";
-    else {
+    if (marketTop.label !== modelTop.label) {
+      // Strength-filtered: edge magnitude on the model's top bucket determines severity.
+      const modelRow = rows.find((r) => r.label === modelTop.label)!;
+      verdict = modelRow.edge >= 15 ? "STRONG_DISAGREE" : "WEAK_DISAGREE";
+    } else {
       // Same #1; check edge magnitude on market #1 row
       const row = rows.find((r) => r.label === marketTop.label)!;
       verdict = Math.abs(row.edge) <= 10 ? "AGREE" : "NEUTRAL";
     }
   }
+
+  // Best value: bucket with the highest positive edge (model − market).
+  const positives = rows.filter((r) => r.edge > 0).sort((a, b) => b.edge - a.edge);
+  const best = positives[0] ?? null;
 
   return {
     meanC: proj.meanC,
@@ -158,5 +165,7 @@ export function compareToMarket(
     verdict,
     marketTopLabel: marketTop?.label ?? null,
     modelTopLabel: modelTop?.label ?? null,
+    bestValueLabel: best?.label ?? null,
+    bestValueEdge: best?.edge ?? null,
   };
 }
