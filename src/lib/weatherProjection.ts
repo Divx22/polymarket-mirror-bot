@@ -289,19 +289,44 @@ const normalCdf = (x: number, mean: number, sigma: number): number => {
   return 0.5 * (1 + erf((x - mean) / (sigma * Math.SQRT2)));
 };
 
-/** Probability mass of N(meanC, sigmaC) inside [minC, maxC]. Open ends supported via ±Infinity. */
+/** Probability mass inside [minC, maxC] under a (possibly split) normal centered at meanC.
+ *  When sigmaUp/sigmaDown differ, uses a split-normal: left half (x<mean) uses sigmaDown,
+ *  right half (x>mean) uses sigmaUp. Each half normalized to 0.5 mass. */
 export function bucketProbability(
   meanC: number,
   sigmaC: number,
   minC: number | null,
   maxC: number | null,
+  sigmaDownC?: number,
+  sigmaUpC?: number,
 ): number {
   const lo = minC == null ? -Infinity : minC;
   const hi = maxC == null ? Infinity : maxC;
   if (hi <= lo) return 0;
-  const pHi = hi === Infinity ? 1 : normalCdf(hi, meanC, sigmaC);
-  const pLo = lo === -Infinity ? 0 : normalCdf(lo, meanC, sigmaC);
-  return Math.max(0, Math.min(1, pHi - pLo));
+
+  const sDown = sigmaDownC ?? sigmaC;
+  const sUp = sigmaUpC ?? sigmaC;
+
+  // Symmetric fast-path
+  if (sDown === sUp) {
+    const pHi = hi === Infinity ? 1 : normalCdf(hi, meanC, sigmaC);
+    const pLo = lo === -Infinity ? 0 : normalCdf(lo, meanC, sigmaC);
+    return Math.max(0, Math.min(1, pHi - pLo));
+  }
+
+  // Split-normal: each half integrates to 0.5.
+  const massBelow = (x: number): number => {
+    if (x === -Infinity) return 0;
+    if (x === Infinity) return 1;
+    if (x <= meanC) {
+      // Left half scaled to 0.5: P(X<=x) = 2*0.5 * N(x; mean, sDown) for x<=mean = N(x; mean, sDown)
+      return normalCdf(x, meanC, sDown);
+    } else {
+      // Right half: 0.5 + (N(x; mean, sUp) - 0.5)
+      return 0.5 + (normalCdf(x, meanC, sUp) - 0.5);
+    }
+  };
+  return Math.max(0, Math.min(1, massBelow(hi) - massBelow(lo)));
 }
 
 const inBucket = (mean: number, minC: number | null, maxC: number | null): boolean => {
