@@ -521,8 +521,8 @@ const CardShell = ({
 );
 
 const CardHeader = ({
-  city, leader, runner, sourceLabel, eventTime,
-}: { city: string | null; leader: string; runner: string; sourceLabel: string; eventTime?: string | null }) => (
+  city, lat, lon, leader, runner, sourceLabel, eventTime,
+}: { city: string | null; lat?: number | null; lon?: number | null; leader: string; runner: string; sourceLabel: string; eventTime?: string | null }) => (
   <div className="px-4 pt-3 pb-2 border-b border-border/60 bg-surface-2/30">
     <div className="flex items-start justify-between gap-2">
       <div className="flex-1 min-w-0">
@@ -540,7 +540,7 @@ const CardHeader = ({
       </div>
       {eventTime && (
         <div className="shrink-0">
-          <CountdownBadge eventTime={eventTime} city={city} />
+          <CountdownBadge eventTime={eventTime} city={city} lat={lat} lon={lon} />
         </div>
       )}
     </div>
