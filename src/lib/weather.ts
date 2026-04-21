@@ -149,6 +149,14 @@ export type WeatherSnapshotLike = {
   precipitation: number | null;
   humidity: number | null;
   wind_speed: number | null;
+  forecast_path?: Array<{
+    hour_offset: number;
+    temp_c: number;
+    cloud: number | null;
+    precipitation: number | null;
+    humidity: number | null;
+    wind: number | null;
+  }>;
 };
 
 /** Weather score per spec: cloud<30:+2, 30–70:+1, >70:-2; precip>0:-3; humidity>75:-1; wind>20:-1. */
