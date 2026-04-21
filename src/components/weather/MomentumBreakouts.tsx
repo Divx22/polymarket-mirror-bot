@@ -623,6 +623,12 @@ const MODE_META: Record<MomentumMode, { cls: string; label: string; dot: string 
   CERTAINTY:  { cls: "bg-blue-500/15 text-blue-200 border-blue-400/50",          label: "CERTAINTY",  dot: "🔵" },
 };
 
+const MODE_HINT: Record<MomentumMode, { tip: string; cls: string }> = {
+  MOMENTUM:   { tip: "Hunt & build — enter on widening, add on STRONG weather.", cls: "text-emerald-300" },
+  TRANSITION: { tip: "Defend — hold winners, trim on weakness, no new ADDs.",    cls: "text-amber-300" },
+  CERTAINTY:  { tip: "Exit or wait — no new entries; close <90¢, hold ≥95¢.",    cls: "text-blue-300" },
+};
+
 const WEATHER_META: Record<WeatherState, { cls: string; label: string; dot: string }> = {
   STRONG:   { cls: "bg-emerald-500/15 text-emerald-200 border-emerald-400/50", label: "STRONG",   dot: "🟢" },
   MODERATE: { cls: "bg-amber-500/15 text-amber-200 border-amber-400/50",       label: "MODERATE", dot: "🟡" },
@@ -765,6 +771,9 @@ const Row = ({ m, onSelect, stake, stakePct, score }: { m: Movement; onSelect?: 
           <ModeBadge mode={decision.mode} />
           <WeatherBadge state={wx.state} snapshot={m.weather} score={wx.score} tempSpeed={wx.tempSpeed} forecastSpeed={wx.forecastSpeed} />
         </div>
+        <div className={cn("text-[11px] leading-snug font-medium", MODE_HINT[decision.mode].cls)}>
+          {MODE_HINT[decision.mode].tip}
+        </div>
         <ActionBadge decision={decision} />
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
@@ -848,6 +857,9 @@ const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & Ro
         <div className="flex items-center gap-1.5 flex-wrap">
           <ModeBadge mode={decision.mode} />
           <WeatherBadge state="UNKNOWN" snapshot={null} score={0} tempSpeed={null} forecastSpeed={null} />
+        </div>
+        <div className={cn("text-[11px] leading-snug font-medium", MODE_HINT[decision.mode].cls)}>
+          {MODE_HINT[decision.mode].tip}
         </div>
         <ActionBadge decision={decision} degradedHint="External market: live volume not fetched" />
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
