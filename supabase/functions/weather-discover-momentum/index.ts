@@ -271,6 +271,7 @@ Deno.serve(async (req) => {
       return hours > MIN_HOURS && hours <= maxHours;
     });
 
+    type BucketOut = { label: string; clob_token_id: string; mid: number };
     type Result = {
       event_slug: string | null;
       event_title: string;
@@ -285,6 +286,8 @@ Deno.serve(async (req) => {
       gap_2h: number;
       net_delta: number;
       trajectory: Trajectory;
+      /** All sub-market buckets with live mid prices. UI uses these to render the full bucket table. */
+      buckets: BucketOut[];
     };
     const results: Result[] = [];
 
@@ -352,6 +355,7 @@ Deno.serve(async (req) => {
           gap_2h: gap2h,
           net_delta: netDelta,
           trajectory,
+          buckets: valid.map((v) => ({ label: v.label, clob_token_id: v.tokenId, mid: v.mid })),
         });
       }));
     }
