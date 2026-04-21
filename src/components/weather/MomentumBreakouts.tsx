@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { type WeatherMarket, type WeatherOutcome, decideAction, type ActionDecision, type WeatherState, type MomentumMode } from "@/lib/weather";
 import { fetchOpenMeteoSnapshot, peakFromForecast, type OpenMeteoSnapshot } from "@/lib/openMeteo";
 import { compareToMarket, cToF, type MarketVerdict, type ProjectionResult, type BucketLike } from "@/lib/weatherProjection";
+import { detectTempExtreme } from "@/lib/tempExtreme";
 import { formatLocalCloseTime, peakWeatherTimeMs, formatLocalHour } from "@/lib/cityTimezones";
 import { parseBucketLabel, geocodeCity } from "@/lib/bucketParser";
 import { logEdgeTrade, fairPriceFromProjection, type LogEdgeTradeInput } from "@/lib/edgeTrades";
@@ -1052,15 +1053,18 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
     else onSelect?.(m.market);
   };
 
-  // Prefer actual argmax of forecast path (now → event_time). Falls back to
+  // Detect whether the market asks for daily LOW (min) or HIGH (max).
+  const extreme = detectTempExtreme(m.market.market_question, m.market.polymarket_event_slug);
+  // Argmin/argmax of forecast path between now and event_time. Falls back to
   // the "4 PM local" heuristic when no forecast path is available.
-  const scan = peakFromForecast(m.weather, m.market.event_time);
+  const scan = peakFromForecast(m.weather, m.market.event_time, extreme);
   const peakMs = scan?.peakMs ?? peakWeatherTimeMs(m.market.event_time, { city: m.market.city, lat: m.market.latitude, lon: m.market.longitude });
   const ttpMinutes = peakMs != null
     ? Math.max(0, (peakMs - Date.now()) / 60000)
     : Math.max(0, (new Date(m.market.event_time).getTime() - Date.now()) / 60000);
   const hoursToPeak = ttpMinutes / 60;
   const pastPeak = scan?.pastPeak ?? false;
+  const extremeLabel = extreme === "min" ? "low" : "peak";
 
   // Build market-vs-model projection from outcome buckets.
   const buckets: BucketLike[] = outs.map((o) => ({
@@ -1075,7 +1079,7 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
   const unit: "C" | "F" = /°\s*C|\bC\b/i.test(labelBlob) && !/°\s*F/i.test(labelBlob) ? "C" : "F";
   const tConv = (c: number) => unit === "F" ? cToF(c) : c;
   const tSym = unit === "F" ? "°F" : "°C";
-  const projection = compareToMarket(m.weather, hoursToPeak, buckets);
+  const projection = compareToMarket(m.weather, hoursToPeak, buckets, extreme);
   const verdict: MarketVerdict = projection?.verdict ?? "UNKNOWN";
 
   // Determine specific reason for UNKNOWN verdict
@@ -1145,13 +1149,13 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
             const precip = peak?.precipitation != null ? `${peak.precipitation.toFixed(1)}mm` : "—";
             const wind = peak?.wind != null ? `${Math.round(peak.wind)}km/h` : "—";
             const flags: string[] = [];
-            if (pastPeak) flags.push("⏷ past peak");
+            if (pastPeak) flags.push(`⏷ past ${extremeLabel}`);
             if (projection.forecastDrift) flags.push("⚠ forecast drift");
             if (projection.plateauDetected) flags.push("≈ plateau");
             if (projection.peakBias === "LOWER") flags.push("↓ bias lower");
             else if (projection.peakBias === "HIGHER") flags.push("↑ bias higher");
             const flagStr = flags.length ? ` · ${flags.join(" · ")}` : "";
-            const peakLbl = pastPeak ? "peak (passed)" : `peak (${ttp})`;
+            const peakLbl = pastPeak ? `${extremeLabel} (passed)` : `${extremeLabel} (${ttp})`;
             return `Open-Meteo ${m.market.city ?? "site"} · now ${nowDisp}${tSym} · ${peakLbl} ${peakDisp}${tSym} · cloud ${cloud} · precip ${precip} · wind ${wind} · conf ${projection.confidence}%${flagStr}`;
           })()}
         />
@@ -1217,14 +1221,17 @@ const ExternalRow = ({ m, stake, stakePct, score, bankroll, stakeCapPct }: { m: 
     if (m.polymarket_url) window.open(m.polymarket_url, "_blank", "noopener,noreferrer");
   };
 
-  // Prefer argmax of forecast path between now and event_time (handles "past peak" cases).
-  const scan = peakFromForecast(m.weather, m.event_time);
+  // Detect whether the market asks for daily LOW (min) or HIGH (max).
+  const extreme = detectTempExtreme(m.event_title, m.event_slug);
+  // Argmin/argmax of forecast path between now and event_time (handles "past peak" cases).
+  const scan = peakFromForecast(m.weather, m.event_time, extreme);
   const peakMs = scan?.peakMs ?? peakWeatherTimeMs(m.event_time, { city: m.city, lat: m.lat, lon: m.lon });
   const ttpMinutes = peakMs != null
     ? Math.max(0, (peakMs - Date.now()) / 60000)
     : (m.event_time ? Math.max(0, (new Date(m.event_time).getTime() - Date.now()) / 60000) : null);
   const hoursToPeak = ttpMinutes != null ? ttpMinutes / 60 : 0;
   const pastPeak = scan?.pastPeak ?? false;
+  const extremeLabel = extreme === "min" ? "low" : "peak";
 
   // Build full bucket set from discover payload (all sub-markets with live mids).
   // Falls back to leader+runner if `allBuckets` is missing (older payloads).
