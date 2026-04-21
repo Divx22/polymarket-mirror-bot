@@ -933,6 +933,11 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
     bucket_max_c: o.bucket_max_c,
     marketPrice: m.liveMids?.[o.id] ?? o.polymarket_price,
   }));
+  // Detect market unit from bucket labels (e.g. "26-27°C" → C, "78-79°F" → F).
+  const labelBlob = outs.map((o) => o.label).join(" ");
+  const unit: "C" | "F" = /°\s*C|\bC\b/i.test(labelBlob) && !/°\s*F/i.test(labelBlob) ? "C" : "F";
+  const tConv = (c: number) => unit === "F" ? cToF(c) : c;
+  const tSym = unit === "F" ? "°F" : "°C";
   const projection = compareToMarket(m.weather, hoursToPeak, buckets);
   const verdict: MarketVerdict = projection?.verdict ?? "UNKNOWN";
 
