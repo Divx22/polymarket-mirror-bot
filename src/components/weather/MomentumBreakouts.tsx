@@ -552,6 +552,28 @@ export const MomentumBreakouts = ({
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-1.5 px-4 py-2 border-b border-border bg-surface-2/20">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-1">Analyze URL</span>
+        <input
+          type="url"
+          placeholder="https://polymarket.com/event/…"
+          value={singleUrl}
+          onChange={(e) => setSingleUrl(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") analyzeUrl(); }}
+          disabled={analyzingUrl}
+          className="flex-1 min-w-[200px] rounded border border-border bg-background px-2 py-1 text-[11px] font-mono-num text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+        />
+        <button
+          onClick={analyzeUrl}
+          disabled={analyzingUrl || !singleUrl.trim()}
+          className="inline-flex items-center gap-1.5 rounded border border-border bg-background hover:bg-surface-2 px-2.5 py-1 text-[11px] disabled:opacity-50"
+          title="Discover and chart this single Polymarket event"
+        >
+          {analyzingUrl ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
+          {analyzingUrl ? "Analyzing…" : "Analyze"}
+        </button>
+      </div>
+
       {scanning && items.length === 0 && (
         <div className="px-4 py-6 text-center text-xs text-muted-foreground">
           Checking {markets.length} market{markets.length === 1 ? "" : "s"}…
