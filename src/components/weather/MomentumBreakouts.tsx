@@ -6,6 +6,7 @@ import { type WeatherMarket, type WeatherOutcome, decideAction, type ActionDecis
 import { fetchOpenMeteoSnapshot, type OpenMeteoSnapshot } from "@/lib/openMeteo";
 import { compareToMarket, cToF, type MarketVerdict, type ProjectionResult, type BucketLike } from "@/lib/weatherProjection";
 import { formatLocalCloseTime, peakWeatherTimeMs, formatLocalHour } from "@/lib/cityTimezones";
+import { parseBucketLabel, geocodeCity } from "@/lib/bucketParser";
 import { cn } from "@/lib/utils";
 
 type Props = {
