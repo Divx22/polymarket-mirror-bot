@@ -361,14 +361,16 @@ Deno.serve(async (req) => {
         const leader = valid[0];
         const runner = valid[1];
         const gapNow = leader.mid - runner.mid;
-        if (gapNow < gapMin || leader.mid > MAX_ENTRY_PRICE) return;
+        // In single-event mode, bypass gap/price filters so the requested URL
+        // always renders even if it doesn't qualify on momentum.
+        if (!singleMode && (gapNow < gapMin || leader.mid > MAX_ENTRY_PRICE)) return;
 
         const [lh, rh] = await Promise.all([fetchHistory(leader.tokenId), fetchHistory(runner.tokenId)]);
         const l1h = priceAt(lh, target1h);
         const r1h = priceAt(rh, target1h);
-        if (l1h == null || r1h == null) return;
-        const gap1h = l1h - r1h;
-        if (gap1h < gapMin) return;
+        if (!singleMode && (l1h == null || r1h == null)) return;
+        const gap1h = (l1h != null && r1h != null) ? l1h - r1h : gapNow;
+        if (!singleMode && gap1h < gapMin) return;
 
         const target2h = now - 2 * 3_600_000;
         const l2h = priceAt(lh, target2h);
