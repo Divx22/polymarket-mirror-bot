@@ -23,6 +23,9 @@ const DEFAULT_GAP_MIN = 0.10;
 const MAX_ENTRY_PRICE = 0.95;
 const MIN_HOURS_TO_EVENT = 0.5;
 const FLAT_BAND = 0.01;
+const WINDOW_OPTIONS = [8, 12, 24] as const;
+type WindowHours = typeof WINDOW_OPTIONS[number];
+const DEFAULT_WINDOW: WindowHours = 12;
 
 type Trajectory = "accelerating" | "widening" | "flat" | "narrowing";
 type HistPoint = { t: number; p: number };
