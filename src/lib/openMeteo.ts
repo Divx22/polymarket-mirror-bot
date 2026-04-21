@@ -196,15 +196,33 @@ export async function fetchOpenMeteoSnapshot(
       today_extreme_source: todayHigh != null || todayLow != null ? "open-meteo" : undefined,
     };
 
-    // Override today extremes with official station data when available.
-    // Official METAR/SWOB matches what Polymarket actually resolves on, so it
-    // gives the projection a more authoritative anchor than gridded values.
+    // Combine today extremes with official station data when available.
+    // Polymarket resolves on official METAR/SWOB, but if Open-Meteo's grid
+    // captures a hotter/colder value the station missed, that's still a real
+    // signal — so take max(open-meteo, official) for highs and min for lows.
     try {
       const official = await fetchOfficialExtremes(lat, lon);
       if (official) {
-        if (official.today_high_so_far_c != null) snap.today_high_so_far_c = official.today_high_so_far_c;
-        if (official.today_low_so_far_c != null) snap.today_low_so_far_c = official.today_low_so_far_c;
-        snap.today_extreme_source = official.source;
+        const omHigh = snap.today_high_so_far_c;
+        const omLow = snap.today_low_so_far_c;
+        const ofHigh = official.today_high_so_far_c;
+        const ofLow = official.today_low_so_far_c;
+        const combinedHigh = ofHigh != null && omHigh != null
+          ? Math.max(omHigh, ofHigh)
+          : (ofHigh ?? omHigh);
+        const combinedLow = ofLow != null && omLow != null
+          ? Math.min(omLow, ofLow)
+          : (ofLow ?? omLow);
+        snap.today_high_so_far_c = combinedHigh;
+        snap.today_low_so_far_c = combinedLow;
+        // Source label: which source supplied the binding extreme.
+        const highSrc = ofHigh != null && omHigh != null
+          ? (ofHigh >= omHigh ? official.source : "open-meteo")
+          : (ofHigh != null ? official.source : "open-meteo");
+        const lowSrc = ofLow != null && omLow != null
+          ? (ofLow <= omLow ? official.source : "open-meteo")
+          : (ofLow != null ? official.source : "open-meteo");
+        snap.today_extreme_source = highSrc === lowSrc ? highSrc : `${highSrc}+${lowSrc}`;
       }
     } catch {
       // Non-fatal — keep gridded values.
