@@ -184,29 +184,53 @@ function priceAt(hist: HistPoint[], targetTs: number): number | null {
   return best.p;
 }
 
-function eventEndTime(ev: any): number | null {
-  // Prefer sub-market `gameStartTime` — this is the actual market-close moment
-  // (e.g., midnight local time for the city). `endDate` is when the resolution
-  // *finalizes*, which is typically noon UTC the next day — way after trading stops.
+function eventEndTime(ev: any, city: string | null): number | null {
   const subs: any[] = Array.isArray(ev?.markets) ? ev.markets : [];
+  const tz = city ? CITY_TZ[city] : null;
+
+  // 1) BEST: parse the resolution date out of the question/title text and combine with city TZ
+  //    → end-of-day in city local time (e.g. "April 22" in London = 23:59:59 BST on Apr 22).
+  if (tz) {
+    const fallbackYear = new Date().getUTCFullYear();
+    const texts: string[] = [];
+    if (ev?.title) texts.push(String(ev.title));
+    for (const s of subs) {
+      if (s?.question) texts.push(String(s.question));
+      if (s?.groupItemTitle) texts.push(String(s.groupItemTitle));
+    }
+    for (const t of texts) {
+      const dt = extractMarketDate(t, fallbackYear);
+      if (dt) {
+        // If extracted date is far in the past, bump year forward (year wraparound near Jan).
+        let { y, m, d } = dt;
+        const now = Date.now();
+        let candidate = endOfDayInTz(y, m, d, tz);
+        if (candidate < now - 12 * 3_600_000) candidate = endOfDayInTz(y + 1, m, d, tz);
+        return candidate;
+      }
+    }
+  }
+
+  // 2) gameStartTime is when the *resolution day starts* in city local time.
+  //    For daily markets this means trading actually closes ~24h later (end of that local day).
+  //    Add 24h as the trading-close boundary.
   let earliestGameStart = Infinity;
   for (const s of subs) {
     const raw = s?.gameStartTime;
     if (!raw) continue;
-    // Format: "2026-04-20 04:00:00+00" — normalize to ISO
     const iso = String(raw).replace(" ", "T").replace("+00", "+00:00");
     const t = Date.parse(iso);
     if (Number.isFinite(t) && t < earliestGameStart) earliestGameStart = t;
   }
-  if (Number.isFinite(earliestGameStart)) return earliestGameStart;
+  if (Number.isFinite(earliestGameStart)) return earliestGameStart + 24 * 3_600_000;
 
-  // Fallback to event endDate
+  // 3) Fallback to event endDate (resolution finalization — usually noon UTC after close).
   const candidates = [ev?.endDate, ev?.end_date_iso, ev?.endDateIso];
   for (const c of candidates) {
     const t = c ? Date.parse(String(c)) : NaN;
     if (Number.isFinite(t)) return t;
   }
-  // Final fallback: earliest sub endDate
+  // 4) Final fallback: earliest sub endDate.
   let earliest = Infinity;
   for (const s of subs) {
     const t = s?.endDate ? Date.parse(String(s.endDate)) : NaN;
