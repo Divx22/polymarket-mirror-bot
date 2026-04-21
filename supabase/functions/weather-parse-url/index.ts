@@ -252,7 +252,7 @@ Deno.serve(async (req) => {
 
     const text = `${eventTitle} ${subMarkets.map((m: any) => m?.question ?? "").join(" ")}`;
     const city = detectCity(text);
-    const event_time = detectDate(text);
+    const dateParts = detectDateParts(text);
     let lat: number | null = null;
     let lon: number | null = null;
     let station_code: string | null = null;
@@ -273,6 +273,13 @@ Deno.serve(async (req) => {
         if (g) { lat = g.lat; lon = g.lon; }
       }
     }
+
+    // Anchor close time to 23:59 local on the market's date. Daily-high
+    // weather markets resolve on that calendar day's recorded high, so
+    // end-of-local-day is the meaningful "trading close" for the UI.
+    const event_time = dateParts
+      ? endOfLocalDayUtc(dateParts.year, dateParts.monthIdx, dateParts.day, timezone ?? "UTC")
+      : null;
 
     const condition_type = /rain|precip|snow/i.test(text) ? "rain" : "temperature_discrete";
 
