@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { TrendingUp, Loader2, Copy, Check, RefreshCw, Globe, ExternalLink, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { type WeatherMarket, type WeatherOutcome } from "@/lib/weather";
+import { type WeatherMarket, type WeatherOutcome, decideAction, type ActionDecision } from "@/lib/weather";
 import { formatLocalCloseTime, peakWeatherTimeMs, formatLocalHour } from "@/lib/cityTimezones";
 import { cn } from "@/lib/utils";
 
