@@ -1,79 +1,49 @@
 
 
-## Add directional drift bias to WX projection
+## Fix misleading "Model 0%" + tight band on long-horizon markets
 
-Currently `forecastDrift` is a boolean that only widens the band and lowers confidence — it doesn't shift the projection. This adds **direction**: if reality is running cooler/hotter than the model said it would, push the mean and bucket probabilities the same way.
+**The Manila case**: now 27.7°C, peak in 12h 30m, buckets shown 34°C / 35°C. Model band is ±0.7°C (computed from cloud+wind only). Buckets sit ~10σ from the mean → both round to 0%. Two real problems:
 
-### 1. Compute signed drift in `projectPeakTempC`
-
-In `src/lib/weatherProjection.ts`, replace the existing drift block:
-
-```ts
-let peakBias: "LOWER" | "HIGHER" | "NEUTRAL" = "NEUTRAL";
-let forecastDrift = false;
-if (s.temperature_1h_ago != null && s.temp_forecast_1h != null) {
-  const realSpeed = s.temperature_now - s.temperature_1h_ago;
-  const forecastSpeed = s.temp_forecast_1h - s.temperature_now;
-  const drift = realSpeed - forecastSpeed;
-  if (drift < -0.5) peakBias = "LOWER";
-  else if (drift > 0.5) peakBias = "HIGHER";
-  forecastDrift = peakBias !== "NEUTRAL";
-}
+### Problem 1 — Band ignores time-to-peak
+A 12h forecast is fundamentally less certain than a 1h forecast. Current formula in `projectPeakTempC` (`src/lib/weatherProjection.ts`):
 ```
-
-### 2. Apply directional shift to mean
-
-After the plateau adjustment, before computing the band:
-
-```ts
-if (peakBias === "LOWER") meanC -= 0.3;
-else if (peakBias === "HIGHER") meanC += 0.3;
+bandF = 1 + (cloud/100)*1.5 + (wind/30)*1   // capped 1–4
 ```
+No time term. Result: ±0.7°C for a 12h-out market is unrealistically tight.
 
-This replaces the current symmetric band-widening as the *primary* drift response. Band still widens (+0.5°F) when bias is non-neutral so confidence still drops.
-
-### 3. Return `peakBias` from `projectPeakTempC`
-
-Extend its return type with `peakBias: "LOWER" | "HIGHER" | "NEUTRAL"` and propagate to `ProjectionResult`.
-
-### 4. Boost bucket probabilities by direction in `compareToMarket`
-
-After computing `rawModel[]` (probability per top bucket) and **before** normalizing to `modelSum`, apply a +10% multiplicative boost to buckets on the bias side of the projected mean:
-
-```ts
-if (proj.peakBias !== "NEUTRAL") {
-  rawModel.forEach((p, i) => {
-    const b = top[i];
-    const bucketMid = b.bucket_min_c != null && b.bucket_max_c != null
-      ? (b.bucket_min_c + b.bucket_max_c) / 2
-      : (b.bucket_min_c ?? b.bucket_max_c ?? proj.meanC);
-    const isLower = bucketMid < proj.meanC;
-    const isHigher = bucketMid > proj.meanC;
-    if (proj.peakBias === "LOWER" && isLower) rawModel[i] = p * 1.10;
-    if (proj.peakBias === "HIGHER" && isHigher) rawModel[i] = p * 1.10;
-  });
-}
+**Fix**: add a √hours term so uncertainty grows with horizon.
 ```
+hoursTerm = min(2.0, sqrt(max(0, hoursToPeak)) * 0.4)
+bandF = clamp(1 + cloud_part + wind_part + hoursTerm, 1, 6)
+```
+At h=1 → +0.4°F, at h=4 → +0.8°F, at h=12 → +1.4°F (capped). Manila band would go from ±0.7°C to ~±1.5°C — still says model strongly disagrees with 34°C, but no longer absurdly tight.
 
-Renormalization to `modelSum` then preserves the shifted distribution. **Critically: market prices are never consulted for direction** — boost is purely a function of bucket midpoint vs projected mean.
+### Problem 2 — "0% / 0%" rows look like a bug
+When all displayed buckets have <1% model mass, the row reads "0%" with no indication that the model is saying "peak won't reach this range at all." Two small UX fixes in `MomentumBreakouts.tsx` (`ProjectionPanel` table):
 
-### 5. UI: surface bias in the WX line
+- Show `<1%` instead of `0%` when raw mass is >0 but rounds to zero, and `≈0%` when truly negligible (<0.1%).
+- Add a one-line note above the table when **all** displayed buckets get <5% model mass: `"Model projects ~27.7°C — well below all listed buckets. Market is pricing a much hotter peak than the forecast supports."` This makes the disagreement legible instead of looking broken.
 
-In `src/components/weather/MomentumBreakouts.tsx`, append to the existing flag area (next to `⚠ forecast drift` / `≈ plateau`):
-
-- `↓ bias lower` when `peakBias === "LOWER"`
-- `↑ bias higher` when `peakBias === "HIGHER"`
-
-Keep the existing `⚠ forecast drift` flag as-is (now equivalent to `peakBias !== "NEUTRAL"`).
+### Problem 3 — Verdict logic with all-tiny-model-mass
+When `modelTopLabel`'s actual probability is e.g. 0.3% but it still "wins" by being least-zero, calling it the "Model #1" bucket is misleading. Add a guard in `compareToMarket`:
+- If the top model bucket has raw probability < 5%, set verdict to `STRONG_DISAGREE` (model says none of these are likely) and set `modelTopLabel = null`. UI then renders "Model: out of range" instead of a fake winner.
 
 ### Files touched
 
-- `src/lib/weatherProjection.ts` — drift → `peakBias`, directional mean shift, bucket-prob boost, expose on `ProjectionResult`.
-- `src/components/weather/MomentumBreakouts.tsx` — render bias arrows in WX source line.
+- `src/lib/weatherProjection.ts`
+  - `projectPeakTempC`: add `hoursTerm` to band calc.
+  - `compareToMarket`: detect "all buckets tiny" → STRONG_DISAGREE + null model top.
+  - Return raw (un-normalized) top model mass on `ProjectionResult` so UI can show the warning.
+- `src/components/weather/MomentumBreakouts.tsx`
+  - `ProjectionPanel`: render `<1%` / `≈0%`, show "out of range" note when applicable, handle null `modelTopLabel` in verdict title.
 
 ### Out of scope
 
-- No changes to verdict thresholds, smart-bid sizing, auto-log rule, or trade logging.
+- No changes to drift/bias logic, confidence formula, allocator, or trade logging.
+- Not expanding the bucket table beyond top 4 (separate question).
 - No DB / edge-function work.
-- Confidence formula unchanged (still penalizes `forecastDrift`).
+
+### Won't this hurt edge?
+
+No — it makes the model **more honest**. Right now a 12h-out projection with ±0.7°C band overstates confidence and could mislead the verdict on closer-in markets too. Widening the band on long horizons brings band ↔ confidence into alignment with reality. Manila will still show STRONG_DISAGREE (correctly), and the user will see *why* instead of seeing "0% / 0%" and wondering if the model crashed.
 
