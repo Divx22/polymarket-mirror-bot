@@ -45,7 +45,13 @@ export function projectPeakTempC(
 ): { meanC: number; bandC: number; sigmaC: number } | null {
   if (!s || !Number.isFinite(s.temperature_now)) return null;
   const h = Number.isFinite(hoursToPeak as number) ? Math.max(0, Number(hoursToPeak)) : 0;
-  const forecastSpeed = s.temp_forecast_1h != null ? s.temp_forecast_1h - s.temperature_now : 0;
+  const rawForecastSpeed = s.temp_forecast_1h != null ? s.temp_forecast_1h - s.temperature_now : 0;
+  // Dampen late-stage growth — temperature is non-linear near peak and flattens.
+  let damp = 1;
+  if (h <= 0) damp = 0;
+  else if (h < 1) damp = 0.25;
+  else if (h < 2) damp = 0.5;
+  const forecastSpeed = rawForecastSpeed * damp;
   const meanC = s.temperature_now + forecastSpeed * h;
 
   // Band: base 1°F + cloud/wind contributions, capped 1–4°F → convert to °C
