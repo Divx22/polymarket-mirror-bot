@@ -368,9 +368,9 @@ Deno.serve(async (req) => {
         const [lh, rh] = await Promise.all([fetchHistory(leader.tokenId), fetchHistory(runner.tokenId)]);
         const l1h = priceAt(lh, target1h);
         const r1h = priceAt(rh, target1h);
-        if (!singleMode && (l1h == null || r1h == null)) return;
+        // 1h gap is informational only (used for trajectory). Fresh widenings (no 1h history
+        // or gap_1h < gapMin) still qualify as long as gap_now meets the threshold.
         const gap1h = (l1h != null && r1h != null) ? l1h - r1h : gapNow;
-        if (!singleMode && gap1h < gapMin) return;
 
         const target2h = now - 2 * 3_600_000;
         const l2h = priceAt(lh, target2h);
