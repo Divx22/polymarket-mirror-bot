@@ -60,9 +60,34 @@ function detectCity(text: string): string | null {
   return m ? m[1].trim() : null;
 }
 
-function detectDate(text: string): string | null {
-  const iso = text.match(/\b(\d{4}-\d{2}-\d{2})\b/);
-  if (iso) return new Date(`${iso[1]}T18:00:00Z`).toISOString();
+// Compute the UTC instant of 23:59 local-time on the given Y-M-D in `tz`.
+// Used to anchor weather market close to "end of the local day" since
+// daily-high markets resolve based on that day's recorded high.
+function endOfLocalDayUtc(year: number, monthIdx: number, day: number, tz: string): string {
+  // Iterate to find UTC ms whose tz-local date is (y,m,d) at 23:59.
+  const targetMin = 23 * 60 + 59;
+  let guess = Date.UTC(year, monthIdx, day, 23, 59, 0);
+  for (let i = 0; i < 3; i++) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz, hourCycle: "h23",
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit",
+    }).formatToParts(new Date(guess));
+    const g = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? "0");
+    const gotMin = g("hour") * 60 + g("minute");
+    const dateOk = g("year") === year && g("month") === monthIdx + 1 && g("day") === day;
+    if (dateOk && Math.abs(gotMin - targetMin) <= 1) break;
+    // Adjust guess by the local-vs-UTC delta and retry.
+    const localUtc = Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute"), 0);
+    guess += (Date.UTC(year, monthIdx, day, 23, 59, 0) - localUtc);
+  }
+  return new Date(guess).toISOString();
+}
+
+// Detect a calendar date from the slug/title text. Returns { year, monthIdx, day } or null.
+function detectDateParts(text: string): { year: number; monthIdx: number; day: number } | null {
+  const iso = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (iso) return { year: Number(iso[1]), monthIdx: Number(iso[2]) - 1, day: Number(iso[3]) };
   const months = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
   const re = new RegExp(`\\b(${months.join("|")})[a-z]*\\s+(\\d{1,2})(?:,\\s*(\\d{4}))?\\b`, "i");
   const m = text.match(re);
@@ -71,9 +96,10 @@ function detectDate(text: string): string | null {
   const day = parseInt(m[2], 10);
   const now = new Date();
   let year = m[3] ? parseInt(m[3], 10) : now.getUTCFullYear();
-  const candidate = new Date(Date.UTC(year, monthIdx, day, 18, 0, 0));
-  if (!m[3] && candidate.getTime() < now.getTime() - 24*60*60*1000) year += 1;
-  return new Date(Date.UTC(year, monthIdx, day, 18, 0, 0)).toISOString();
+  // If the inferred date is well in the past, assume next year.
+  const candidate = Date.UTC(year, monthIdx, day, 23, 59, 0);
+  if (!m[3] && candidate < now.getTime() - 24*60*60*1000) year += 1;
+  return { year, monthIdx, day };
 }
 
 // Parse a sub-market question/title into a temperature bucket.
