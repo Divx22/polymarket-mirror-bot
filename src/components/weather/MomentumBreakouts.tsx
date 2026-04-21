@@ -681,17 +681,19 @@ const VerdictBadge = ({ verdict, title }: { verdict: MarketVerdict; title?: stri
 };
 
 const ProjectionPanel = ({
-  projection, snapshot, bankroll, stakeCapPct, confidence,
+  projection, snapshot, bankroll, stakeCapPct, confidence, unit,
 }: {
   projection: ProjectionResult;
   snapshot: OpenMeteoSnapshot | null;
   bankroll: number;
   stakeCapPct: number;
   confidence: number;
+  unit: "C" | "F";
 }) => {
   const [open, setOpen] = useState(false);
-  const meanF = cToF(projection.meanC);
-  const bandF = projection.bandC * 9 / 5;
+  const meanDisp = unit === "F" ? cToF(projection.meanC) : projection.meanC;
+  const bandDisp = unit === "F" ? projection.bandC * 9 / 5 : projection.bandC;
+  const sym = unit === "F" ? "°F" : "°C";
   const h = Math.floor(projection.hoursToPeak);
   const m = Math.round((projection.hoursToPeak - h) * 60);
   const ttpStr = projection.hoursToPeak > 0
@@ -718,7 +720,7 @@ const ProjectionPanel = ({
         <div className="flex flex-col">
           <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Projected temp at peak ({ttpStr})</span>
           <span className="font-mono-num text-sm font-bold text-foreground">
-            {meanF.toFixed(1)}°F <span className="text-muted-foreground font-normal">±{bandF.toFixed(1)}°F</span>
+            {meanDisp.toFixed(1)}{sym} <span className="text-muted-foreground font-normal">±{bandDisp.toFixed(1)}{sym}</span>
           </span>
         </div>
         <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />
