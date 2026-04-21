@@ -1051,6 +1051,7 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
     bucket_min_c: o.bucket_min_c,
     bucket_max_c: o.bucket_max_c,
     marketPrice: m.liveMids?.[o.id] ?? o.polymarket_price,
+    clob_token_id: o.clob_token_id ?? null,
   }));
   // Detect market unit from bucket labels (e.g. "26-27°C" → C, "78-79°F" → F).
   const labelBlob = outs.map((o) => o.label).join(" ");
@@ -1133,7 +1134,7 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
           })()}
         />
         <ActionBadge decision={decision} />
-        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} />}
+        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} buckets={buckets} tradeContext={{ market_slug: m.market.polymarket_event_slug ?? null, market_question: m.market.market_question, city: m.market.city, event_time: m.market.event_time, clob_token_id: null }} />}
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
@@ -1279,7 +1280,7 @@ const ExternalRow = ({ m, stake, stakePct, score, bankroll, stakeCapPct }: { m: 
           wxSourceLine={wxSourceLine}
         />
         <ActionBadge decision={decision} degradedHint="External market: live volume not fetched" />
-        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} />}
+        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} buckets={buckets} tradeContext={{ market_slug: m.event_slug, market_question: m.event_title, city: m.city, event_time: m.event_time, clob_token_id: null }} />}
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
