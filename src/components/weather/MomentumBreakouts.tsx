@@ -45,6 +45,7 @@ type Movement = {
   trajectory: Trajectory;
   volLast: number | null;
   volPrev: number | null;
+  weather: OpenMeteoSnapshot | null;
 };
 
 type ExternalMovement = {
@@ -247,9 +248,12 @@ export const MomentumBreakouts = ({
         else if (netDelta < -FLAT_BAND) trajectory = "narrowing";
         else trajectory = "flat";
 
-        const vol = await fetchRecentVolume(leader.clob_token_id!, leader.condition_id ?? null);
+        const [vol, weather] = await Promise.all([
+          fetchRecentVolume(leader.clob_token_id!, leader.condition_id ?? null),
+          fetchOpenMeteoSnapshot(m.latitude, m.longitude),
+        ]);
 
-        found.push({ source: "local", market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory, volLast: vol.last10m, volPrev: vol.prev10m });
+        found.push({ source: "local", market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory, volLast: vol.last10m, volPrev: vol.prev10m, weather });
       }));
       done += batch.length;
       setProgress(Math.round((done / eligible.length) * 100));
