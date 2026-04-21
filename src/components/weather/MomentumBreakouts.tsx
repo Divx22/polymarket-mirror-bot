@@ -440,16 +440,20 @@ const useCountdown = (targetTime: string | null | undefined) => {
   return timeLeft;
 };
 
-// Countdown badge component — shows local close time + live countdown.
+// Countdown badge component — shows local close time + live countdown,
+// plus a secondary "peak weather" countdown (4 PM local in city tz).
 const CountdownBadge = ({
   eventTime, city, urgent,
 }: { eventTime: string | null | undefined; city?: string | null; urgent?: boolean }) => {
   const timeLeft = useCountdown(eventTime);
+  const peakMs = peakWeatherTimeMs(eventTime, city);
+  const peakIso = peakMs != null ? new Date(peakMs).toISOString() : null;
+  const peakLeft = useCountdown(peakIso);
   if (!timeLeft) return null;
 
   const { hours, minutes, seconds, totalMs } = timeLeft;
-  const isUrgent = urgent || totalMs < 2 * 60 * 60 * 1000; // < 2 hours
-  const isWarning = totalMs < 4 * 60 * 60 * 1000; // < 4 hours
+  const isUrgent = urgent || totalMs < 2 * 60 * 60 * 1000;
+  const isWarning = totalMs < 4 * 60 * 60 * 1000;
 
   const colorClass = isUrgent
     ? "bg-red-500/20 text-red-300 border-red-400/50"
@@ -458,18 +462,41 @@ const CountdownBadge = ({
       : "bg-blue-500/15 text-blue-300 border-blue-400/40";
 
   const localTime = formatLocalCloseTime(eventTime, city);
+  const peakLocal = formatLocalHour(peakMs, city);
+  const peakPassed = peakLeft != null && peakLeft.totalMs <= 0;
 
   return (
-    <div className={cn("inline-flex flex-col items-end gap-0.5 px-2 py-1 rounded border", colorClass)}>
-      <div className="inline-flex items-center gap-1 text-[11px] font-mono-num font-semibold">
-        <Clock className="h-3 w-3" />
-        {hours > 0 && <span>{hours}h </span>}
-        <span>{minutes.toString().padStart(2, "0")}m</span>
-        <span className="text-[10px] opacity-70">{seconds.toString().padStart(2, "0")}s</span>
+    <div className="inline-flex flex-col items-end gap-1">
+      <div className={cn("inline-flex flex-col items-end gap-0.5 px-2 py-1 rounded border", colorClass)}>
+        <div className="inline-flex items-center gap-1 text-[11px] font-mono-num font-semibold">
+          <Clock className="h-3 w-3" />
+          {hours > 0 && <span>{hours}h </span>}
+          <span>{minutes.toString().padStart(2, "0")}m</span>
+          <span className="text-[10px] opacity-70">{seconds.toString().padStart(2, "0")}s</span>
+        </div>
+        {localTime && (
+          <div className="text-[9px] uppercase tracking-wider opacity-80 leading-none">
+            closes {localTime}
+          </div>
+        )}
       </div>
-      {localTime && (
-        <div className="text-[9px] uppercase tracking-wider opacity-80 leading-none">
-          closes {localTime}
+      {peakLeft && peakLocal && (
+        <div className="inline-flex flex-col items-end gap-0.5 px-2 py-1 rounded border bg-orange-500/15 text-orange-300 border-orange-400/40">
+          <div className="inline-flex items-center gap-1 text-[11px] font-mono-num font-semibold">
+            <span aria-hidden>☀</span>
+            {peakPassed ? (
+              <span>peak passed</span>
+            ) : (
+              <>
+                {peakLeft.hours > 0 && <span>{peakLeft.hours}h </span>}
+                <span>{peakLeft.minutes.toString().padStart(2, "0")}m</span>
+                <span className="text-[10px] opacity-70">to peak</span>
+              </>
+            )}
+          </div>
+          <div className="text-[9px] uppercase tracking-wider opacity-80 leading-none">
+            peak {peakLocal}
+          </div>
         </div>
       )}
     </div>
