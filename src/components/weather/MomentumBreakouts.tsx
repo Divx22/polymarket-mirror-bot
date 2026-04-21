@@ -1129,6 +1129,8 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
             const flags: string[] = [];
             if (projection.forecastDrift) flags.push("⚠ forecast drift");
             if (projection.plateauDetected) flags.push("≈ plateau");
+            if (projection.peakBias === "LOWER") flags.push("↓ bias lower");
+            else if (projection.peakBias === "HIGHER") flags.push("↑ bias higher");
             const flagStr = flags.length ? ` · ${flags.join(" · ")}` : "";
             return `Open-Meteo ${m.market.city ?? "site"} · now ${nowDisp}${tSym} · peak (${ttp}) ${peakDisp}${tSym} · cloud ${cloud} · precip ${precip} · wind ${wind} · conf ${projection.confidence}%${flagStr}`;
           })()}
