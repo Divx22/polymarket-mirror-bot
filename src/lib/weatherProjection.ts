@@ -242,6 +242,21 @@ export function compareToMarket(
 
   // Compute raw model probabilities then renormalize to the same top-4 universe
   const rawModel = top.map((b) => bucketProbability(proj.meanC, proj.sigmaC, b.bucket_min_c, b.bucket_max_c));
+
+  // Apply directional bias boost (+10%) to buckets on the bias side of projected mean.
+  if (proj.peakBias !== "NEUTRAL") {
+    rawModel.forEach((p, i) => {
+      const b = top[i];
+      const bucketMid = b.bucket_min_c != null && b.bucket_max_c != null
+        ? (b.bucket_min_c + b.bucket_max_c) / 2
+        : (b.bucket_min_c ?? b.bucket_max_c ?? proj.meanC);
+      const isLower = bucketMid < proj.meanC;
+      const isHigher = bucketMid > proj.meanC;
+      if (proj.peakBias === "LOWER" && isLower) rawModel[i] = p * 1.10;
+      if (proj.peakBias === "HIGHER" && isHigher) rawModel[i] = p * 1.10;
+    });
+  }
+
   const modelSum = rawModel.reduce((s, p) => s + p, 0) || 1;
 
   const rows: ProjectionRow[] = top.map((b, i) => {
