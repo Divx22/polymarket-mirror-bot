@@ -20,6 +20,10 @@ export type OpenMeteoSnapshot = {
   wind_speed: number | null;
   /** Hourly forecast starting at the current hour (hour_offset=0), up to ~8h ahead. */
   forecast_path: ForecastPathPoint[];
+  /** Max temperature °C observed since local midnight (in API's local tz) through the current hour. Null when unavailable. */
+  today_high_so_far_c: number | null;
+  /** Min temperature °C observed since local midnight (in API's local tz) through the current hour. Null when unavailable. */
+  today_low_so_far_c: number | null;
 };
 
 /** Result of scanning the forecast path for the temperature extreme between now and event_time. */
