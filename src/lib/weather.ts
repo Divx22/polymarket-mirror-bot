@@ -185,6 +185,8 @@ export const classifyMode = (ttpMinutes: number | null | undefined): MomentumMod
   return "MOMENTUM";
 };
 
+export type MarketVerdict = "AGREE" | "NEUTRAL" | "DISAGREE" | "UNKNOWN";
+
 export type DecideActionInput = {
   gap2h: number;
   gap1h: number;
@@ -195,8 +197,10 @@ export type DecideActionInput = {
   volPrev?: number | null;
   /** Minutes until peak weather (preferred) or until close. */
   ttpMinutes?: number | null;
-  /** Pre-classified weather state. Defaults to UNKNOWN (no veto). */
+  /** Pre-classified weather state (legacy). Defaults to UNKNOWN (no veto). */
   weatherState?: WeatherState;
+  /** New: market-vs-model verdict. When provided, overrides weatherState for veto decisions. */
+  marketVerdict?: MarketVerdict;
 };
 
 const fmtPct = (n: number, dp = 1) => `${n >= 0 ? "+" : ""}${(n * 100).toFixed(dp)}%`;
