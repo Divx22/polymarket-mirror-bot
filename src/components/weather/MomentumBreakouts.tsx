@@ -481,8 +481,8 @@ const CardShell = ({
 );
 
 const CardHeader = ({
-  city, leader, runner, sourceLabel,
-}: { city: string | null; leader: string; runner: string; sourceLabel: string }) => (
+  city, leader, runner, sourceLabel, eventTime,
+}: { city: string | null; leader: string; runner: string; sourceLabel: string; eventTime?: string | null }) => (
   <div className="px-4 pt-3 pb-2 border-b border-border/60 bg-surface-2/30">
     {city && (
       <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-0.5">{sourceLabel}</div>
