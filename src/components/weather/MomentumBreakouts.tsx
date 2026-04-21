@@ -475,6 +475,18 @@ const useCountdown = (targetTime: string | null | undefined) => {
   return timeLeft;
 };
 
+// Live local-time formatter for a city/coords. Re-renders every second.
+const useNowInLocation = (loc: { city?: string | null; lat?: number | null; lon?: number | null }): string | null => {
+  const [now, setNow] = useState<string | null>(() => formatLocalHour(Date.now(), loc));
+  useEffect(() => {
+    const tick = () => setNow(formatLocalHour(Date.now(), loc));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [loc.city, loc.lat, loc.lon]);
+  return now;
+};
+
 // Countdown badge component — shows local close time + live countdown,
 // plus a secondary "peak weather" countdown (4 PM local in city tz).
 const CountdownBadge = ({
@@ -500,9 +512,16 @@ const CountdownBadge = ({
   const localTime = formatLocalCloseTime(eventTime, loc);
   const peakLocal = formatLocalHour(peakMs, loc);
   const peakPassed = peakLeft != null && peakLeft.totalMs <= 0;
+  const nowLocal = useNowInLocation(loc);
 
   return (
     <div className="inline-flex flex-col items-end gap-1">
+      {nowLocal && (
+        <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded border bg-muted/40 text-muted-foreground border-border text-[10px] font-mono-num">
+          <span className="opacity-70 uppercase tracking-wider text-[9px]">now</span>
+          <span className="font-semibold">{nowLocal}</span>
+        </div>
+      )}
       <div className={cn("inline-flex flex-col items-end gap-0.5 px-2 py-1 rounded border", colorClass)}>
         <div className="inline-flex items-center gap-1 text-[11px] font-mono-num font-semibold">
           <Clock className="h-3 w-3" />
