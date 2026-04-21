@@ -440,27 +440,38 @@ const useCountdown = (targetTime: string | null | undefined) => {
   return timeLeft;
 };
 
-// Countdown badge component
-const CountdownBadge = ({ eventTime, urgent }: { eventTime: string | null | undefined; urgent?: boolean }) => {
+// Countdown badge component — shows local close time + live countdown.
+const CountdownBadge = ({
+  eventTime, city, urgent,
+}: { eventTime: string | null | undefined; city?: string | null; urgent?: boolean }) => {
   const timeLeft = useCountdown(eventTime);
   if (!timeLeft) return null;
-  
+
   const { hours, minutes, seconds, totalMs } = timeLeft;
   const isUrgent = urgent || totalMs < 2 * 60 * 60 * 1000; // < 2 hours
   const isWarning = totalMs < 4 * 60 * 60 * 1000; // < 4 hours
-  
-  const colorClass = isUrgent 
-    ? "bg-red-500/20 text-red-300 border-red-400/50" 
-    : isWarning 
-      ? "bg-amber-500/20 text-amber-300 border-amber-400/50" 
+
+  const colorClass = isUrgent
+    ? "bg-red-500/20 text-red-300 border-red-400/50"
+    : isWarning
+      ? "bg-amber-500/20 text-amber-300 border-amber-400/50"
       : "bg-blue-500/15 text-blue-300 border-blue-400/40";
-  
+
+  const localTime = formatLocalCloseTime(eventTime, city);
+
   return (
-    <div className={cn("inline-flex items-center gap-1.5 px-2 py-1 rounded border text-[11px] font-mono-num font-semibold", colorClass)}>
-      <Clock className="h-3 w-3" />
-      {hours > 0 && <span>{hours}h </span>}
-      <span>{minutes.toString().padStart(2, '0')}m</span>
-      <span className="text-[10px] opacity-70">{seconds.toString().padStart(2, '0')}s</span>
+    <div className={cn("inline-flex flex-col items-end gap-0.5 px-2 py-1 rounded border", colorClass)}>
+      <div className="inline-flex items-center gap-1 text-[11px] font-mono-num font-semibold">
+        <Clock className="h-3 w-3" />
+        {hours > 0 && <span>{hours}h </span>}
+        <span>{minutes.toString().padStart(2, "0")}m</span>
+        <span className="text-[10px] opacity-70">{seconds.toString().padStart(2, "0")}s</span>
+      </div>
+      {localTime && (
+        <div className="text-[9px] uppercase tracking-wider opacity-80 leading-none">
+          closes {localTime}
+        </div>
+      )}
     </div>
   );
 };
@@ -501,7 +512,7 @@ const CardHeader = ({
       </div>
       {eventTime && (
         <div className="shrink-0">
-          <CountdownBadge eventTime={eventTime} />
+          <CountdownBadge eventTime={eventTime} city={city} />
         </div>
       )}
     </div>
