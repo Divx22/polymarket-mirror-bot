@@ -15,6 +15,9 @@ export type WeatherMarket = {
   resolution_station_name: string | null;
   resolution_lat: number | null;
   resolution_lon: number | null;
+  resolution_method: "rounded" | "floor" | "ceiling" | "unknown" | null;
+  resolution_method_detected_at: string | null;
+  resolution_method_notes: string | null;
 };
 
 // Within this window, weather is essentially deterministic and any apparent

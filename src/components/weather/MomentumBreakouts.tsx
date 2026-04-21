@@ -1067,13 +1067,27 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
   const extremeLabel = extreme === "min" ? "low" : "peak";
 
   // Build market-vs-model projection from outcome buckets.
-  const buckets: BucketLike[] = outs.map((o) => ({
-    label: o.label,
-    bucket_min_c: o.bucket_min_c,
-    bucket_max_c: o.bucket_max_c,
-    marketPrice: m.liveMids?.[o.id] ?? o.polymarket_price,
-    clob_token_id: o.clob_token_id ?? null,
-  }));
+  // If we know the market's resolution_method (rounded/floor/ceiling), re-parse
+  // single-integer labels with the right bounds — DB-stored bounds default to rounded.
+  const resMethod = m.market.resolution_method ?? null;
+  const buckets: BucketLike[] = outs.map((o) => {
+    let min_c = o.bucket_min_c;
+    let max_c = o.bucket_max_c;
+    if (resMethod && resMethod !== "rounded" && resMethod !== "unknown") {
+      const reparsed = parseBucketLabel(o.label, resMethod);
+      if (reparsed.min_c != null || reparsed.max_c != null) {
+        min_c = reparsed.min_c;
+        max_c = reparsed.max_c;
+      }
+    }
+    return {
+      label: o.label,
+      bucket_min_c: min_c,
+      bucket_max_c: max_c,
+      marketPrice: m.liveMids?.[o.id] ?? o.polymarket_price,
+      clob_token_id: o.clob_token_id ?? null,
+    };
+  });
   // Detect market unit from bucket labels (e.g. "26-27°C" → C, "78-79°F" → F).
   const labelBlob = outs.map((o) => o.label).join(" ");
   const unit: "C" | "F" = /°\s*C|\bC\b/i.test(labelBlob) && !/°\s*F/i.test(labelBlob) ? "C" : "F";
