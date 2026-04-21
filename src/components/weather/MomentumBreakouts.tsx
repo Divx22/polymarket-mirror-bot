@@ -170,6 +170,27 @@ function suggestStake(bankroll: number, stakeCapPct: number, score: number): num
   return Math.round(stake);
 }
 
+// Smart bid for a "best value" mispricing — Kelly-lite.
+// Inputs: edge in pp (e.g. +32), action confidence 0–100, bankroll $, hard cap %.
+// Sizing: edgeRatio (saturates at 30pp) × confRatio (0..1) × cap. Floor 10% of cap when ≥ +7pp.
+// Returns 0 when edge < +7pp (no real value).
+function suggestSmartBid(
+  edgePp: number | null | undefined,
+  confidence: number | null | undefined,
+  bankroll: number,
+  stakeCapPct: number,
+): number {
+  if (!Number.isFinite(bankroll) || bankroll <= 0) return 0;
+  const e = Number(edgePp ?? 0);
+  if (!Number.isFinite(e) || e < 7) return 0;
+  const cap = bankroll * (stakeCapPct / 100);
+  const edgeRatio = Math.min(1, e / 30);
+  const confRatio = Math.max(0, Math.min(1, Number(confidence ?? 50) / 100));
+  const raw = cap * edgeRatio * confRatio;
+  const floor = cap * 0.10;
+  return Math.round(Math.max(floor, raw));
+}
+
 export const MomentumBreakouts = ({
   markets, outcomes, onSelect, gapMin: gapMinProp, showThresholdControl = true,
   bankroll = 1000, stakeCapPct = 3,
@@ -449,8 +470,8 @@ export const MomentumBreakouts = ({
               const stake = suggestStake(bankroll, stakeCapPct, row.sortScore);
               const stakePct = bankroll > 0 ? (stake / bankroll) * 100 : 0;
               return row.kind === "local"
-                ? <Row key={row.key} m={row.data} outs={outcomes[row.data.market.id] ?? []} onSelect={onSelect} stake={stake} stakePct={stakePct} score={row.sortScore} />
-                : <ExternalRow key={row.key} m={row.data} stake={stake} stakePct={stakePct} score={row.sortScore} />;
+                ? <Row key={row.key} m={row.data} outs={outcomes[row.data.market.id] ?? []} onSelect={onSelect} stake={stake} stakePct={stakePct} score={row.sortScore} bankroll={bankroll} stakeCapPct={stakeCapPct} />
+                : <ExternalRow key={row.key} m={row.data} stake={stake} stakePct={stakePct} score={row.sortScore} bankroll={bankroll} stakeCapPct={stakeCapPct} />;
             })}
           </div>
         );
@@ -592,7 +613,7 @@ const CountdownBadge = ({
   );
 };
 
-type RowExtras = { stake: number; stakePct: number; score: number };
+type RowExtras = { stake: number; stakePct: number; score: number; bankroll: number; stakeCapPct: number };
 
 const ACTION_META: Record<ActionDecision["action"], { cls: string; label: string }> = {
   ENTER: { cls: "bg-blue-500/20 text-blue-200 border-blue-400/60", label: "ENTER" },
@@ -657,8 +678,14 @@ const VerdictBadge = ({ verdict, title }: { verdict: MarketVerdict; title?: stri
 };
 
 const ProjectionPanel = ({
-  projection, snapshot,
-}: { projection: ProjectionResult; snapshot: OpenMeteoSnapshot | null }) => {
+  projection, snapshot, bankroll, stakeCapPct, confidence,
+}: {
+  projection: ProjectionResult;
+  snapshot: OpenMeteoSnapshot | null;
+  bankroll: number;
+  stakeCapPct: number;
+  confidence: number;
+}) => {
   const [open, setOpen] = useState(false);
   const meanF = cToF(projection.meanC);
   const bandF = projection.bandC * 9 / 5;
@@ -673,6 +700,9 @@ const ProjectionPanel = ({
   const headerTitle = snapshot
     ? `temp Δ1h ${tempSpeed != null ? (tempSpeed >= 0 ? "+" : "") + tempSpeed.toFixed(1) : "—"}°C · forecast Δ1h ${forecastSpeed != null ? (forecastSpeed >= 0 ? "+" : "") + forecastSpeed.toFixed(1) : "—"}°C\ncloud ${fmt(snapshot.cloud_cover, "%")} · precip ${fmt(snapshot.precipitation, "mm")} · humidity ${fmt(snapshot.humidity, "%")} · wind ${fmt(snapshot.wind_speed, "km/h")}`
     : undefined;
+
+  const smartBid = suggestSmartBid(projection.bestValueEdge, confidence, bankroll, stakeCapPct);
+  const smartBidPct = bankroll > 0 ? (smartBid / bankroll) * 100 : 0;
 
   return (
     <div className="rounded-md border border-border bg-background/40">
@@ -694,12 +724,23 @@ const ProjectionPanel = ({
       {open && (
         <div className="px-3 pb-3">
           {projection.bestValueLabel && projection.bestValueEdge != null && projection.bestValueEdge >= 7 && (
-            <div className={cn(
-              "mb-2 text-[11px] font-bold uppercase tracking-wider",
-              projection.bestValueEdge >= 15 ? "text-emerald-300" : "text-amber-300",
-            )}>
-              Best value: <span className="font-mono-num">{projection.bestValueLabel}</span>
-              <span className="ml-1 font-mono-num">(+{projection.bestValueEdge} edge)</span>
+            <div className="mb-2 space-y-1">
+              <div className={cn(
+                "text-[11px] font-bold uppercase tracking-wider",
+                projection.bestValueEdge >= 15 ? "text-emerald-300" : "text-amber-300",
+              )}>
+                Best value: <span className="font-mono-num">{projection.bestValueLabel}</span>
+                <span className="ml-1 font-mono-num">(+{projection.bestValueEdge} edge)</span>
+              </div>
+              {smartBid > 0 && (
+                <div
+                  className="text-[10px] text-muted-foreground"
+                  title={`Sized from edge +${projection.bestValueEdge}pp · confidence ${confidence}% · bankroll $${bankroll.toLocaleString()} · cap ${stakeCapPct}%`}
+                >
+                  Smart bid: <span className="font-mono-num font-semibold text-foreground">${smartBid.toLocaleString()}</span>
+                  <span className="ml-1 font-mono-num">({smartBidPct.toFixed(1)}% of bankroll)</span>
+                </div>
+              )}
             </div>
           )}
           <table className="w-full text-[11px] font-mono-num">
@@ -802,7 +843,7 @@ const StakeBar = ({ stake, stakePct }: { stake: number; stakePct: number }) => (
   </div>
 );
 
-const Row = ({ m, outs, onSelect, stake, stakePct, score }: { m: Movement; outs: WeatherOutcome[]; onSelect?: (mk: WeatherMarket) => void } & RowExtras) => {
+const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct }: { m: Movement; outs: WeatherOutcome[]; onSelect?: (mk: WeatherMarket) => void } & RowExtras) => {
   const [copied, setCopied] = useState(false);
   const entryPct = (m.leaderNow * 100).toFixed(1);
   const upsidePct = ((1 - m.leaderNow) * 100).toFixed(1);
@@ -874,7 +915,7 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score }: { m: Movement; outs:
           {MODE_HINT[decision.mode].tip}
         </div>
         <ActionBadge decision={decision} />
-        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} />}
+        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} />}
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
