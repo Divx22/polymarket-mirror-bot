@@ -373,7 +373,7 @@ export function compareToMarket(
   const marketSum = top.reduce((s, b) => s + (b.marketPrice as number), 0) || 1;
 
   // Compute raw model probabilities then renormalize to the displayed universe
-  const rawModel = top.map((b) => bucketProbability(proj.meanC, proj.sigmaC, b.bucket_min_c, b.bucket_max_c));
+  const rawModel = top.map((b) => bucketProbability(proj.meanC, proj.sigmaC, b.bucket_min_c, b.bucket_max_c, proj.sigmaDownC, proj.sigmaUpC));
 
   // Apply directional bias boost (+10%) to buckets on the bias side of projected mean.
   if (proj.peakBias !== "NEUTRAL") {
