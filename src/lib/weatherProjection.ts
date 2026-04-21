@@ -12,6 +12,8 @@ export type BucketLike = {
   bucket_max_c: number | null;
   /** Live mid (preferred) or polymarket_price, in 0–1 range. */
   marketPrice: number | null;
+  /** Optional Polymarket CLOB token id for the bucket — used to identify trades. */
+  clob_token_id?: string | null;
 };
 
 export type ProjectionRow = {
