@@ -1110,7 +1110,7 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
           verdict={verdict}
           verdictTitle={verdictTitle}
           verdictReason={unknownReason || (projection
-            ? `Model ${projection.modelTopLabel ?? "—"} vs market ${projection.marketTopLabel ?? "—"}`
+            ? `Model ${projection.modelTopLabel ?? "—"} bucket (proj ${projTempStr}) vs market ${projection.marketTopLabel ?? "—"}`
             : undefined)}
           wxSourceLine={(() => {
             if (!m.weather) return "No live snapshot available";
