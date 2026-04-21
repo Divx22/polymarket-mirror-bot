@@ -1084,7 +1084,8 @@ const ProjectionPanel = ({
               })}
             </tbody>
           </table>
-          {(projection.verdict === "STRONG_DISAGREE" || projection.verdict === "WEAK_DISAGREE") && projection.marketTopLabel && (() => {
+          {projection.marketTopLabel && (() => {
+            const isDisagree = projection.verdict === "STRONG_DISAGREE" || projection.verdict === "WEAK_DISAGREE";
             const bestRow = projection.rows.find((r) => r.label === projection.bestValueLabel && r.edge > 0);
             const fmtPct = (p: number) => p >= 1 ? `${p.toFixed(0)}%` : p >= 0.1 ? `<1%` : `≈0%`;
             // Basket: top buckets with positive edge, weighted by edge × modelPct (expected-value-ish).
