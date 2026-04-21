@@ -937,7 +937,12 @@ const ProjectionPanel = ({
         <div className="flex flex-col">
           <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Projected temp at peak ({ttpStr})</span>
           <span className="font-mono-num text-sm font-bold text-foreground">
-            {meanDisp.toFixed(1)}{sym} <span className="text-muted-foreground font-normal">±{bandDisp.toFixed(1)}{sym}</span>
+            {meanDisp.toFixed(1)}{sym}{" "}
+            <span className="text-muted-foreground font-normal">
+              {asymmetric
+                ? `(+${bandUpDisp.toFixed(1)} / −${bandDownDisp.toFixed(1)}${sym})`
+                : `±${bandDisp.toFixed(1)}${sym}`}
+            </span>
           </span>
         </div>
         <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />
