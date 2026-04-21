@@ -279,8 +279,17 @@ export function compareToMarket(
   const marketTop = [...rows].sort((a, b) => b.marketPct - a.marketPct)[0] ?? null;
   const modelTop = [...rows].sort((a, b) => b.modelPct - a.modelPct)[0] ?? null;
 
+  // Top model raw mass (un-normalized) — used to flag "out of range" projections.
+  const topModelRawMass = rawModel.length > 0 ? Math.max(...rawModel) : 0;
+  const outOfRange = rawModel.length > 0 && rawModel.every((p) => p < 0.05);
+
   let verdict: MarketVerdict = "UNKNOWN";
-  if (marketTop && modelTop) {
+  let modelTopLabelOut: string | null = modelTop?.label ?? null;
+  if (outOfRange) {
+    // Model says none of the displayed buckets are likely → not a real winner.
+    verdict = "STRONG_DISAGREE";
+    modelTopLabelOut = null;
+  } else if (marketTop && modelTop) {
     if (marketTop.label !== modelTop.label) {
       const modelRow = rows.find((r) => r.label === modelTop.label)!;
       verdict = modelRow.edge >= 15 ? "STRONG_DISAGREE" : "WEAK_DISAGREE";
@@ -309,7 +318,7 @@ export function compareToMarket(
     rows,
     verdict,
     marketTopLabel: marketTop?.label ?? null,
-    modelTopLabel: modelTop?.label ?? null,
+    modelTopLabel: modelTopLabelOut,
     bestValueLabel: best?.label ?? null,
     bestValueEdge: best?.edge ?? null,
     confidence,
@@ -317,5 +326,7 @@ export function compareToMarket(
     plateauDetected: proj.plateauDetected,
     peakBias: proj.peakBias,
     peak: proj.peak,
+    topModelRawMass,
+    outOfRange,
   };
 }
