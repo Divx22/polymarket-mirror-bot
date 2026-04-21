@@ -1537,7 +1537,7 @@ const ExternalRow = ({ m, stake, stakePct, score, bankroll, stakeCapPct }: { m: 
           wxSourceLine={wxSourceLine}
         />
         <ActionBadge decision={decision} degradedHint="External market: live volume not fetched" />
-        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} buckets={buckets} mode={decision.mode} leaderLabel={m.leader_label} tradeContext={{ market_slug: m.event_slug, market_question: m.event_title, city: m.city, event_time: m.event_time, clob_token_id: null }} />}
+        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} buckets={buckets} mode={decision.mode} leaderLabel={m.leader_label} pastPeak={pastPeak} tradeContext={{ market_slug: m.event_slug, market_question: m.event_title, city: m.city, event_time: m.event_time, clob_token_id: null }} />}
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
