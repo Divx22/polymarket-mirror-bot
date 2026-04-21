@@ -851,7 +851,11 @@ const ProjectionPanel = ({
   const [logged, setLogged] = useState(false);
   const autoLoggedKeyRef = useRef<string | null>(null);
   const meanDisp = unit === "F" ? cToF(projection.meanC) : projection.meanC;
-  const bandDisp = unit === "F" ? projection.bandC * 9 / 5 : projection.bandC;
+  const toUnit = (c: number) => unit === "F" ? c * 9 / 5 : c;
+  const bandUpDisp = toUnit(projection.bandUpC);
+  const bandDownDisp = toUnit(projection.bandDownC);
+  const asymmetric = Math.abs(projection.bandUpC - projection.bandDownC) > 0.05;
+  const bandDisp = Math.max(bandUpDisp, bandDownDisp);
   const sym = unit === "F" ? "°F" : "°C";
   const h = Math.floor(projection.hoursToPeak);
   const m = Math.round((projection.hoursToPeak - h) * 60);
