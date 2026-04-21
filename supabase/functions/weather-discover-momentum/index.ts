@@ -29,6 +29,78 @@ const KNOWN_CITIES: Record<string, string> = {
   "buenos aires": "Buenos Aires", "sao paulo": "Sao Paulo",
 };
 
+// City → IANA timezone for resolving "end of day" in the city's local time.
+const CITY_TZ: Record<string, string> = {
+  "New York": "America/New_York", "Los Angeles": "America/Los_Angeles",
+  "San Francisco": "America/Los_Angeles", "Chicago": "America/Chicago",
+  "Boston": "America/New_York", "Miami": "America/New_York",
+  "Seattle": "America/Los_Angeles", "Toronto": "America/Toronto",
+  "Austin": "America/Chicago", "Denver": "America/Denver",
+  "Phoenix": "America/Phoenix", "Dallas": "America/Chicago",
+  "Houston": "America/Chicago", "Philadelphia": "America/New_York",
+  "Atlanta": "America/New_York", "Minneapolis": "America/Chicago",
+  "Washington DC": "America/New_York", "Mexico City": "America/Mexico_City",
+  "London": "Europe/London", "Paris": "Europe/Paris",
+  "Berlin": "Europe/Berlin", "Madrid": "Europe/Madrid",
+  "Rome": "Europe/Rome", "Moscow": "Europe/Moscow",
+  "Istanbul": "Europe/Istanbul", "Tokyo": "Asia/Tokyo",
+  "Seoul": "Asia/Seoul", "Beijing": "Asia/Shanghai",
+  "Shanghai": "Asia/Shanghai", "Hong Kong": "Asia/Hong_Kong",
+  "Singapore": "Asia/Singapore", "Mumbai": "Asia/Kolkata",
+  "Delhi": "Asia/Kolkata", "Dubai": "Asia/Dubai",
+  "Sydney": "Australia/Sydney", "Rio de Janeiro": "America/Sao_Paulo",
+  "Sao Paulo": "America/Sao_Paulo",
+  "Buenos Aires": "America/Argentina/Buenos_Aires",
+};
+
+const MONTHS: Record<string, number> = {
+  january: 0, jan: 0, february: 1, feb: 1, march: 2, mar: 2, april: 3, apr: 3,
+  may: 4, june: 5, jun: 5, july: 6, jul: 6, august: 7, aug: 7,
+  september: 8, sep: 8, sept: 8, october: 9, oct: 9, november: 10, nov: 10,
+  december: 11, dec: 11,
+};
+
+// Find the offset (ms) of a timezone at a given UTC instant — uses Intl to invert.
+function tzOffsetMs(tz: string, utcMs: number): number {
+  // Format the instant in the target tz, then parse back as UTC components.
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  const parts = dtf.formatToParts(new Date(utcMs));
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? "0");
+  const asUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+  return asUtc - utcMs;
+}
+
+// Compute the UTC instant that corresponds to "end of <Y-M-D> 23:59:59" in the given tz.
+function endOfDayInTz(year: number, month0: number, day: number, tz: string): number {
+  // Approximate: assume the offset at noon of that day, then refine once.
+  const guess = Date.UTC(year, month0, day, 23, 59, 59);
+  const off = tzOffsetMs(tz, guess);
+  return guess - off;
+}
+
+// Try to extract a date (year/month/day) from the sub-market or event text — e.g.
+// "Highest temperature in London on April 22" or "Will the highest temp be 12°C on April 22?".
+function extractMarketDate(text: string, fallbackYear: number): { y: number; m: number; d: number } | null {
+  // Pattern: "April 22" or "April 22, 2026" or "Apr 22 '26"
+  const re1 = /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:[,\s]+(?:'?(\d{2,4})))?/i;
+  const m = text.match(re1);
+  if (m) {
+    const month = MONTHS[m[1].toLowerCase()];
+    const day = parseInt(m[2], 10);
+    let year = fallbackYear;
+    if (m[3]) {
+      const yr = parseInt(m[3], 10);
+      year = yr < 100 ? 2000 + yr : yr;
+    }
+    if (Number.isFinite(month) && day >= 1 && day <= 31) return { y: year, m: month, d: day };
+  }
+  return null;
+}
+
 function detectCity(text: string): string | null {
   const lower = text.toLowerCase();
   for (const k of Object.keys(KNOWN_CITIES)) {
@@ -112,29 +184,53 @@ function priceAt(hist: HistPoint[], targetTs: number): number | null {
   return best.p;
 }
 
-function eventEndTime(ev: any): number | null {
-  // Prefer sub-market `gameStartTime` — this is the actual market-close moment
-  // (e.g., midnight local time for the city). `endDate` is when the resolution
-  // *finalizes*, which is typically noon UTC the next day — way after trading stops.
+function eventEndTime(ev: any, city: string | null): number | null {
   const subs: any[] = Array.isArray(ev?.markets) ? ev.markets : [];
+  const tz = city ? CITY_TZ[city] : null;
+
+  // 1) BEST: parse the resolution date out of the question/title text and combine with city TZ
+  //    → end-of-day in city local time (e.g. "April 22" in London = 23:59:59 BST on Apr 22).
+  if (tz) {
+    const fallbackYear = new Date().getUTCFullYear();
+    const texts: string[] = [];
+    if (ev?.title) texts.push(String(ev.title));
+    for (const s of subs) {
+      if (s?.question) texts.push(String(s.question));
+      if (s?.groupItemTitle) texts.push(String(s.groupItemTitle));
+    }
+    for (const t of texts) {
+      const dt = extractMarketDate(t, fallbackYear);
+      if (dt) {
+        // If extracted date is far in the past, bump year forward (year wraparound near Jan).
+        let { y, m, d } = dt;
+        const now = Date.now();
+        let candidate = endOfDayInTz(y, m, d, tz);
+        if (candidate < now - 12 * 3_600_000) candidate = endOfDayInTz(y + 1, m, d, tz);
+        return candidate;
+      }
+    }
+  }
+
+  // 2) gameStartTime is when the *resolution day starts* in city local time.
+  //    For daily markets this means trading actually closes ~24h later (end of that local day).
+  //    Add 24h as the trading-close boundary.
   let earliestGameStart = Infinity;
   for (const s of subs) {
     const raw = s?.gameStartTime;
     if (!raw) continue;
-    // Format: "2026-04-20 04:00:00+00" — normalize to ISO
     const iso = String(raw).replace(" ", "T").replace("+00", "+00:00");
     const t = Date.parse(iso);
     if (Number.isFinite(t) && t < earliestGameStart) earliestGameStart = t;
   }
-  if (Number.isFinite(earliestGameStart)) return earliestGameStart;
+  if (Number.isFinite(earliestGameStart)) return earliestGameStart + 24 * 3_600_000;
 
-  // Fallback to event endDate
+  // 3) Fallback to event endDate (resolution finalization — usually noon UTC after close).
   const candidates = [ev?.endDate, ev?.end_date_iso, ev?.endDateIso];
   for (const c of candidates) {
     const t = c ? Date.parse(String(c)) : NaN;
     if (Number.isFinite(t)) return t;
   }
-  // Final fallback: earliest sub endDate
+  // 4) Final fallback: earliest sub endDate.
   let earliest = Infinity;
   for (const s of subs) {
     const t = s?.endDate ? Date.parse(String(s.endDate)) : NaN;
@@ -163,9 +259,13 @@ Deno.serve(async (req) => {
     const now = Date.now();
     const target1h = now - 3_600_000;
 
-    // Filter to events ending within window
+    // Filter to events ending within window. City is detected from title+sub-questions
+    // so eventEndTime can compute end-of-day in the city's local timezone.
     const eligible = events.filter((ev) => {
-      const t = eventEndTime(ev);
+      const subs: any[] = Array.isArray(ev?.markets) ? ev.markets : [];
+      const text = String(ev?.title ?? "") + " " + subs.map((s) => s?.question ?? "").join(" ");
+      const city = detectCity(text);
+      const t = eventEndTime(ev, city);
       if (t == null) return false;
       const hours = (t - now) / 3_600_000;
       return hours > MIN_HOURS && hours <= maxHours;
@@ -235,12 +335,13 @@ Deno.serve(async (req) => {
         else trajectory = "flat";
 
         const slug = ev?.slug ?? null;
-        const endTs = eventEndTime(ev);
         const text = String(ev?.title ?? "") + " " + subs.map((s) => s?.question ?? "").join(" ");
+        const city = detectCity(text);
+        const endTs = eventEndTime(ev, city);
         results.push({
           event_slug: slug,
           event_title: String(ev?.title ?? "Untitled"),
-          city: detectCity(text),
+          city,
           event_time: endTs ? new Date(endTs).toISOString() : null,
           polymarket_url: slug ? `https://polymarket.com/event/${slug}` : null,
           leader_label: leader.label,
