@@ -31,6 +31,8 @@ export type ProjectionResult = {
   verdict: MarketVerdict;
   marketTopLabel: string | null;
   modelTopLabel: string | null;
+  bestValueLabel: string | null; // bucket with highest positive edge (model − market)
+  bestValueEdge: number | null;  // pp; null when no positive edge exists
 };
 
 export const cToF = (c: number): number => c * 9 / 5 + 32;
