@@ -53,6 +53,10 @@ export type ProjectionResult = {
   peakBias: PeakBias;
   /** Conditions interpolated to the peak hour, useful for UI display. */
   peak: PeakConditions | null;
+  /** Raw (un-normalized) probability mass of the top model bucket, 0–1. Used by UI to flag "out of range" projections. */
+  topModelRawMass: number;
+  /** True when every displayed bucket has <5% raw model mass — projection sits outside the listed range. */
+  outOfRange: boolean;
 };
 
 export const cToF = (c: number): number => c * 9 / 5 + 32;
