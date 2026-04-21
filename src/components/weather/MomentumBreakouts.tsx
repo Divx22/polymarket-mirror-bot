@@ -826,7 +826,7 @@ type TradeContext = Omit<LogEdgeTradeInput, "source" | "entry_price" | "suggeste
 
 const ProjectionPanel = ({
   projection, snapshot, bankroll, stakeCapPct, confidence, unit,
-  tradeContext, buckets,
+  tradeContext, buckets, mode, leaderLabel,
 }: {
   projection: ProjectionResult;
   snapshot: OpenMeteoSnapshot | null;
@@ -836,7 +836,16 @@ const ProjectionPanel = ({
   unit: "C" | "F";
   tradeContext: TradeContext;
   buckets: BucketLike[];
+  mode: MomentumMode;
+  leaderLabel: string | null;
 }) => {
+  const isCounterTrend = projection.bestValueLabel != null
+    && leaderLabel != null
+    && projection.bestValueLabel !== leaderLabel;
+  // Block auto-log when counter-trend and not in MOMENTUM (early-reversal) mode.
+  const blockAutoLog = isCounterTrend && mode !== "MOMENTUM";
+  // Hide CTA entirely in CERTAINTY mode counter-trend (post-peak, no fighting trend).
+  const hideCta = isCounterTrend && mode === "CERTAINTY";
   const [open, setOpen] = useState(false);
   const [logging, setLogging] = useState(false);
   const [logged, setLogged] = useState(false);
