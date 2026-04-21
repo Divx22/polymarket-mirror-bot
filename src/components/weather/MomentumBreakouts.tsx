@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { TrendingUp, Loader2, Copy, Check, RefreshCw, Globe, ExternalLink, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { type WeatherMarket, type WeatherOutcome, decideAction, type ActionDecision } from "@/lib/weather";
+import { type WeatherMarket, type WeatherOutcome, decideAction, type ActionDecision, classifyWeather, classifyMode, type WeatherState, type MomentumMode } from "@/lib/weather";
+import { fetchOpenMeteoSnapshot, type OpenMeteoSnapshot } from "@/lib/openMeteo";
 import { formatLocalCloseTime, peakWeatherTimeMs, formatLocalHour } from "@/lib/cityTimezones";
 import { cn } from "@/lib/utils";
 
@@ -44,6 +45,7 @@ type Movement = {
   trajectory: Trajectory;
   volLast: number | null;
   volPrev: number | null;
+  weather: OpenMeteoSnapshot | null;
 };
 
 type ExternalMovement = {
@@ -246,9 +248,12 @@ export const MomentumBreakouts = ({
         else if (netDelta < -FLAT_BAND) trajectory = "narrowing";
         else trajectory = "flat";
 
-        const vol = await fetchRecentVolume(leader.clob_token_id!, leader.condition_id ?? null);
+        const [vol, weather] = await Promise.all([
+          fetchRecentVolume(leader.clob_token_id!, leader.condition_id ?? null),
+          fetchOpenMeteoSnapshot(m.latitude, m.longitude),
+        ]);
 
-        found.push({ source: "local", market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory, volLast: vol.last10m, volPrev: vol.prev10m });
+        found.push({ source: "local", market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory, volLast: vol.last10m, volPrev: vol.prev10m, weather });
       }));
       done += batch.length;
       setProgress(Math.round((done / eligible.length) * 100));
@@ -612,6 +617,47 @@ const ActionBadge = ({ decision, degradedHint }: { decision: ActionDecision; deg
   );
 };
 
+const MODE_META: Record<MomentumMode, { cls: string; label: string; dot: string }> = {
+  MOMENTUM:   { cls: "bg-emerald-500/15 text-emerald-200 border-emerald-400/50", label: "MOMENTUM",   dot: "🟢" },
+  TRANSITION: { cls: "bg-amber-500/15 text-amber-200 border-amber-400/50",       label: "TRANSITION", dot: "🟡" },
+  CERTAINTY:  { cls: "bg-blue-500/15 text-blue-200 border-blue-400/50",          label: "CERTAINTY",  dot: "🔵" },
+};
+
+const WEATHER_META: Record<WeatherState, { cls: string; label: string; dot: string }> = {
+  STRONG:   { cls: "bg-emerald-500/15 text-emerald-200 border-emerald-400/50", label: "STRONG",   dot: "🟢" },
+  MODERATE: { cls: "bg-amber-500/15 text-amber-200 border-amber-400/50",       label: "MODERATE", dot: "🟡" },
+  WEAK:     { cls: "bg-red-500/15 text-red-200 border-red-400/50",             label: "WEAK",     dot: "🔴" },
+  UNKNOWN:  { cls: "bg-muted text-muted-foreground border-border",             label: "N/A",      dot: "⚪" },
+};
+
+const ModeBadge = ({ mode }: { mode: MomentumMode }) => {
+  const meta = MODE_META[mode];
+  return (
+    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wide", meta.cls)}>
+      <span aria-hidden>{meta.dot}</span>MODE · {meta.label}
+    </span>
+  );
+};
+
+const WeatherBadge = ({ state, snapshot, score, tempSpeed, forecastSpeed }: {
+  state: WeatherState;
+  snapshot: OpenMeteoSnapshot | null;
+  score: number;
+  tempSpeed: number | null;
+  forecastSpeed: number | null;
+}) => {
+  const meta = WEATHER_META[state];
+  const fmt = (v: number | null | undefined, suffix = "") => v == null || !Number.isFinite(v) ? "—" : `${v.toFixed(1)}${suffix}`;
+  const title = snapshot
+    ? `temp Δ1h ${tempSpeed != null ? (tempSpeed >= 0 ? "+" : "") + tempSpeed.toFixed(1) : "—"}°C · forecast Δ1h ${forecastSpeed != null ? (forecastSpeed >= 0 ? "+" : "") + forecastSpeed.toFixed(1) : "—"}°C\ncloud ${fmt(snapshot.cloud_cover, "%")} · precip ${fmt(snapshot.precipitation, "mm")} · humidity ${fmt(snapshot.humidity, "%")} · wind ${fmt(snapshot.wind_speed, "km/h")}\nscore ${score}`
+    : "Live weather unavailable";
+  return (
+    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wide", meta.cls)} title={title}>
+      <span aria-hidden>{meta.dot}</span>WX · {meta.label}
+    </span>
+  );
+};
+
 const CardShell = ({
   onClick, children, clickable,
 }: { onClick?: () => void; children: React.ReactNode; clickable: boolean }) => (
@@ -689,9 +735,11 @@ const Row = ({ m, onSelect, stake, stakePct, score }: { m: Movement; onSelect?: 
   const ttpMinutes = peakMs != null
     ? Math.max(0, (peakMs - Date.now()) / 60000)
     : Math.max(0, (new Date(m.market.event_time).getTime() - Date.now()) / 60000);
+  const wx = classifyWeather(m.weather);
   const decision = decideAction({
     gap2h: m.gap2h, gap1h: m.gap1h, gapNow: m.gapNow,
     volLast: m.volLast, volPrev: m.volPrev, ttpMinutes,
+    weatherState: wx.state,
   });
 
   const copy = async (e: React.MouseEvent) => {
@@ -712,6 +760,10 @@ const Row = ({ m, onSelect, stake, stakePct, score }: { m: Movement; onSelect?: 
             {meta.label} {netSign}{netPct}%
           </span>
           <span className="text-[10px] text-muted-foreground font-mono-num">score {score.toFixed(3)}</span>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <ModeBadge mode={decision.mode} />
+          <WeatherBadge state={wx.state} snapshot={m.weather} score={wx.score} tempSpeed={wx.tempSpeed} forecastSpeed={wx.forecastSpeed} />
         </div>
         <ActionBadge decision={decision} />
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
@@ -792,6 +844,10 @@ const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & Ro
             {meta.label} {netSign}{netPct}%
           </span>
           <span className="text-[10px] text-muted-foreground font-mono-num">score {score.toFixed(3)}</span>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <ModeBadge mode={decision.mode} />
+          <WeatherBadge state="UNKNOWN" snapshot={null} score={0} tempSpeed={null} forecastSpeed={null} />
         </div>
         <ActionBadge decision={decision} degradedHint="External market: live volume not fetched" />
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
