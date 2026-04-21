@@ -72,6 +72,8 @@ type ExternalMovement = {
   lon: number | null;
   /** Open-Meteo snapshot, fetched after discover so the WX verdict can run. */
   weather: OpenMeteoSnapshot | null;
+  /** All sub-market buckets with live mids (from discover payload) so we can render the full table. */
+  allBuckets: Array<{ label: string; clob_token_id: string; mid: number }>;
 };
 
 type AnyMove = Movement | ExternalMovement;
@@ -345,6 +347,7 @@ export const MomentumBreakouts = ({
           lat: coords?.lat ?? null,
           lon: coords?.lon ?? null,
           weather,
+          allBuckets: Array.isArray((r as any).buckets) ? (r as any).buckets : [],
         };
       }));
 
@@ -1214,16 +1217,29 @@ const ExternalRow = ({ m, stake, stakePct, score, bankroll, stakeCapPct }: { m: 
     : (m.event_time ? Math.max(0, (new Date(m.event_time).getTime() - Date.now()) / 60000) : null);
   const hoursToPeak = ttpMinutes != null ? ttpMinutes / 60 : 0;
 
-  // Build buckets for leader + runner from their labels (we only have two
-  // outcomes in the discover payload; that's enough for compareToMarket).
-  const leaderParsed = parseBucketLabel(m.leader_label);
-  const runnerParsed = parseBucketLabel(m.runner_label);
-  const buckets: BucketLike[] = [
-    { label: m.leader_label, bucket_min_c: leaderParsed.min_c, bucket_max_c: leaderParsed.max_c, marketPrice: m.leaderNow },
-    { label: m.runner_label, bucket_min_c: runnerParsed.min_c, bucket_max_c: runnerParsed.max_c, marketPrice: Math.max(0, m.leaderNow - m.gapNow) },
-  ];
+  // Build full bucket set from discover payload (all sub-markets with live mids).
+  // Falls back to leader+runner if `allBuckets` is missing (older payloads).
+  const buckets: BucketLike[] = (m.allBuckets && m.allBuckets.length > 0)
+    ? m.allBuckets.map((b) => {
+        const parsed = parseBucketLabel(b.label);
+        return {
+          label: b.label,
+          bucket_min_c: parsed.min_c,
+          bucket_max_c: parsed.max_c,
+          marketPrice: b.mid,
+          clob_token_id: b.clob_token_id,
+        };
+      })
+    : (() => {
+        const leaderParsed = parseBucketLabel(m.leader_label);
+        const runnerParsed = parseBucketLabel(m.runner_label);
+        return [
+          { label: m.leader_label, bucket_min_c: leaderParsed.min_c, bucket_max_c: leaderParsed.max_c, marketPrice: m.leaderNow },
+          { label: m.runner_label, bucket_min_c: runnerParsed.min_c, bucket_max_c: runnerParsed.max_c, marketPrice: Math.max(0, m.leaderNow - m.gapNow) },
+        ];
+      })();
   // Detect unit from labels (any °F → unify on F, else C).
-  const labelBlob = `${m.leader_label} ${m.runner_label}`;
+  const labelBlob = buckets.map((b) => b.label).join(" ");
   const unit: "C" | "F" = /°\s*F|\bF\b/i.test(labelBlob) ? "F" : (/°\s*C|\bC\b/i.test(labelBlob) ? "C" : "F");
   const tConv = (c: number) => unit === "F" ? cToF(c) : c;
   const tSym = unit === "F" ? "°F" : "°C";
