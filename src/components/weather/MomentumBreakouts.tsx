@@ -497,6 +497,7 @@ const CountdownBadge = ({
   const peakMs = peakWeatherTimeMs(eventTime, loc);
   const peakIso = peakMs != null ? new Date(peakMs).toISOString() : null;
   const peakLeft = useCountdown(peakIso);
+  const nowLocal = useNowInLocation(loc);
   if (!timeLeft) return null;
 
   const { hours, minutes, seconds, totalMs } = timeLeft;
@@ -512,7 +513,6 @@ const CountdownBadge = ({
   const localTime = formatLocalCloseTime(eventTime, loc);
   const peakLocal = formatLocalHour(peakMs, loc);
   const peakPassed = peakLeft != null && peakLeft.totalMs <= 0;
-  const nowLocal = useNowInLocation(loc);
 
   return (
     <div className="inline-flex flex-col items-end gap-1">
