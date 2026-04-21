@@ -42,6 +42,8 @@ type Movement = {
   gapNow: number;
   netDelta: number;
   trajectory: Trajectory;
+  volLast: number | null;
+  volPrev: number | null;
 };
 
 type ExternalMovement = {
