@@ -113,13 +113,28 @@ function priceAt(hist: HistPoint[], targetTs: number): number | null {
 }
 
 function eventEndTime(ev: any): number | null {
+  // Prefer sub-market `gameStartTime` — this is the actual market-close moment
+  // (e.g., midnight local time for the city). `endDate` is when the resolution
+  // *finalizes*, which is typically noon UTC the next day — way after trading stops.
+  const subs: any[] = Array.isArray(ev?.markets) ? ev.markets : [];
+  let earliestGameStart = Infinity;
+  for (const s of subs) {
+    const raw = s?.gameStartTime;
+    if (!raw) continue;
+    // Format: "2026-04-20 04:00:00+00" — normalize to ISO
+    const iso = String(raw).replace(" ", "T").replace("+00", "+00:00");
+    const t = Date.parse(iso);
+    if (Number.isFinite(t) && t < earliestGameStart) earliestGameStart = t;
+  }
+  if (Number.isFinite(earliestGameStart)) return earliestGameStart;
+
+  // Fallback to event endDate
   const candidates = [ev?.endDate, ev?.end_date_iso, ev?.endDateIso];
   for (const c of candidates) {
     const t = c ? Date.parse(String(c)) : NaN;
     if (Number.isFinite(t)) return t;
   }
-  // Fall back to earliest sub-market endDate
-  const subs: any[] = Array.isArray(ev?.markets) ? ev.markets : [];
+  // Final fallback: earliest sub endDate
   let earliest = Infinity;
   for (const s of subs) {
     const t = s?.endDate ? Date.parse(String(s.endDate)) : NaN;
