@@ -110,6 +110,7 @@ export function projectPeakTempC(
   peak: PeakConditions | null;
   forecastDrift: boolean;
   plateauDetected: boolean;
+  peakBias: PeakBias;
 } | null {
   if (!s || !Number.isFinite(s.temperature_now)) return null;
   const h = Number.isFinite(hoursToPeak as number) ? Math.max(0, Number(hoursToPeak)) : 0;
@@ -154,13 +155,21 @@ export function projectPeakTempC(
     }
   }
 
-  // Forecast drift: compare last-hour real change vs what the model said would happen.
+  // Forecast-vs-reality drift with direction.
+  let peakBias: PeakBias = "NEUTRAL";
   let forecastDrift = false;
   if (s.temperature_1h_ago != null && s.temp_forecast_1h != null) {
     const realSpeed = s.temperature_now - s.temperature_1h_ago;
     const forecastSpeed = s.temp_forecast_1h - s.temperature_now;
-    if (Math.abs(realSpeed - forecastSpeed) > 0.5) forecastDrift = true;
+    const drift = realSpeed - forecastSpeed;
+    if (drift < -0.5) peakBias = "LOWER";
+    else if (drift > 0.5) peakBias = "HIGHER";
+    forecastDrift = peakBias !== "NEUTRAL";
   }
+
+  // Apply directional shift to mean.
+  if (peakBias === "LOWER") meanC -= 0.3;
+  else if (peakBias === "HIGHER") meanC += 0.3;
 
   // Band: cloud + wind contributions evaluated at the peak hour.
   const peakWind = peak?.wind ?? s.wind_speed;
@@ -171,7 +180,7 @@ export function projectPeakTempC(
   const bandC = bandF * 5 / 9;
   const sigmaC = bandC / 1.96;
 
-  return { meanC, bandC, sigmaC, peak, forecastDrift, plateauDetected };
+  return { meanC, bandC, sigmaC, peak, forecastDrift, plateauDetected, peakBias };
 }
 
 // Abramowitz & Stegun erf approximation (max error ~1.5e-7)
