@@ -1099,6 +1099,9 @@ const ProjectionPanel = ({
                   .filter((x) => x.weight >= 5)
               : [];
             const basketCoverage = basket.reduce((s, x) => s + x.row.modelPct, 0);
+            // Total basket stake = bankroll × stakeCapPct (treat the basket as a single capped position).
+            const basketTotalStake = Math.max(0, bankroll * (stakeCapPct / 100));
+            const fmtUsd0 = (n: number) => `$${Math.round(n).toLocaleString()}`;
             return (
               <div className={cn(
                 "mt-2 text-[10px] space-y-1",
@@ -1113,20 +1116,28 @@ const ProjectionPanel = ({
                   </div>
                 )}
                 {basket.length >= 2 && (
-                  <div className="text-cyan-300 pt-1 border-t border-border/40">
-                    <div className="font-semibold">
-                      🎯 Basket ({basket.length} buckets, ~{Math.round(basketCoverage)}% model coverage):
+                  <div className="text-cyan-300 pt-2 mt-1 border-t border-border/40 text-sm space-y-1.5">
+                    <div className="font-semibold text-base">
+                      🎯 Basket ({basket.length} buckets, ~{Math.round(basketCoverage)}% model coverage)
                     </div>
-                    <div className="space-y-0.5 pl-2">
-                      {basket.map((b) => (
-                        <div key={b.row.label}>
-                          <span className="font-bold">{b.weight}%</span> on{" "}
-                          <span className="font-bold">{b.row.label}</span>{" "}
-                          <span className="opacity-70">
-                            (model {fmtPct(b.row.modelPct)}, edge +{b.row.edge})
-                          </span>
-                        </div>
-                      ))}
+                    <div className="text-[11px] opacity-80">
+                      Total stake <span className="font-mono-num font-semibold">{fmtUsd0(basketTotalStake)}</span>
+                      {" "}({stakeCapPct}% of ${bankroll.toLocaleString()} bankroll), split:
+                    </div>
+                    <div className="space-y-1 pl-2">
+                      {basket.map((b) => {
+                        const dollars = basketTotalStake * (b.weight / 100);
+                        return (
+                          <div key={b.row.label} className="leading-snug">
+                            <span className="font-mono-num font-bold text-emerald-300">{fmtUsd0(dollars)}</span>{" "}
+                            <span className="opacity-70">({b.weight}%)</span> on{" "}
+                            <span className="font-bold">{b.row.label}</span>{" "}
+                            <span className="opacity-70 text-[11px]">
+                              — model {fmtPct(b.row.modelPct)}, edge +{b.row.edge}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
