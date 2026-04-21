@@ -4,7 +4,7 @@
 
 import type { WeatherSnapshotLike } from "./weather";
 
-export type MarketVerdict = "AGREE" | "NEUTRAL" | "DISAGREE" | "UNKNOWN";
+export type MarketVerdict = "AGREE" | "NEUTRAL" | "WEAK_DISAGREE" | "STRONG_DISAGREE" | "UNKNOWN";
 
 export type BucketLike = {
   label: string;
