@@ -941,7 +941,7 @@ const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & Ro
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
           <ModeBadge mode={decision.mode} />
-          <WeatherBadge state="UNKNOWN" snapshot={null} score={0} tempSpeed={null} forecastSpeed={null} />
+          <VerdictBadge verdict="UNKNOWN" title="External market: no weather projection" />
         </div>
         <div className={cn("text-[11px] leading-snug font-medium", MODE_HINT[decision.mode].cls)}>
           {MODE_HINT[decision.mode].tip}
