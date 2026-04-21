@@ -185,7 +185,7 @@ export const classifyMode = (ttpMinutes: number | null | undefined): MomentumMod
   return "MOMENTUM";
 };
 
-export type MarketVerdict = "AGREE" | "NEUTRAL" | "DISAGREE" | "UNKNOWN";
+export type MarketVerdict = "AGREE" | "NEUTRAL" | "WEAK_DISAGREE" | "STRONG_DISAGREE" | "UNKNOWN";
 
 export type DecideActionInput = {
   gap2h: number;
