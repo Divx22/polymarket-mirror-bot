@@ -32,6 +32,8 @@ export type PeakConditions = {
   wind: number | null;
 };
 
+export type PeakBias = "LOWER" | "HIGHER" | "NEUTRAL";
+
 export type ProjectionResult = {
   meanC: number;
   bandC: number;       // ± half-width in °C
@@ -47,6 +49,8 @@ export type ProjectionResult = {
   confidence: number;
   forecastDrift: boolean;
   plateauDetected: boolean;
+  /** Direction of forecast-vs-reality drift; LOWER=reality cooler than model said, HIGHER=hotter. */
+  peakBias: PeakBias;
   /** Conditions interpolated to the peak hour, useful for UI display. */
   peak: PeakConditions | null;
 };
