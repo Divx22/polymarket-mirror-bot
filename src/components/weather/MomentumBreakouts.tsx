@@ -623,6 +623,12 @@ const MODE_META: Record<MomentumMode, { cls: string; label: string; dot: string 
   CERTAINTY:  { cls: "bg-blue-500/15 text-blue-200 border-blue-400/50",          label: "CERTAINTY",  dot: "🔵" },
 };
 
+const MODE_HINT: Record<MomentumMode, { tip: string; cls: string }> = {
+  MOMENTUM:   { tip: "Hunt & build — enter on widening, add on STRONG weather.", cls: "text-emerald-300" },
+  TRANSITION: { tip: "Defend — hold winners, trim on weakness, no new ADDs.",    cls: "text-amber-300" },
+  CERTAINTY:  { tip: "Exit or wait — no new entries; close <90¢, hold ≥95¢.",    cls: "text-blue-300" },
+};
+
 const WEATHER_META: Record<WeatherState, { cls: string; label: string; dot: string }> = {
   STRONG:   { cls: "bg-emerald-500/15 text-emerald-200 border-emerald-400/50", label: "STRONG",   dot: "🟢" },
   MODERATE: { cls: "bg-amber-500/15 text-amber-200 border-amber-400/50",       label: "MODERATE", dot: "🟡" },
