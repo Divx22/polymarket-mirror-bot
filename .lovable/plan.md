@@ -1,88 +1,39 @@
 
 
-## Tighten the projection + verdict + allocator
+## Fix: WX verdict using stale prices contradicts the card's leader
 
-Four targeted upgrades to the projection engine. No new files; small edits to existing logic.
+### The bug
 
-### 1. Cap late-stage forecast speed (non-linear peak)
+The card header ranks outcomes using **live Polymarket midpoints** (fetched in the Movement builder at line 231). But the projection panel rebuilds `buckets` from `o.polymarket_price` — the DB-cached price, which can be hours stale.
 
-In `src/lib/weatherProjection.ts` → `projectPeakTempC`, dampen `forecast_speed` as we approach peak (temps flatten near the high):
+Result: the "Market #1" the verdict compares against is not the same "Market #1" shown to the user. In your screenshot, model says 80–81°F, the card header agrees the market leader is 80–81°F (62%), yet the verdict tooltip claims "Market #1: 78–79°F" because stale DB rows still rank 78–79°F highest.
 
-```
-hours_to_peak < 2  →  forecast_speed × 0.5
-hours_to_peak < 1  →  forecast_speed × 0.25
-hours_to_peak ≤ 0  →  forecast_speed × 0   (use temp_now)
-```
+### The fix
 
-Prevents overshoot on cards inside the final 2 hours.
+Carry live mids from the Movement builder into the projection so both the header and the verdict use the same source of truth.
 
-### 2. Strength-filtered DISAGREE
+**`src/components/weather/MomentumBreakouts.tsx`**
 
-In `compareToMarket` (same file), split the verdict by edge magnitude on the model's top bucket:
+1. **Extend `Movement`** with `liveMids: Record<string /* outcome.id */, number>` populated from the existing `liveMids` array around line 231 (no extra network calls).
+2. **Build `buckets` (line 876) using live mids first**, falling back to `polymarket_price` only if a live mid is missing for that outcome:
+   ```ts
+   const buckets: BucketLike[] = outs.map((o) => ({
+     label: o.label,
+     bucket_min_c: o.bucket_min_c,
+     bucket_max_c: o.bucket_max_c,
+     marketPrice: m.liveMids?.[o.id] ?? o.polymarket_price,
+   }));
+   ```
+3. **No changes** to `weatherProjection.ts`, `decideAction`, or external/Discover rows (they already use the right path).
 
-- `STRONG_DISAGREE` — model_top ≠ market_top AND model-top edge ≥ +15pp
-- `WEAK_DISAGREE`   — model_top ≠ market_top AND model-top edge < +15pp
-- `NEUTRAL` / `AGREE` — unchanged
+### Why this is enough
 
-`MarketVerdict` type expands to: `AGREE | NEUTRAL | WEAK_DISAGREE | STRONG_DISAGREE | UNKNOWN`.
-
-In `src/lib/weather.ts` → `decideAction`, the veto rule tightens:
-
-```
-STRONG_DISAGREE → HOLD     (real veto, blocks ADD/ENTER)
-WEAK_DISAGREE   → HOLD ADD only; ENTER still allowed if widening + ttp<120m
-```
-
-The legacy `weatherState` back-compat field maps `STRONG_DISAGREE → WEAK`, `WEAK_DISAGREE → MODERATE`.
-
-### 3. "Best value" bucket flag
-
-Add to `ProjectionResult`:
-
-```ts
-bestValueLabel: string | null   // bucket with highest positive edge (model − market)
-bestValueEdge: number | null    // pp
-```
-
-Picked from `rows` (only positive edges qualify; null when none).
-
-In `MomentumBreakouts.tsx` projection panel, render a highlighted line above the table:
-
-```
-BEST VALUE: 58–59°F  (+32 edge)
-```
-
-Styled emerald when `bestValueEdge ≥ 15`, amber when `7–14`, hidden when null.
-
-### 4. Allocator uses model probabilities, not market price
-
-In `MomentumBreakouts.tsx`, the range/center the allocator currently derives from market leader changes to:
-
-```
-center_bucket = row with highest modelPct  (from compareToMarket)
-range         = center_bucket ± 1 adjacent bucket on each side
-```
-
-Falls back to current market-based logic when verdict is `UNKNOWN` (no projection available — Discover/external cards).
-
-### Verdict badge labels
-
-`<VerdictBadge>` gains two states:
-- 🟢 AGREE
-- 🟡 NEUTRAL
-- 🟠 WEAK DISAGREE (amber)
-- 🔴 STRONG DISAGREE (red)
-- ⚪ n/a
-
-### Files
-
-- **`src/lib/weatherProjection.ts`** — dampen `forecast_speed`, split verdict, add `bestValueLabel`/`bestValueEdge`.
-- **`src/lib/weather.ts`** — extend `MarketVerdict` union, update `decideAction` veto + back-compat mapping.
-- **`src/components/weather/MomentumBreakouts.tsx`** — new badge states, BEST VALUE line, allocator center switches to model-top bucket.
+- Same prices feed both the visible "80–81°F vs 82–83°F" header and the verdict's top-4 sort.
+- When a live mid is unavailable for some outcome, the fallback to DB price keeps the row instead of dropping the bucket.
+- AGREE/DISAGREE will then reflect what the user actually sees.
 
 ### Out of scope
 
-- No DB/edge-function changes.
-- No changes to scan/sort/stake-size formulas (only the allocator's center selection).
-- Discover/external cards keep `UNKNOWN` and the existing market-based allocator path.
+- No DB writes (we're not refreshing `polymarket_price` rows here — that's the scanner's job).
+- No changes to projection math, sizing, or badges.
 
