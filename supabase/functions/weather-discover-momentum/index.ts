@@ -259,9 +259,13 @@ Deno.serve(async (req) => {
     const now = Date.now();
     const target1h = now - 3_600_000;
 
-    // Filter to events ending within window
+    // Filter to events ending within window. City is detected from title+sub-questions
+    // so eventEndTime can compute end-of-day in the city's local timezone.
     const eligible = events.filter((ev) => {
-      const t = eventEndTime(ev);
+      const subs: any[] = Array.isArray(ev?.markets) ? ev.markets : [];
+      const text = String(ev?.title ?? "") + " " + subs.map((s) => s?.question ?? "").join(" ");
+      const city = detectCity(text);
+      const t = eventEndTime(ev, city);
       if (t == null) return false;
       const hours = (t - now) / 3_600_000;
       return hours > MIN_HOURS && hours <= maxHours;
@@ -331,12 +335,13 @@ Deno.serve(async (req) => {
         else trajectory = "flat";
 
         const slug = ev?.slug ?? null;
-        const endTs = eventEndTime(ev);
         const text = String(ev?.title ?? "") + " " + subs.map((s) => s?.question ?? "").join(" ");
+        const city = detectCity(text);
+        const endTs = eventEndTime(ev, city);
         results.push({
           event_slug: slug,
           event_title: String(ev?.title ?? "Untitled"),
-          city: detectCity(text),
+          city,
           event_time: endTs ? new Date(endTs).toISOString() : null,
           polymarket_url: slug ? `https://polymarket.com/event/${slug}` : null,
           leader_label: leader.label,
