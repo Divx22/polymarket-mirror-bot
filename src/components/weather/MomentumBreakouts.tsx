@@ -576,10 +576,27 @@ const Row = ({ m, onSelect, stake, stakePct, score }: { m: Movement; onSelect?: 
           <Snap label="Now" value={gapNowPct} bold valueClass={nowColor} />
           <span className="text-[9px] uppercase tracking-wider text-muted-foreground ml-1">Gap #1 vs #2</span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <div>
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Entry</div>
             <div className="font-mono-num font-bold text-base text-foreground">{entryPct}%</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Model</div>
+            <div className={cn(
+              "font-mono-num font-bold text-base",
+              modelPct == null ? "text-muted-foreground"
+                : modelEdge != null && modelEdge > 0 ? "text-emerald-400"
+                : modelEdge != null && modelEdge < 0 ? "text-red-400"
+                : "text-foreground",
+            )}>
+              {modelPct != null ? `${modelPct.toFixed(1)}%` : "—"}
+              {modelEdge != null && (
+                <span className="ml-1 text-[10px] font-semibold opacity-80">
+                  ({modelEdge >= 0 ? "+" : ""}{modelEdge.toFixed(1)})
+                </span>
+              )}
+            </div>
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Upside</div>
