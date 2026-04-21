@@ -545,7 +545,7 @@ const CountdownBadge = ({
           </div>
         )}
       </div>
-      {peakLeft && peakLocal && (
+      {peakLeft && peakLocal && !peakPassed && (
         <div className="inline-flex flex-col items-end gap-0.5 px-2 py-1 rounded border bg-orange-500/15 text-orange-300 border-orange-400/40">
           <div className="inline-flex items-center gap-1 text-[11px] font-mono-num font-semibold">
             <span aria-hidden>☀</span>
