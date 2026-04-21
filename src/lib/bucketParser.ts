@@ -1,11 +1,18 @@
 // Frontend port of the edge function's bucket-label parser.
 // Extracts °C bounds from human labels like "80-81°F", "26°C", "82°F or higher".
+//
+// `method` controls how a single-integer label like "10°C" is interpreted:
+//   - "rounded" (default): 9.5 ≤ T < 10.5
+//   - "floor":             10.0 ≤ T < 11.0
+//   - "ceiling":           9.0 < T ≤ 10.0
+// "unknown"/null fall back to "rounded" to preserve current behavior.
 
 const fToC = (f: number) => ((f - 32) * 5) / 9;
 
+export type ResolutionMethod = "rounded" | "floor" | "ceiling" | "unknown" | null;
 export type ParsedBucket = { min_c: number | null; max_c: number | null };
 
-export function parseBucketLabel(rawLabel: string): ParsedBucket {
+export function parseBucketLabel(rawLabel: string, method: ResolutionMethod = "rounded"): ParsedBucket {
   const s = rawLabel.replace(/–/g, "-");
 
   let m = s.match(/(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*°?\s*([FCfc])/);
@@ -35,13 +42,19 @@ export function parseBucketLabel(rawLabel: string): ParsedBucket {
     const v = parseFloat(m[2]); const unit = (m[3] ?? "C").toUpperCase();
     return { min_c: null, max_c: unit === "F" ? fToC(v) : v };
   }
-  // Single-value fallback (e.g. "26°C") → treat as ±0.5° band in the original unit.
+  // Single-value fallback (e.g. "26°C"). Bounds depend on resolution method.
   m = s.match(/(-?\d+(?:\.\d+)?)\s*°?\s*([FCfc])/);
   if (m) {
     const v = parseFloat(m[1]); const unit = m[2].toUpperCase();
     const c = unit === "F" ? fToC(v) : v;
-    const half = unit === "F" ? fToC(v + 0.5) - c : 0.5;
-    return { min_c: c - half, max_c: c + half };
+    // Width of "1 unit" expressed in °C (1°F ≈ 0.556°C, 1°C = 1°C).
+    const oneUnit = unit === "F" ? fToC(v + 1) - c : 1;
+    const halfUnit = oneUnit / 2;
+    const eff: ResolutionMethod = method === "unknown" || method == null ? "rounded" : method;
+    if (eff === "floor") return { min_c: c, max_c: c + oneUnit };
+    if (eff === "ceiling") return { min_c: c - oneUnit, max_c: c };
+    // rounded
+    return { min_c: c - halfUnit, max_c: c + halfUnit };
   }
   return { min_c: null, max_c: null };
 }

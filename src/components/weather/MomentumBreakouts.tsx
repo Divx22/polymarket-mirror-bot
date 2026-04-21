@@ -216,6 +216,26 @@ export const MomentumBreakouts = ({
   const [gapMin, setGapMin] = useState<number>(gapMinProp ?? DEFAULT_GAP_MIN);
   // Resolution window in hours. User-selectable: 8 / 12 / 24.
   const [windowHours, setWindowHours] = useState<WindowHours>(DEFAULT_WINDOW);
+  const [detectingIds, setDetectingIds] = useState<Set<string>>(new Set());
+
+  const detectResolution = async (marketId: string) => {
+    setDetectingIds((s) => new Set(s).add(marketId));
+    try {
+      await supabase.functions.invoke("weather-detect-resolution", { body: { market_id: marketId } });
+      // Force a reload of the page so the updated resolution_method flows through.
+      window.location.reload();
+    } catch (e) {
+      console.error("detect-resolution failed", e);
+    } finally {
+      setDetectingIds((s) => { const n = new Set(s); n.delete(marketId); return n; });
+    }
+  };
+
+  // One-shot backfill on mount: classify any active market without a method yet.
+  useEffect(() => {
+    supabase.functions.invoke("weather-detect-resolution", { body: { all_pending: true } }).catch(() => {});
+  }, []);
+
 
   const scan = async () => {
     setScanning(true);
@@ -506,7 +526,7 @@ export const MomentumBreakouts = ({
               const stake = suggestStake(bankroll, stakeCapPct, row.sortScore);
               const stakePct = bankroll > 0 ? (stake / bankroll) * 100 : 0;
               return row.kind === "local"
-                ? <Row key={row.key} m={row.data} outs={outcomes[row.data.market.id] ?? []} onSelect={onSelect} stake={stake} stakePct={stakePct} score={row.sortScore} bankroll={bankroll} stakeCapPct={stakeCapPct} />
+                ? <Row key={row.key} m={row.data} outs={outcomes[row.data.market.id] ?? []} onSelect={onSelect} stake={stake} stakePct={stakePct} score={row.sortScore} bankroll={bankroll} stakeCapPct={stakeCapPct} onDetectResolution={detectResolution} detectingResolution={detectingIds.has(row.data.market.id)} />
                 : <ExternalRow key={row.key} m={row.data} stake={stake} stakePct={stakePct} score={row.sortScore} bankroll={bankroll} stakeCapPct={stakeCapPct} />;
             })}
           </div>
@@ -961,6 +981,7 @@ const SignalBoxes = ({
   mode, modeTip, modeCls,
   verdict, verdictTitle, verdictReason,
   wxSourceLine,
+  resolutionMethod, onDetectResolution, detectingResolution,
 }: {
   mode: MomentumMode;
   modeTip: string;
@@ -969,6 +990,9 @@ const SignalBoxes = ({
   verdictTitle?: string;
   verdictReason?: string;
   wxSourceLine: string;
+  resolutionMethod?: "rounded" | "floor" | "ceiling" | "unknown" | null;
+  onDetectResolution?: () => void;
+  detectingResolution?: boolean;
 }) => (
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
     <div className="rounded-md border border-border bg-background/40 p-2.5 space-y-1.5">
@@ -990,6 +1014,24 @@ const SignalBoxes = ({
         <span className="uppercase tracking-wider text-[9px]">Temp source: </span>
         {wxSourceLine}
       </div>
+      {onDetectResolution && (
+        <div className="text-[10px] leading-snug text-muted-foreground flex items-center gap-1.5 flex-wrap pt-1 border-t border-border/40">
+          <span className="uppercase tracking-wider text-[9px]">Resolution:</span>
+          <span className="font-mono-num">
+            {resolutionMethod && resolutionMethod !== "unknown"
+              ? resolutionMethod
+              : (resolutionMethod === "unknown" ? "unknown" : "not detected")}
+          </span>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDetectResolution(); }}
+            disabled={detectingResolution}
+            className="text-[10px] underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+          >
+            {detectingResolution ? "detecting…" : "re-detect"}
+          </button>
+        </div>
+      )}
     </div>
   </div>
 );
@@ -1034,7 +1076,7 @@ const StakeBar = ({ stake, stakePct }: { stake: number; stakePct: number }) => (
   </div>
 );
 
-const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct }: { m: Movement; outs: WeatherOutcome[]; onSelect?: (mk: WeatherMarket) => void } & RowExtras) => {
+const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct, onDetectResolution, detectingResolution }: { m: Movement; outs: WeatherOutcome[]; onSelect?: (mk: WeatherMarket) => void; onDetectResolution?: (marketId: string) => void; detectingResolution?: boolean } & RowExtras) => {
   const [copied, setCopied] = useState(false);
   const entryPct = (m.leaderNow * 100).toFixed(1);
   const upsidePct = ((1 - m.leaderNow) * 100).toFixed(1);
@@ -1067,13 +1109,27 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
   const extremeLabel = extreme === "min" ? "low" : "peak";
 
   // Build market-vs-model projection from outcome buckets.
-  const buckets: BucketLike[] = outs.map((o) => ({
-    label: o.label,
-    bucket_min_c: o.bucket_min_c,
-    bucket_max_c: o.bucket_max_c,
-    marketPrice: m.liveMids?.[o.id] ?? o.polymarket_price,
-    clob_token_id: o.clob_token_id ?? null,
-  }));
+  // If we know the market's resolution_method (rounded/floor/ceiling), re-parse
+  // single-integer labels with the right bounds — DB-stored bounds default to rounded.
+  const resMethod = m.market.resolution_method ?? null;
+  const buckets: BucketLike[] = outs.map((o) => {
+    let min_c = o.bucket_min_c;
+    let max_c = o.bucket_max_c;
+    if (resMethod && resMethod !== "rounded" && resMethod !== "unknown") {
+      const reparsed = parseBucketLabel(o.label, resMethod);
+      if (reparsed.min_c != null || reparsed.max_c != null) {
+        min_c = reparsed.min_c;
+        max_c = reparsed.max_c;
+      }
+    }
+    return {
+      label: o.label,
+      bucket_min_c: min_c,
+      bucket_max_c: max_c,
+      marketPrice: m.liveMids?.[o.id] ?? o.polymarket_price,
+      clob_token_id: o.clob_token_id ?? null,
+    };
+  });
   // Detect market unit from bucket labels (e.g. "26-27°C" → C, "78-79°F" → F).
   const labelBlob = outs.map((o) => o.label).join(" ");
   const unit: "C" | "F" = /°\s*C|\bC\b/i.test(labelBlob) && !/°\s*F/i.test(labelBlob) ? "C" : "F";
@@ -1158,6 +1214,9 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
             const peakLbl = pastPeak ? `${extremeLabel} (passed)` : `${extremeLabel} (${ttp})`;
             return `Open-Meteo ${m.market.city ?? "site"} · now ${nowDisp}${tSym} · ${peakLbl} ${peakDisp}${tSym} · cloud ${cloud} · precip ${precip} · wind ${wind} · conf ${projection.confidence}%${flagStr}`;
           })()}
+          resolutionMethod={m.market.resolution_method}
+          onDetectResolution={onDetectResolution ? () => onDetectResolution(m.market.id) : undefined}
+          detectingResolution={detectingResolution}
         />
         <ActionBadge decision={decision} />
         {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} buckets={buckets} tradeContext={{ market_slug: m.market.polymarket_event_slug ?? null, market_question: m.market.market_question, city: m.market.city, event_time: m.market.event_time, clob_token_id: null }} />}
