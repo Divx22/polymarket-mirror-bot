@@ -622,16 +622,16 @@ const CardShell = ({
 );
 
 const CardHeader = ({
-  city, lat, lon, leader, runner, sourceLabel, eventTime,
-}: { city: string | null; lat?: number | null; lon?: number | null; leader: string; runner: string; sourceLabel: string; eventTime?: string | null }) => (
+  title, city, lat, lon, leader, runner, sourceLabel, eventTime,
+}: { title?: string | null; city: string | null; lat?: number | null; lon?: number | null; leader: string; runner: string; sourceLabel: string; eventTime?: string | null }) => (
   <div className="px-4 pt-3 pb-2 border-b border-border/60 bg-surface-2/30">
     <div className="flex items-start justify-between gap-2">
       <div className="flex-1 min-w-0">
-        {city && (
-          <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-0.5">{sourceLabel}</div>
-        )}
-        {city && (
-          <div className="text-xl sm:text-2xl font-extrabold text-foreground leading-tight">{city}</div>
+        <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-0.5">
+          {sourceLabel}{city ? ` · ${city}` : ""}
+        </div>
+        {title && (
+          <div className="text-base sm:text-lg font-extrabold text-foreground leading-snug">{title}</div>
         )}
         <div className="mt-1 flex items-baseline gap-2 flex-wrap">
           <span className="text-base font-bold text-emerald-400">{leader}</span>
