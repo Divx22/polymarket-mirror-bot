@@ -826,7 +826,7 @@ type TradeContext = Omit<LogEdgeTradeInput, "source" | "entry_price" | "suggeste
 
 const ProjectionPanel = ({
   projection, snapshot, bankroll, stakeCapPct, confidence, unit,
-  tradeContext, buckets,
+  tradeContext, buckets, mode, leaderLabel,
 }: {
   projection: ProjectionResult;
   snapshot: OpenMeteoSnapshot | null;
@@ -836,7 +836,16 @@ const ProjectionPanel = ({
   unit: "C" | "F";
   tradeContext: TradeContext;
   buckets: BucketLike[];
+  mode: MomentumMode;
+  leaderLabel: string | null;
 }) => {
+  const isCounterTrend = projection.bestValueLabel != null
+    && leaderLabel != null
+    && projection.bestValueLabel !== leaderLabel;
+  // Block auto-log when counter-trend and not in MOMENTUM (early-reversal) mode.
+  const blockAutoLog = isCounterTrend && mode !== "MOMENTUM";
+  // Hide CTA entirely in CERTAINTY mode counter-trend (post-peak, no fighting trend).
+  const hideCta = isCounterTrend && mode === "CERTAINTY";
   const [open, setOpen] = useState(false);
   const [logging, setLogging] = useState(false);
   const [logged, setLogged] = useState(false);
@@ -888,6 +897,7 @@ const ProjectionPanel = ({
   useEffect(() => {
     if (!fair || projection.bestValueEdge == null) return;
     if (projection.bestValueEdge < 15) return;
+    if (blockAutoLog) return;
     const key = `${tradeContext.market_slug ?? tradeContext.market_question}::${projection.bestValueLabel}`;
     if (autoLoggedKeyRef.current === key) return;
     autoLoggedKeyRef.current = key;
@@ -895,7 +905,7 @@ const ProjectionPanel = ({
     if (!payload) return;
     void logEdgeTrade(payload);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projection.bestValueEdge, projection.bestValueLabel, tradeContext.market_slug]);
+  }, [projection.bestValueEdge, projection.bestValueLabel, tradeContext.market_slug, blockAutoLog]);
 
   const onMarkTraded = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -941,10 +951,20 @@ const ProjectionPanel = ({
             const tierCls = strong ? "text-emerald-300" : weak ? "text-muted-foreground" : "text-amber-300";
             return (
               <div className="mb-2 space-y-1">
-                <div className={cn("text-[11px] font-bold uppercase tracking-wider", tierCls)}>
-                  Best value: <span className="font-mono-num">{projection.bestValueLabel}</span>
-                  <span className="ml-1 font-mono-num">({tier} +{edge})</span>
-                  {bestPrice != null && <span className="ml-1 font-mono-num text-muted-foreground">@ {bestPrice.toFixed(0)}%</span>}
+                <div className={cn("text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 flex-wrap", tierCls)}>
+                  <span>
+                    Best value: <span className="font-mono-num">{projection.bestValueLabel}</span>
+                    <span className="ml-1 font-mono-num">({tier} +{edge})</span>
+                    {bestPrice != null && <span className="ml-1 font-mono-num text-muted-foreground">@ {bestPrice.toFixed(0)}%</span>}
+                  </span>
+                  {isCounterTrend && (
+                    <span
+                      className="inline-flex items-center px-1.5 py-0.5 rounded border border-amber-400/50 bg-amber-500/15 text-amber-200 text-[9px] font-bold normal-case tracking-normal"
+                      title={`Best value disagrees with market leader (${leaderLabel}). ${mode === "MOMENTUM" ? "Early reversal — actionable." : mode === "TRANSITION" ? "Auto-log blocked; manual CTA still available." : "CERTAINTY: CTA hidden, no fighting trend."}`}
+                    >
+                      ⚠ counter-trend vs leader
+                    </span>
+                  )}
                 </div>
                 {fairPct != null && bestPrice != null && (
                   <div className="text-[10px] text-muted-foreground">
@@ -967,25 +987,32 @@ const ProjectionPanel = ({
                     <span className="ml-1 font-mono-num">({smartBidPct.toFixed(1)}% of bankroll)</span>
                   </div>
                 )}
-                <button
-                  onClick={onMarkTraded}
-                  disabled={logging || logged}
-                  className={cn(
-                    "mt-1 inline-flex items-center gap-1.5 rounded border px-2 py-1 text-[11px] font-semibold transition-colors",
-                    logged
-                      ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200"
-                      : "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20",
-                  )}
-                  title={`Log this opportunity (${projection.bestValueLabel}) as a trade in your /trades log`}
-                >
-                  {logging
-                    ? <Loader2 className="h-3 w-3 animate-spin" />
-                    : logged ? <Check className="h-3 w-3" /> : <BookmarkPlus className="h-3 w-3" />}
-                  {logged ? "Logged" : "Mark as traded"}
-                </button>
-                {edge >= 15 && (
+                {!hideCta && (
+                  <button
+                    onClick={onMarkTraded}
+                    disabled={logging || logged}
+                    className={cn(
+                      "mt-1 inline-flex items-center gap-1.5 rounded border px-2 py-1 text-[11px] font-semibold transition-colors",
+                      logged
+                        ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200"
+                        : "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20",
+                    )}
+                    title={`Log this opportunity (${projection.bestValueLabel}) as a trade in your /trades log`}
+                  >
+                    {logging
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : logged ? <Check className="h-3 w-3" /> : <BookmarkPlus className="h-3 w-3" />}
+                    {logged ? "Logged" : "Mark as traded"}
+                  </button>
+                )}
+                {edge >= 15 && !blockAutoLog && (
                   <div className="text-[9px] text-muted-foreground italic">
                     Auto-logged (edge ≥15pp). Review or update outcome on the /trades page.
+                  </div>
+                )}
+                {edge >= 15 && blockAutoLog && (
+                  <div className="text-[9px] text-amber-300/80 italic">
+                    Auto-log blocked: counter-trend in {mode} mode. {hideCta ? "CTA hidden — no fighting trend after peak." : "Use manual CTA if you still want to enter."}
                   </div>
                 )}
               </div>
@@ -1316,7 +1343,7 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct,
           detectingResolution={detectingResolution}
         />
         <ActionBadge decision={decision} />
-        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} buckets={buckets} tradeContext={{ market_slug: m.market.polymarket_event_slug ?? null, market_question: m.market.market_question, city: m.market.city, event_time: m.market.event_time, clob_token_id: null }} />}
+        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} buckets={buckets} mode={decision.mode} leaderLabel={m.leader.label} tradeContext={{ market_slug: m.market.polymarket_event_slug ?? null, market_question: m.market.market_question, city: m.market.city, event_time: m.market.event_time, clob_token_id: null }} />}
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
@@ -1486,7 +1513,7 @@ const ExternalRow = ({ m, stake, stakePct, score, bankroll, stakeCapPct }: { m: 
           wxSourceLine={wxSourceLine}
         />
         <ActionBadge decision={decision} degradedHint="External market: live volume not fetched" />
-        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} buckets={buckets} tradeContext={{ market_slug: m.event_slug, market_question: m.event_title, city: m.city, event_time: m.event_time, clob_token_id: null }} />}
+        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} buckets={buckets} mode={decision.mode} leaderLabel={m.leader_label} tradeContext={{ market_slug: m.event_slug, market_question: m.event_title, city: m.city, event_time: m.event_time, clob_token_id: null }} />}
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
