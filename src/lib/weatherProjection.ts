@@ -32,6 +32,8 @@ export type PeakConditions = {
   wind: number | null;
 };
 
+export type PeakBias = "LOWER" | "HIGHER" | "NEUTRAL";
+
 export type ProjectionResult = {
   meanC: number;
   bandC: number;       // ± half-width in °C
@@ -47,6 +49,8 @@ export type ProjectionResult = {
   confidence: number;
   forecastDrift: boolean;
   plateauDetected: boolean;
+  /** Direction of forecast-vs-reality drift; LOWER=reality cooler than model said, HIGHER=hotter. */
+  peakBias: PeakBias;
   /** Conditions interpolated to the peak hour, useful for UI display. */
   peak: PeakConditions | null;
 };
@@ -106,6 +110,7 @@ export function projectPeakTempC(
   peak: PeakConditions | null;
   forecastDrift: boolean;
   plateauDetected: boolean;
+  peakBias: PeakBias;
 } | null {
   if (!s || !Number.isFinite(s.temperature_now)) return null;
   const h = Number.isFinite(hoursToPeak as number) ? Math.max(0, Number(hoursToPeak)) : 0;
@@ -150,13 +155,21 @@ export function projectPeakTempC(
     }
   }
 
-  // Forecast drift: compare last-hour real change vs what the model said would happen.
+  // Forecast-vs-reality drift with direction.
+  let peakBias: PeakBias = "NEUTRAL";
   let forecastDrift = false;
   if (s.temperature_1h_ago != null && s.temp_forecast_1h != null) {
     const realSpeed = s.temperature_now - s.temperature_1h_ago;
     const forecastSpeed = s.temp_forecast_1h - s.temperature_now;
-    if (Math.abs(realSpeed - forecastSpeed) > 0.5) forecastDrift = true;
+    const drift = realSpeed - forecastSpeed;
+    if (drift < -0.5) peakBias = "LOWER";
+    else if (drift > 0.5) peakBias = "HIGHER";
+    forecastDrift = peakBias !== "NEUTRAL";
   }
+
+  // Apply directional shift to mean.
+  if (peakBias === "LOWER") meanC -= 0.3;
+  else if (peakBias === "HIGHER") meanC += 0.3;
 
   // Band: cloud + wind contributions evaluated at the peak hour.
   const peakWind = peak?.wind ?? s.wind_speed;
@@ -167,7 +180,7 @@ export function projectPeakTempC(
   const bandC = bandF * 5 / 9;
   const sigmaC = bandC / 1.96;
 
-  return { meanC, bandC, sigmaC, peak, forecastDrift, plateauDetected };
+  return { meanC, bandC, sigmaC, peak, forecastDrift, plateauDetected, peakBias };
 }
 
 // Abramowitz & Stegun erf approximation (max error ~1.5e-7)
@@ -229,6 +242,21 @@ export function compareToMarket(
 
   // Compute raw model probabilities then renormalize to the same top-4 universe
   const rawModel = top.map((b) => bucketProbability(proj.meanC, proj.sigmaC, b.bucket_min_c, b.bucket_max_c));
+
+  // Apply directional bias boost (+10%) to buckets on the bias side of projected mean.
+  if (proj.peakBias !== "NEUTRAL") {
+    rawModel.forEach((p, i) => {
+      const b = top[i];
+      const bucketMid = b.bucket_min_c != null && b.bucket_max_c != null
+        ? (b.bucket_min_c + b.bucket_max_c) / 2
+        : (b.bucket_min_c ?? b.bucket_max_c ?? proj.meanC);
+      const isLower = bucketMid < proj.meanC;
+      const isHigher = bucketMid > proj.meanC;
+      if (proj.peakBias === "LOWER" && isLower) rawModel[i] = p * 1.10;
+      if (proj.peakBias === "HIGHER" && isHigher) rawModel[i] = p * 1.10;
+    });
+  }
+
   const modelSum = rawModel.reduce((s, p) => s + p, 0) || 1;
 
   const rows: ProjectionRow[] = top.map((b, i) => {
@@ -282,6 +310,7 @@ export function compareToMarket(
     confidence,
     forecastDrift: proj.forecastDrift,
     plateauDetected: proj.plateauDetected,
+    peakBias: proj.peakBias,
     peak: proj.peak,
   };
 }
