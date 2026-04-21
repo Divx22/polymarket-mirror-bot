@@ -1079,8 +1079,9 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
     marketVerdict: verdict,
   });
 
+  const projTempStr = projection ? `${tConv(projection.meanC).toFixed(1)}${tSym}` : null;
   const verdictTitle = projection
-    ? `Model #1: ${projection.modelTopLabel ?? "—"} · Market #1: ${projection.marketTopLabel ?? "—"}`
+    ? `Model #1: ${projection.modelTopLabel ?? "—"} bucket (proj ${projTempStr}) · Market #1: ${projection.marketTopLabel ?? "—"}`
     : "No projection (missing weather or bucket data)";
 
   const copy = async (e: React.MouseEvent) => {
