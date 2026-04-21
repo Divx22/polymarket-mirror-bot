@@ -1028,11 +1028,25 @@ const ProjectionPanel = ({
               </div>
             );
           })()}
-          {projection.outOfRange && (
-            <div className="mb-2 rounded border border-red-400/40 bg-red-500/10 px-2 py-1.5 text-[10px] text-red-200">
-              Model projects ~{meanDisp.toFixed(1)}{sym} — well outside all listed buckets. Market is pricing a peak the forecast doesn't support.
-            </div>
-          )}
+          {projection.outOfRange && (() => {
+            const realizedC = snapshot?.today_high_so_far_c ?? null;
+            const realizedDisp = realizedC != null ? toUnit(realizedC) : null;
+            // Past-peak case: today's realized high is locked in. The forecast
+            // mean is a stale lower-bound; market is pricing what already happened.
+            if (pastPeak) {
+              return (
+                <div className="mb-2 rounded border border-amber-400/40 bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-200">
+                  Past peak — today's high {realizedDisp != null ? `(${realizedDisp.toFixed(1)}${sym}) ` : ""}is already locked in.
+                  Forecast mean ({meanDisp.toFixed(1)}{sym}) is stale and no longer relevant; trust the market's leader bucket.
+                </div>
+              );
+            }
+            return (
+              <div className="mb-2 rounded border border-red-400/40 bg-red-500/10 px-2 py-1.5 text-[10px] text-red-200">
+                Model projects ~{meanDisp.toFixed(1)}{sym} — well outside all listed buckets. Market is pricing a peak the forecast doesn't support.
+              </div>
+            );
+          })()}
           <table className="w-full text-[11px] font-mono-num">
             <thead>
               <tr className="text-muted-foreground text-[9px] uppercase tracking-wider">
