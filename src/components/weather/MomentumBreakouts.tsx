@@ -443,10 +443,11 @@ const useCountdown = (targetTime: string | null | undefined) => {
 // Countdown badge component — shows local close time + live countdown,
 // plus a secondary "peak weather" countdown (4 PM local in city tz).
 const CountdownBadge = ({
-  eventTime, city, urgent,
-}: { eventTime: string | null | undefined; city?: string | null; urgent?: boolean }) => {
+  eventTime, city, lat, lon, urgent,
+}: { eventTime: string | null | undefined; city?: string | null; lat?: number | null; lon?: number | null; urgent?: boolean }) => {
   const timeLeft = useCountdown(eventTime);
-  const peakMs = peakWeatherTimeMs(eventTime, city);
+  const loc = { city, lat, lon };
+  const peakMs = peakWeatherTimeMs(eventTime, loc);
   const peakIso = peakMs != null ? new Date(peakMs).toISOString() : null;
   const peakLeft = useCountdown(peakIso);
   if (!timeLeft) return null;
@@ -461,8 +462,8 @@ const CountdownBadge = ({
       ? "bg-amber-500/20 text-amber-300 border-amber-400/50"
       : "bg-blue-500/15 text-blue-300 border-blue-400/40";
 
-  const localTime = formatLocalCloseTime(eventTime, city);
-  const peakLocal = formatLocalHour(peakMs, city);
+  const localTime = formatLocalCloseTime(eventTime, loc);
+  const peakLocal = formatLocalHour(peakMs, loc);
   const peakPassed = peakLeft != null && peakLeft.totalMs <= 0;
 
   return (
@@ -520,8 +521,8 @@ const CardShell = ({
 );
 
 const CardHeader = ({
-  city, leader, runner, sourceLabel, eventTime,
-}: { city: string | null; leader: string; runner: string; sourceLabel: string; eventTime?: string | null }) => (
+  city, lat, lon, leader, runner, sourceLabel, eventTime,
+}: { city: string | null; lat?: number | null; lon?: number | null; leader: string; runner: string; sourceLabel: string; eventTime?: string | null }) => (
   <div className="px-4 pt-3 pb-2 border-b border-border/60 bg-surface-2/30">
     <div className="flex items-start justify-between gap-2">
       <div className="flex-1 min-w-0">
@@ -539,7 +540,7 @@ const CardHeader = ({
       </div>
       {eventTime && (
         <div className="shrink-0">
-          <CountdownBadge eventTime={eventTime} city={city} />
+          <CountdownBadge eventTime={eventTime} city={city} lat={lat} lon={lon} />
         </div>
       )}
     </div>
@@ -589,7 +590,7 @@ const Row = ({ m, onSelect, stake, stakePct, score }: { m: Movement; onSelect?: 
 
   return (
     <CardShell onClick={openCard} clickable>
-      <CardHeader city={m.market.city} leader={m.leader.label} runner={m.runnerUp.label} sourceLabel="In your scanner" eventTime={m.market.event_time} />
+      <CardHeader city={m.market.city} lat={m.market.latitude} lon={m.market.longitude} leader={m.leader.label} runner={m.runnerUp.label} sourceLabel="In your scanner" eventTime={m.market.event_time} />
       <div className="px-4 py-3 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={cn("inline-flex items-center px-2.5 py-1 rounded-md border text-[12px] font-bold uppercase tracking-wide", meta.badge)}>
