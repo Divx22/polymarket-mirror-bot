@@ -880,7 +880,7 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
     label: o.label,
     bucket_min_c: o.bucket_min_c,
     bucket_max_c: o.bucket_max_c,
-    marketPrice: o.polymarket_price,
+    marketPrice: m.liveMids?.[o.id] ?? o.polymarket_price,
   }));
   const projection = compareToMarket(m.weather, hoursToPeak, buckets);
   const verdict: MarketVerdict = projection?.verdict ?? "UNKNOWN";
