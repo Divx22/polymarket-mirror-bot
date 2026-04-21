@@ -170,6 +170,27 @@ function suggestStake(bankroll: number, stakeCapPct: number, score: number): num
   return Math.round(stake);
 }
 
+// Smart bid for a "best value" mispricing — Kelly-lite.
+// Inputs: edge in pp (e.g. +32), action confidence 0–100, bankroll $, hard cap %.
+// Sizing: edgeRatio (saturates at 30pp) × confRatio (0..1) × cap. Floor 10% of cap when ≥ +7pp.
+// Returns 0 when edge < +7pp (no real value).
+function suggestSmartBid(
+  edgePp: number | null | undefined,
+  confidence: number | null | undefined,
+  bankroll: number,
+  stakeCapPct: number,
+): number {
+  if (!Number.isFinite(bankroll) || bankroll <= 0) return 0;
+  const e = Number(edgePp ?? 0);
+  if (!Number.isFinite(e) || e < 7) return 0;
+  const cap = bankroll * (stakeCapPct / 100);
+  const edgeRatio = Math.min(1, e / 30);
+  const confRatio = Math.max(0, Math.min(1, Number(confidence ?? 50) / 100));
+  const raw = cap * edgeRatio * confRatio;
+  const floor = cap * 0.10;
+  return Math.round(Math.max(floor, raw));
+}
+
 export const MomentumBreakouts = ({
   markets, outcomes, onSelect, gapMin: gapMinProp, showThresholdControl = true,
   bankroll = 1000, stakeCapPct = 3,
