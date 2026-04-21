@@ -1061,14 +1061,15 @@ const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & Ro
           </span>
           <span className="text-[10px] text-muted-foreground font-mono-num">score {score.toFixed(3)}</span>
         </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <ModeBadge mode={decision.mode} />
-          <VerdictBadge verdict="UNKNOWN" title="External market: no weather projection" />
-        </div>
-        <UnknownReasonLabel reason={unknownReason} />
-        <div className={cn("text-[11px] leading-snug font-medium", MODE_HINT[decision.mode].cls)}>
-          {MODE_HINT[decision.mode].tip}
-        </div>
+        <SignalBoxes
+          mode={decision.mode}
+          modeTip={MODE_HINT[decision.mode].tip}
+          modeCls={MODE_HINT[decision.mode].cls}
+          verdict="UNKNOWN"
+          verdictTitle="External market: no weather projection"
+          verdictReason={unknownReason}
+          wxSourceLine="Discover row — temperature snapshot not fetched"
+        />
         <ActionBadge decision={decision} degradedHint="External market: live volume not fetched" />
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
