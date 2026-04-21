@@ -175,12 +175,13 @@ export function projectPeakTempC(
   if (peakBias === "LOWER") meanC -= 0.3;
   else if (peakBias === "HIGHER") meanC += 0.3;
 
-  // Band: cloud + wind contributions evaluated at the peak hour.
+  // Band: cloud + wind + time-to-peak contributions evaluated at the peak hour.
   const peakWind = peak?.wind ?? s.wind_speed;
   const cloudPct = Math.max(0, Math.min(100, peakCloud ?? 0));
   const windKmh = Math.max(0, peakWind ?? 0);
-  let bandF = Math.max(1, Math.min(4, 1 + (cloudPct / 100) * 1.5 + (windKmh / 30) * 1));
-  if (forecastDrift) bandF = Math.min(5, bandF + 0.5);
+  const hoursTerm = Math.min(2.0, Math.sqrt(Math.max(0, h)) * 0.4);
+  let bandF = Math.max(1, Math.min(6, 1 + (cloudPct / 100) * 1.5 + (windKmh / 30) * 1 + hoursTerm));
+  if (forecastDrift) bandF = Math.min(6, bandF + 0.5);
   const bandC = bandF * 5 / 9;
   const sigmaC = bandC / 1.96;
 
