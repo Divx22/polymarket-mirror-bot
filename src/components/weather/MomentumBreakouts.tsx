@@ -1087,6 +1087,18 @@ const ProjectionPanel = ({
           {(projection.verdict === "STRONG_DISAGREE" || projection.verdict === "WEAK_DISAGREE") && projection.marketTopLabel && (() => {
             const bestRow = projection.rows.find((r) => r.label === projection.bestValueLabel && r.edge > 0);
             const fmtPct = (p: number) => p >= 1 ? `${p.toFixed(0)}%` : p >= 0.1 ? `<1%` : `≈0%`;
+            // Basket: top buckets with positive edge, weighted by edge × modelPct (expected-value-ish).
+            // Cap at 4 buckets so the basket stays focused.
+            const positiveEdge = projection.rows.filter((r) => r.edge > 0 && r.modelPct >= 1);
+            const scored = positiveEdge.map((r) => ({ row: r, score: r.edge * r.modelPct }))
+              .sort((a, b) => b.score - a.score)
+              .slice(0, 4);
+            const totalScore = scored.reduce((s, x) => s + x.score, 0);
+            const basket = totalScore > 0
+              ? scored.map((x) => ({ row: x.row, weight: Math.round((x.score / totalScore) * 100) }))
+                  .filter((x) => x.weight >= 5)
+              : [];
+            const basketCoverage = basket.reduce((s, x) => s + x.row.modelPct, 0);
             return (
               <div className={cn(
                 "mt-2 text-[10px] space-y-1",
@@ -1098,6 +1110,24 @@ const ProjectionPanel = ({
                 {bestRow && (
                   <div className="text-emerald-300">
                     ★ Best trade: <span className="font-bold">{bestRow.label}</span> — market {fmtPct(bestRow.marketPct)}, model {fmtPct(bestRow.modelPct)}, edge <span className="font-bold">+{bestRow.edge}</span>
+                  </div>
+                )}
+                {basket.length >= 2 && (
+                  <div className="text-cyan-300 pt-1 border-t border-border/40">
+                    <div className="font-semibold">
+                      🎯 Basket ({basket.length} buckets, ~{Math.round(basketCoverage)}% model coverage):
+                    </div>
+                    <div className="space-y-0.5 pl-2">
+                      {basket.map((b) => (
+                        <div key={b.row.label}>
+                          <span className="font-bold">{b.weight}%</span> on{" "}
+                          <span className="font-bold">{b.row.label}</span>{" "}
+                          <span className="opacity-70">
+                            (model {fmtPct(b.row.modelPct)}, edge +{b.row.edge})
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
