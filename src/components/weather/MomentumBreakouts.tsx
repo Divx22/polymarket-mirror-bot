@@ -761,6 +761,10 @@ const Row = ({ m, onSelect, stake, stakePct, score }: { m: Movement; onSelect?: 
           </span>
           <span className="text-[10px] text-muted-foreground font-mono-num">score {score.toFixed(3)}</span>
         </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <ModeBadge mode={decision.mode} />
+          <WeatherBadge state={wx.state} snapshot={m.weather} score={wx.score} tempSpeed={wx.tempSpeed} forecastSpeed={wx.forecastSpeed} />
+        </div>
         <ActionBadge decision={decision} />
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
@@ -840,6 +844,10 @@ const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & Ro
             {meta.label} {netSign}{netPct}%
           </span>
           <span className="text-[10px] text-muted-foreground font-mono-num">score {score.toFixed(3)}</span>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <ModeBadge mode={decision.mode} />
+          <WeatherBadge state="UNKNOWN" snapshot={null} score={0} tempSpeed={null} forecastSpeed={null} />
         </div>
         <ActionBadge decision={decision} degradedHint="External market: live volume not fetched" />
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
