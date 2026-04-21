@@ -316,8 +316,21 @@ export function compareToMarket(
     }
   }
 
-  // Best value
-  const positives = rows.filter((r) => r.edge > 0).sort((a, b) => b.edge - a.edge);
+  // Best value — must be (a) a bucket the model actually finds plausible
+  // (≥10% model probability — otherwise a 16% model vs 0% market in a far-off
+  // bucket would beat the actual projected peak), and (b) within ~2σ of the
+  // projected mean so we don't recommend buckets the WX verdict disagrees with.
+  // Tie-break: prefer buckets closer to the projected mean.
+  const sigmaC = Math.max(proj.sigmaC, 0.5);
+  const distC = (r: ProjectionRow): number => {
+    const b = top.find((x) => x.label === r.label);
+    if (!b || b.bucket_min_c == null || b.bucket_max_c == null) return Infinity;
+    const center = (b.bucket_min_c + b.bucket_max_c) / 2;
+    return Math.abs(center - proj.meanC);
+  };
+  const positives = rows
+    .filter((r) => r.edge > 0 && r.modelPct >= 10 && distC(r) <= 2 * sigmaC)
+    .sort((a, b) => b.edge - a.edge || distC(a) - distC(b));
   const best = positives[0] ?? null;
 
   // Confidence: starts from band width, penalize drift + plateau.
