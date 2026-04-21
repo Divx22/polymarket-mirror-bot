@@ -484,16 +484,25 @@ const CardHeader = ({
   city, leader, runner, sourceLabel, eventTime,
 }: { city: string | null; leader: string; runner: string; sourceLabel: string; eventTime?: string | null }) => (
   <div className="px-4 pt-3 pb-2 border-b border-border/60 bg-surface-2/30">
-    {city && (
-      <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-0.5">{sourceLabel}</div>
-    )}
-    {city && (
-      <div className="text-xl sm:text-2xl font-extrabold text-foreground leading-tight">{city}</div>
-    )}
-    <div className="mt-1 flex items-baseline gap-2 flex-wrap">
-      <span className="text-base font-bold text-emerald-400">{leader}</span>
-      <span className="text-xs text-muted-foreground">vs</span>
-      <span className="text-sm font-semibold text-foreground/80">{runner}</span>
+    <div className="flex items-start justify-between gap-2">
+      <div className="flex-1 min-w-0">
+        {city && (
+          <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-0.5">{sourceLabel}</div>
+        )}
+        {city && (
+          <div className="text-xl sm:text-2xl font-extrabold text-foreground leading-tight">{city}</div>
+        )}
+        <div className="mt-1 flex items-baseline gap-2 flex-wrap">
+          <span className="text-base font-bold text-emerald-400">{leader}</span>
+          <span className="text-xs text-muted-foreground">vs</span>
+          <span className="text-sm font-semibold text-foreground/80">{runner}</span>
+        </div>
+      </div>
+      {eventTime && (
+        <div className="shrink-0">
+          <CountdownBadge eventTime={eventTime} />
+        </div>
+      )}
     </div>
   </div>
 );
