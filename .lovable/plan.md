@@ -1,86 +1,79 @@
 
 
-## Tighten WX projection: full forecast path + adjustments + confidence
+## Add directional drift bias to WX projection
 
-Builds on the prior approved plan (full hourly path, peak interpolation, °F unification) with four upgrades.
+Currently `forecastDrift` is a boolean that only widens the band and lowers confidence — it doesn't shift the projection. This adds **direction**: if reality is running cooler/hotter than the model said it would, push the mean and bucket probabilities the same way.
 
-### 1. Full path to peak (unchanged from prior plan)
+### 1. Compute signed drift in `projectPeakTempC`
 
-- `src/lib/openMeteo.ts`: extend `OpenMeteoSnapshot` with `forecast_path: { hour_offset, temp_c, cloud, precipitation, humidity, wind }[]` (next ~8 hours).
-- `src/lib/weatherProjection.ts`: interpolate `forecast_path` linearly to land exactly on `hoursToPeak`. Drop the `<2h × 0.5` / `<1h × 0.25` damping hacks.
-
-### 2. Proportional weather adjustments (replaces static thresholds)
-
-In `projectPeakTempC`, evaluate at the **peak hour**:
+In `src/lib/weatherProjection.ts`, replace the existing drift block:
 
 ```ts
-const cloudAdj  = ((peakCloud - 50) / 100) * -0.4;       // smooth, signed
-const precipAdj = Math.min(peakPrecip, 2) * -0.2;        // 0 to -0.4
-const humAdj    = peakHumidity > 80 ? -0.1 : 0;
-let totalAdj = cloudAdj + precipAdj + humAdj;
-totalAdj = Math.max(-0.8, Math.min(0.8, totalAdj));      // cap ±0.8°C
-meanC += totalAdj;
-```
-
-### 3. Forecast-vs-reality mismatch check
-
-Compare what the model said *would* happen this past hour vs what *did* happen:
-
-```ts
-const realSpeed     = snapshot.temperature_now - (snapshot.temperature_1h_ago ?? snapshot.temperature_now);
-const forecastSpeed = (snapshot.temp_forecast_1h ?? snapshot.temperature_now) - snapshot.temperature_now;
-const mismatch      = Math.abs(realSpeed - forecastSpeed);   // °C
-const forecastDrift = mismatch > 0.5;                        // flag
-```
-
-When `forecastDrift` is true, widen the band by +0.5°F equivalent (so verdict is more cautious).
-
-### 4. Curve-shape awareness (early plateau)
-
-If the forecast flattens before peak, reduce the projected mean:
-
-```ts
-// indices roughly bracketing hoursToPeak
-const a = path[Math.floor(hoursToPeak)];
-const b = path[Math.ceil(hoursToPeak)];
-if (a && b && Math.abs(a.temp_c - b.temp_c) < 0.2) {
-  meanC -= 0.3;   // plateau detected: don't push to fresh high
+let peakBias: "LOWER" | "HIGHER" | "NEUTRAL" = "NEUTRAL";
+let forecastDrift = false;
+if (s.temperature_1h_ago != null && s.temp_forecast_1h != null) {
+  const realSpeed = s.temperature_now - s.temperature_1h_ago;
+  const forecastSpeed = s.temp_forecast_1h - s.temperature_now;
+  const drift = realSpeed - forecastSpeed;
+  if (drift < -0.5) peakBias = "LOWER";
+  else if (drift > 0.5) peakBias = "HIGHER";
+  forecastDrift = peakBias !== "NEUTRAL";
 }
 ```
 
-### 5. Confidence score (new output)
+### 2. Apply directional shift to mean
 
-Extend `ProjectionResult` with `confidence: number` (0–100):
+After the plateau adjustment, before computing the band:
 
 ```ts
-const bandF = bandC * 9/5;
-let confidence = Math.round(100 - bandF * 15);
-if (forecastDrift) confidence -= 20;
-if (plateauDetected) confidence -= 5;
-confidence = Math.max(0, Math.min(100, confidence));
+if (peakBias === "LOWER") meanC -= 0.3;
+else if (peakBias === "HIGHER") meanC += 0.3;
 ```
 
-Also expose `forecastDrift: boolean` and `plateauDetected: boolean` on the result for the UI.
+This replaces the current symmetric band-widening as the *primary* drift response. Band still widens (+0.5°F) when bias is non-neutral so confidence still drops.
 
-### 6. UI: unify units + show new diagnostics
+### 3. Return `peakBias` from `projectPeakTempC`
 
-In `src/components/weather/MomentumBreakouts.tsx` WX box `wxSourceLine`:
+Extend its return type with `peakBias: "LOWER" | "HIGHER" | "NEUTRAL"` and propagate to `ProjectionResult`.
 
+### 4. Boost bucket probabilities by direction in `compareToMarket`
+
+After computing `rawModel[]` (probability per top bucket) and **before** normalizing to `modelSum`, apply a +10% multiplicative boost to buckets on the bias side of the projected mean:
+
+```ts
+if (proj.peakBias !== "NEUTRAL") {
+  rawModel.forEach((p, i) => {
+    const b = top[i];
+    const bucketMid = b.bucket_min_c != null && b.bucket_max_c != null
+      ? (b.bucket_min_c + b.bucket_max_c) / 2
+      : (b.bucket_min_c ?? b.bucket_max_c ?? proj.meanC);
+    const isLower = bucketMid < proj.meanC;
+    const isHigher = bucketMid > proj.meanC;
+    if (proj.peakBias === "LOWER" && isLower) rawModel[i] = p * 1.10;
+    if (proj.peakBias === "HIGHER" && isHigher) rawModel[i] = p * 1.10;
+  });
+}
 ```
-Open-Meteo {city} · now {°F} · peak ({ttp}) {°F} · cloud {peakCloud}% · precip {peakPrecip}mm · wind {peakWind}km/h · conf {confidence}%
-```
 
-Append small flags when set: `⚠ forecast drift` and/or `≈ plateau`. Tooltip in header stays °C for power-user diagnostics.
+Renormalization to `modelSum` then preserves the shifted distribution. **Critically: market prices are never consulted for direction** — boost is purely a function of bucket midpoint vs projected mean.
+
+### 5. UI: surface bias in the WX line
+
+In `src/components/weather/MomentumBreakouts.tsx`, append to the existing flag area (next to `⚠ forecast drift` / `≈ plateau`):
+
+- `↓ bias lower` when `peakBias === "LOWER"`
+- `↑ bias higher` when `peakBias === "HIGHER"`
+
+Keep the existing `⚠ forecast drift` flag as-is (now equivalent to `peakBias !== "NEUTRAL"`).
 
 ### Files touched
 
-- `src/lib/openMeteo.ts` — `forecast_path` field.
-- `src/lib/weatherProjection.ts` — interpolation, proportional adjustments, drift + plateau detection, `confidence` field.
-- `src/components/weather/MomentumBreakouts.tsx` — `wxSourceLine` rewrite using peak-hour values + confidence + flags.
+- `src/lib/weatherProjection.ts` — drift → `peakBias`, directional mean shift, bucket-prob boost, expose on `ProjectionResult`.
+- `src/components/weather/MomentumBreakouts.tsx` — render bias arrows in WX source line.
 
 ### Out of scope
 
-- No verdict-threshold, allocator, smart-bid, or stake-size changes.
+- No changes to verdict thresholds, smart-bid sizing, auto-log rule, or trade logging.
 - No DB / edge-function work.
-- Discover/external rows still show their existing "no snapshot" reason.
+- Confidence formula unchanged (still penalizes `forecastDrift`).
 
