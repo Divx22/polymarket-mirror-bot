@@ -1194,6 +1194,9 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct,
             const peakLbl = pastPeak ? `${extremeLabel} (passed)` : `${extremeLabel} (${ttp})`;
             return `Open-Meteo ${m.market.city ?? "site"} · now ${nowDisp}${tSym} · ${peakLbl} ${peakDisp}${tSym} · cloud ${cloud} · precip ${precip} · wind ${wind} · conf ${projection.confidence}%${flagStr}`;
           })()}
+          resolutionMethod={m.market.resolution_method}
+          onDetectResolution={onDetectResolution ? () => onDetectResolution(m.market.id) : undefined}
+          detectingResolution={detectingResolution}
         />
         <ActionBadge decision={decision} />
         {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} buckets={buckets} tradeContext={{ market_slug: m.market.polymarket_event_slug ?? null, market_question: m.market.market_question, city: m.market.city, event_time: m.market.event_time, clob_token_id: null }} />}
