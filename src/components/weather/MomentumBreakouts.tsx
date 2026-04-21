@@ -826,7 +826,7 @@ type TradeContext = Omit<LogEdgeTradeInput, "source" | "entry_price" | "suggeste
 
 const ProjectionPanel = ({
   projection, snapshot, bankroll, stakeCapPct, confidence, unit,
-  tradeContext, buckets, mode, leaderLabel,
+  tradeContext, buckets, mode, leaderLabel, pastPeak,
 }: {
   projection: ProjectionResult;
   snapshot: OpenMeteoSnapshot | null;
@@ -838,6 +838,7 @@ const ProjectionPanel = ({
   buckets: BucketLike[];
   mode: MomentumMode;
   leaderLabel: string | null;
+  pastPeak?: boolean;
 }) => {
   const isCounterTrend = projection.bestValueLabel != null
     && leaderLabel != null
