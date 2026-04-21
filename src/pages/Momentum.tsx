@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { ArrowLeft, TrendingUp } from "lucide-react";
 import { MomentumBreakouts } from "@/components/weather/MomentumBreakouts";
+import { MomentumDebugPanel } from "@/components/weather/MomentumDebugPanel";
 import { WeatherMarket, WeatherOutcome } from "@/lib/weather";
 
 const Momentum = () => {
@@ -82,6 +83,7 @@ const Momentum = () => {
           bankroll={bankroll}
           stakeCapPct={stakeCapPct}
         />
+        <MomentumDebugPanel gapMin={0.10} maxHours={12} />
       </main>
     </div>
   );
