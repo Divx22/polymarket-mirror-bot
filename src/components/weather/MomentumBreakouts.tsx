@@ -810,12 +810,27 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score }: { m: Movement; outs:
   const ttpMinutes = peakMs != null
     ? Math.max(0, (peakMs - Date.now()) / 60000)
     : Math.max(0, (new Date(m.market.event_time).getTime() - Date.now()) / 60000);
-  const wx = classifyWeather(m.weather);
+  const hoursToPeak = ttpMinutes / 60;
+
+  // Build market-vs-model projection from outcome buckets.
+  const buckets: BucketLike[] = outs.map((o) => ({
+    label: o.label,
+    bucket_min_c: o.bucket_min_c,
+    bucket_max_c: o.bucket_max_c,
+    marketPrice: o.polymarket_price,
+  }));
+  const projection = compareToMarket(m.weather, hoursToPeak, buckets);
+  const verdict: MarketVerdict = projection?.verdict ?? "UNKNOWN";
+
   const decision = decideAction({
     gap2h: m.gap2h, gap1h: m.gap1h, gapNow: m.gapNow,
     volLast: m.volLast, volPrev: m.volPrev, ttpMinutes,
-    weatherState: wx.state,
+    marketVerdict: verdict,
   });
+
+  const verdictTitle = projection
+    ? `Model #1: ${projection.modelTopLabel ?? "—"} · Market #1: ${projection.marketTopLabel ?? "—"}`
+    : "No projection (missing weather or bucket data)";
 
   const copy = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -838,12 +853,13 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score }: { m: Movement; outs:
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
           <ModeBadge mode={decision.mode} />
-          <WeatherBadge state={wx.state} snapshot={m.weather} score={wx.score} tempSpeed={wx.tempSpeed} forecastSpeed={wx.forecastSpeed} />
+          <VerdictBadge verdict={verdict} title={verdictTitle} />
         </div>
         <div className={cn("text-[11px] leading-snug font-medium", MODE_HINT[decision.mode].cls)}>
           {MODE_HINT[decision.mode].tip}
         </div>
         <ActionBadge decision={decision} />
+        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} />}
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
