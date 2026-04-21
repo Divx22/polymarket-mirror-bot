@@ -449,7 +449,7 @@ export const MomentumBreakouts = ({
               const stake = suggestStake(bankroll, stakeCapPct, row.sortScore);
               const stakePct = bankroll > 0 ? (stake / bankroll) * 100 : 0;
               return row.kind === "local"
-                ? <Row key={row.key} m={row.data} onSelect={onSelect} stake={stake} stakePct={stakePct} score={row.sortScore} />
+                ? <Row key={row.key} m={row.data} outs={outcomes[row.data.market.id] ?? []} onSelect={onSelect} stake={stake} stakePct={stakePct} score={row.sortScore} />
                 : <ExternalRow key={row.key} m={row.data} stake={stake} stakePct={stakePct} score={row.sortScore} />;
             })}
           </div>
