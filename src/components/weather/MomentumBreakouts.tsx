@@ -961,6 +961,7 @@ const SignalBoxes = ({
   mode, modeTip, modeCls,
   verdict, verdictTitle, verdictReason,
   wxSourceLine,
+  resolutionMethod, onDetectResolution, detectingResolution,
 }: {
   mode: MomentumMode;
   modeTip: string;
@@ -969,6 +970,9 @@ const SignalBoxes = ({
   verdictTitle?: string;
   verdictReason?: string;
   wxSourceLine: string;
+  resolutionMethod?: "rounded" | "floor" | "ceiling" | "unknown" | null;
+  onDetectResolution?: () => void;
+  detectingResolution?: boolean;
 }) => (
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
     <div className="rounded-md border border-border bg-background/40 p-2.5 space-y-1.5">
@@ -990,6 +994,24 @@ const SignalBoxes = ({
         <span className="uppercase tracking-wider text-[9px]">Temp source: </span>
         {wxSourceLine}
       </div>
+      {onDetectResolution && (
+        <div className="text-[10px] leading-snug text-muted-foreground flex items-center gap-1.5 flex-wrap pt-1 border-t border-border/40">
+          <span className="uppercase tracking-wider text-[9px]">Resolution:</span>
+          <span className="font-mono-num">
+            {resolutionMethod && resolutionMethod !== "unknown"
+              ? resolutionMethod
+              : (resolutionMethod === "unknown" ? "unknown" : "not detected")}
+          </span>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDetectResolution(); }}
+            disabled={detectingResolution}
+            className="text-[10px] underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+          >
+            {detectingResolution ? "detecting…" : "re-detect"}
+          </button>
+        </div>
+      )}
     </div>
   </div>
 );
