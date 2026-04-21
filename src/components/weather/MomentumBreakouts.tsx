@@ -617,6 +617,47 @@ const ActionBadge = ({ decision, degradedHint }: { decision: ActionDecision; deg
   );
 };
 
+const MODE_META: Record<MomentumMode, { cls: string; label: string; dot: string }> = {
+  MOMENTUM:   { cls: "bg-emerald-500/15 text-emerald-200 border-emerald-400/50", label: "MOMENTUM",   dot: "🟢" },
+  TRANSITION: { cls: "bg-amber-500/15 text-amber-200 border-amber-400/50",       label: "TRANSITION", dot: "🟡" },
+  CERTAINTY:  { cls: "bg-blue-500/15 text-blue-200 border-blue-400/50",          label: "CERTAINTY",  dot: "🔵" },
+};
+
+const WEATHER_META: Record<WeatherState, { cls: string; label: string; dot: string }> = {
+  STRONG:   { cls: "bg-emerald-500/15 text-emerald-200 border-emerald-400/50", label: "STRONG",   dot: "🟢" },
+  MODERATE: { cls: "bg-amber-500/15 text-amber-200 border-amber-400/50",       label: "MODERATE", dot: "🟡" },
+  WEAK:     { cls: "bg-red-500/15 text-red-200 border-red-400/50",             label: "WEAK",     dot: "🔴" },
+  UNKNOWN:  { cls: "bg-muted text-muted-foreground border-border",             label: "N/A",      dot: "⚪" },
+};
+
+const ModeBadge = ({ mode }: { mode: MomentumMode }) => {
+  const meta = MODE_META[mode];
+  return (
+    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wide", meta.cls)}>
+      <span aria-hidden>{meta.dot}</span>MODE · {meta.label}
+    </span>
+  );
+};
+
+const WeatherBadge = ({ state, snapshot, score, tempSpeed, forecastSpeed }: {
+  state: WeatherState;
+  snapshot: OpenMeteoSnapshot | null;
+  score: number;
+  tempSpeed: number | null;
+  forecastSpeed: number | null;
+}) => {
+  const meta = WEATHER_META[state];
+  const fmt = (v: number | null | undefined, suffix = "") => v == null || !Number.isFinite(v) ? "—" : `${v.toFixed(1)}${suffix}`;
+  const title = snapshot
+    ? `temp Δ1h ${tempSpeed != null ? (tempSpeed >= 0 ? "+" : "") + tempSpeed.toFixed(1) : "—"}°C · forecast Δ1h ${forecastSpeed != null ? (forecastSpeed >= 0 ? "+" : "") + forecastSpeed.toFixed(1) : "—"}°C\ncloud ${fmt(snapshot.cloud_cover, "%")} · precip ${fmt(snapshot.precipitation, "mm")} · humidity ${fmt(snapshot.humidity, "%")} · wind ${fmt(snapshot.wind_speed, "km/h")}\nscore ${score}`
+    : "Live weather unavailable";
+  return (
+    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wide", meta.cls)} title={title}>
+      <span aria-hidden>{meta.dot}</span>WX · {meta.label}
+    </span>
+  );
+};
+
 const CardShell = ({
   onClick, children, clickable,
 }: { onClick?: () => void; children: React.ReactNode; clickable: boolean }) => (
