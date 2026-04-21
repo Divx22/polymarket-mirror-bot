@@ -1260,7 +1260,7 @@ const ExternalRow = ({ m, stake, stakePct, score, bankroll, stakeCapPct }: { m: 
   const tConv = (c: number) => unit === "F" ? cToF(c) : c;
   const tSym = unit === "F" ? "°F" : "°C";
 
-  const projection = compareToMarket(m.weather, hoursToPeak, buckets);
+  const projection = compareToMarket(m.weather, hoursToPeak, buckets, extreme);
   const verdict: MarketVerdict = projection?.verdict ?? "UNKNOWN";
 
   let unknownReason = "";
@@ -1298,13 +1298,13 @@ const ExternalRow = ({ m, stake, stakePct, score, bankroll, stakeCapPct }: { m: 
     const precip = peak?.precipitation != null ? `${peak.precipitation.toFixed(1)}mm` : "—";
     const wind = peak?.wind != null ? `${Math.round(peak.wind)}km/h` : "—";
     const flags: string[] = [];
-    if (pastPeak) flags.push("⏷ past peak");
+    if (pastPeak) flags.push(`⏷ past ${extremeLabel}`);
     if (projection.forecastDrift) flags.push("⚠ forecast drift");
     if (projection.plateauDetected) flags.push("≈ plateau");
     if (projection.peakBias === "LOWER") flags.push("↓ bias lower");
     else if (projection.peakBias === "HIGHER") flags.push("↑ bias higher");
     const flagStr = flags.length ? ` · ${flags.join(" · ")}` : "";
-    const peakLbl = pastPeak ? "peak (passed)" : `peak (${ttp})`;
+    const peakLbl = pastPeak ? `${extremeLabel} (passed)` : `${extremeLabel} (${ttp})`;
     return `Open-Meteo ${m.city ?? "site"} · now ${nowDisp}${tSym} · ${peakLbl} ${peakDisp}${tSym} · cloud ${cloud} · precip ${precip} · wind ${wind} · conf ${projection.confidence}%${flagStr}`;
   })();
 
