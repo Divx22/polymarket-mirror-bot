@@ -47,6 +47,7 @@ type Movement = {
   volLast: number | null;
   volPrev: number | null;
   weather: OpenMeteoSnapshot | null;
+  liveMids: Record<string, number>;
 };
 
 type ExternalMovement = {
