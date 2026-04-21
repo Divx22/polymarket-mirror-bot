@@ -309,30 +309,52 @@ export const MomentumBreakouts = ({
       });
       if (error) throw error;
       const results = (data?.results ?? []) as any[];
-      const mapped: ExternalMovement[] = results.map((r) => ({
-        source: "external",
-        event_title: r.event_title,
-        event_slug: r.event_slug,
-        city: r.city,
-        event_time: r.event_time,
-        polymarket_url: r.polymarket_url,
-        leader_label: r.leader_label,
-        runner_label: r.runner_label,
-        leaderNow: r.leader_now,
-        gap2h: r.gap_2h ?? r.gap_1h,
-        gap1h: r.gap_1h,
-        gapNow: r.gap_now,
-        netDelta: r.net_delta,
-        trajectory: r.trajectory,
+      // Build a coord lookup from the user's local markets so we avoid an
+      // extra geocode call whenever possible.
+      const coordsByCity = new Map<string, { lat: number; lon: number }>();
+      for (const lm of markets) {
+        if (lm.city && Number.isFinite(lm.latitude) && Number.isFinite(lm.longitude)) {
+          coordsByCity.set(lm.city.trim().toLowerCase(), { lat: Number(lm.latitude), lon: Number(lm.longitude) });
+        }
+      }
+
+      const enriched: ExternalMovement[] = await Promise.all(results.map(async (r) => {
+        const city: string | null = r.city ?? null;
+        let coords: { lat: number; lon: number } | null = null;
+        if (city) {
+          coords = coordsByCity.get(city.trim().toLowerCase()) ?? null;
+          if (!coords) coords = await geocodeCity(city);
+        }
+        const weather = coords ? await fetchOpenMeteoSnapshot(coords.lat, coords.lon) : null;
+        return {
+          source: "external",
+          event_title: r.event_title,
+          event_slug: r.event_slug,
+          city,
+          event_time: r.event_time,
+          polymarket_url: r.polymarket_url,
+          leader_label: r.leader_label,
+          runner_label: r.runner_label,
+          leaderNow: r.leader_now,
+          gap2h: r.gap_2h ?? r.gap_1h,
+          gap1h: r.gap_1h,
+          gapNow: r.gap_now,
+          netDelta: r.net_delta,
+          trajectory: r.trajectory,
+          lat: coords?.lat ?? null,
+          lon: coords?.lon ?? null,
+          weather,
+        };
       }));
+
       // Same momentum-weighted sort as local results.
-      mapped.sort((a, b) =>
+      enriched.sort((a, b) =>
         momentumScore(b.leaderNow, b.gapNow, b.netDelta, b.trajectory) -
         momentumScore(a.leaderNow, a.gapNow, a.netDelta, a.trajectory),
       );
       // Defensive client-side filter in case the function returns markets outside the window.
       const cutoffMs = Date.now() + windowHours * 3_600_000;
-      const filtered = mapped.filter((m) => {
+      const filtered = enriched.filter((m) => {
         if (!m.event_time) return true;
         const t = Date.parse(m.event_time);
         return !Number.isFinite(t) || t <= cutoffMs;
