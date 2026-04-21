@@ -1145,12 +1145,14 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
             const precip = peak?.precipitation != null ? `${peak.precipitation.toFixed(1)}mm` : "—";
             const wind = peak?.wind != null ? `${Math.round(peak.wind)}km/h` : "—";
             const flags: string[] = [];
+            if (pastPeak) flags.push("⏷ past peak");
             if (projection.forecastDrift) flags.push("⚠ forecast drift");
             if (projection.plateauDetected) flags.push("≈ plateau");
             if (projection.peakBias === "LOWER") flags.push("↓ bias lower");
             else if (projection.peakBias === "HIGHER") flags.push("↑ bias higher");
             const flagStr = flags.length ? ` · ${flags.join(" · ")}` : "";
-            return `Open-Meteo ${m.market.city ?? "site"} · now ${nowDisp}${tSym} · peak (${ttp}) ${peakDisp}${tSym} · cloud ${cloud} · precip ${precip} · wind ${wind} · conf ${projection.confidence}%${flagStr}`;
+            const peakLbl = pastPeak ? "peak (passed)" : `peak (${ttp})`;
+            return `Open-Meteo ${m.market.city ?? "site"} · now ${nowDisp}${tSym} · ${peakLbl} ${peakDisp}${tSym} · cloud ${cloud} · precip ${precip} · wind ${wind} · conf ${projection.confidence}%${flagStr}`;
           })()}
         />
         <ActionBadge decision={decision} />
@@ -1289,12 +1291,14 @@ const ExternalRow = ({ m, stake, stakePct, score, bankroll, stakeCapPct }: { m: 
     const precip = peak?.precipitation != null ? `${peak.precipitation.toFixed(1)}mm` : "—";
     const wind = peak?.wind != null ? `${Math.round(peak.wind)}km/h` : "—";
     const flags: string[] = [];
+    if (pastPeak) flags.push("⏷ past peak");
     if (projection.forecastDrift) flags.push("⚠ forecast drift");
     if (projection.plateauDetected) flags.push("≈ plateau");
     if (projection.peakBias === "LOWER") flags.push("↓ bias lower");
     else if (projection.peakBias === "HIGHER") flags.push("↑ bias higher");
     const flagStr = flags.length ? ` · ${flags.join(" · ")}` : "";
-    return `Open-Meteo ${m.city ?? "site"} · now ${nowDisp}${tSym} · peak (${ttp}) ${peakDisp}${tSym} · cloud ${cloud} · precip ${precip} · wind ${wind} · conf ${projection.confidence}%${flagStr}`;
+    const peakLbl = pastPeak ? "peak (passed)" : `peak (${ttp})`;
+    return `Open-Meteo ${m.city ?? "site"} · now ${nowDisp}${tSym} · ${peakLbl} ${peakDisp}${tSym} · cloud ${cloud} · precip ${precip} · wind ${wind} · conf ${projection.confidence}%${flagStr}`;
   })();
 
   return (
