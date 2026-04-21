@@ -222,12 +222,13 @@ export const decideAction = ({
   // Verdict-driven (preferred). Falls back to legacy weatherState mapping.
   const verdict: MarketVerdict = marketVerdict
     ?? (weatherState === "STRONG" ? "AGREE"
-      : weatherState === "WEAK" ? "DISAGREE"
+      : weatherState === "WEAK" ? "STRONG_DISAGREE"
       : weatherState === "MODERATE" ? "NEUTRAL"
       : "UNKNOWN");
 
   // Priority: shrinking → TRIM, accel<-5% → TRIM, AGREE+widening → ADD,
-  // DISAGREE veto → HOLD, ENTER on widening near peak, else HOLD.
+  // STRONG_DISAGREE → HOLD (hard veto), WEAK_DISAGREE → block ADD only,
+  // ENTER on widening near peak (allowed under WEAK_DISAGREE), else HOLD.
   let action: MomentumAction;
   if (!widening) {
     action = "TRIM";
@@ -235,7 +236,7 @@ export const decideAction = ({
     action = "TRIM";
   } else if (acceleration > 0 && (volumeChange ?? 0) >= 0 && verdict === "AGREE") {
     action = "ADD";
-  } else if (verdict === "DISAGREE") {
+  } else if (verdict === "STRONG_DISAGREE") {
     action = "HOLD";
   } else if (gapNow > 0.15 && ttp < 120) {
     action = "ENTER";
