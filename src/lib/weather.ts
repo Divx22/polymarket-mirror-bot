@@ -121,6 +121,87 @@ export const sizeForEdge = (edge: number, agreement = 1): number => {
   return Number((base * agreement).toFixed(2));
 };
 
+// ───────────────────────────────────────────────────────────────────────────
+// Momentum decision engine: ENTER / ADD / HOLD / TRIM
+// All gap/acceleration values are in 0–1 units (percent of probability).
+// ───────────────────────────────────────────────────────────────────────────
+
+export type MomentumAction = "ENTER" | "ADD" | "HOLD" | "TRIM";
+
+export type ActionDecision = {
+  action: MomentumAction;
+  confidence: number; // 0–100
+  reason: string;
+  acceleration: number; // 0–1 units
+  volumeChange: number | null; // USDC delta, null when unknown
+  degraded: boolean; // true when volume data unavailable
+};
+
+export type DecideActionInput = {
+  gap2h: number;
+  gap1h: number;
+  gapNow: number;
+  /** USDC traded in [now-10m, now]. Null/undefined when unknown. */
+  volLast?: number | null;
+  /** USDC traded in [now-20m, now-10m]. Null/undefined when unknown. */
+  volPrev?: number | null;
+  /** Minutes until peak weather (preferred) or until close. */
+  ttpMinutes?: number | null;
+};
+
+const fmtPct = (n: number, dp = 1) => `${n >= 0 ? "+" : ""}${(n * 100).toFixed(dp)}%`;
+
+export const decideAction = ({
+  gap2h, gap1h, gapNow, volLast, volPrev, ttpMinutes,
+}: DecideActionInput): ActionDecision => {
+  const m1 = gap1h - gap2h;
+  const m2 = gapNow - gap1h;
+  const acceleration = m2 - m1;
+  const widening = gapNow > gap1h;
+  const ttp = ttpMinutes ?? Infinity;
+
+  const haveVol = volLast != null && volPrev != null && Number.isFinite(volLast) && Number.isFinite(volPrev);
+  const volumeChange: number | null = haveVol ? (Number(volLast) - Number(volPrev)) : null;
+  const degraded = !haveVol;
+
+  // Priority order per spec
+  let action: MomentumAction;
+  if (!widening || acceleration < -0.05 || (volumeChange != null && volumeChange < 0)) {
+    action = "TRIM";
+  } else if (widening && acceleration > 0 && (volumeChange ?? 0) > 0 && ttp < 120) {
+    action = "ADD";
+  } else if (widening && gapNow > 0.15 && ttp < 120) {
+    action = "ENTER";
+  } else {
+    action = "HOLD";
+  }
+
+  // Confidence: blend of |acceleration|, gap size, |vol_change|, ttp proximity
+  const accelComp = Math.min(1, Math.abs(acceleration) / 0.10) * 30; // up to 30
+  const gapComp = Math.min(1, gapNow / 0.30) * 30;                    // up to 30
+  const volComp = volumeChange != null
+    ? Math.min(1, Math.abs(volumeChange) / 500) * 25                  // up to 25
+    : 5;
+  const ttpComp = Number.isFinite(ttp)
+    ? Math.max(0, 1 - Math.min(1, ttp / 240)) * 15                    // up to 15 (closer = better)
+    : 0;
+  let confidence = Math.round(accelComp + gapComp + volComp + ttpComp);
+  if (action === "TRIM") confidence = Math.max(confidence, 50);
+  confidence = Math.max(0, Math.min(100, confidence));
+
+  // Reason
+  const dir = widening ? "widening" : "shrinking";
+  const accelStr = `accel ${fmtPct(acceleration)}`;
+  const volStr = volumeChange == null
+    ? "vol n/a"
+    : volumeChange > 0 ? "vol ↑"
+    : volumeChange < 0 ? "vol ↓"
+    : "vol flat";
+  const reason = `gap ${dir}, ${accelStr}, ${volStr}`;
+
+  return { action, confidence, reason, acceleration, volumeChange, degraded };
+};
+
 export const formatVolume = (v: number | null | undefined): string => {
   if (v == null || !Number.isFinite(Number(v))) return "—";
   const n = Number(v);

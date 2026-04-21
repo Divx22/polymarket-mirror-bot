@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { TrendingUp, Loader2, Copy, Check, RefreshCw, Globe, ExternalLink, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { type WeatherMarket, type WeatherOutcome } from "@/lib/weather";
+import { type WeatherMarket, type WeatherOutcome, decideAction, type ActionDecision } from "@/lib/weather";
 import { formatLocalCloseTime, peakWeatherTimeMs, formatLocalHour } from "@/lib/cityTimezones";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +42,8 @@ type Movement = {
   gapNow: number;
   netDelta: number;
   trajectory: Trajectory;
+  volLast: number | null;
+  volPrev: number | null;
 };
 
 type ExternalMovement = {
@@ -84,6 +86,34 @@ async function fetchMid(tokenId: string): Promise<number | null> {
     const m = Number(j?.mid);
     return Number.isFinite(m) ? m : null;
   } catch { return null; }
+}
+
+/** Fetch recent trades for a token and bucket USDC volume into two 10-minute windows. */
+async function fetchRecentVolume(tokenId: string): Promise<{ last10m: number | null; prev10m: number | null }> {
+  try {
+    const r = await fetch(`https://clob.polymarket.com/data/trades?market=${tokenId}&limit=500`);
+    if (!r.ok) return { last10m: null, prev10m: null };
+    const j = await r.json();
+    const trades: any[] = Array.isArray(j) ? j : (j?.data ?? []);
+    const now = Date.now();
+    const t10 = now - 10 * 60_000;
+    const t20 = now - 20 * 60_000;
+    let last = 0, prev = 0;
+    for (const tr of trades) {
+      const tsRaw = Number(tr?.match_time ?? tr?.timestamp ?? tr?.t ?? 0);
+      // CLOB returns seconds; normalize.
+      const ts = tsRaw > 1e12 ? tsRaw : tsRaw * 1000;
+      if (!Number.isFinite(ts) || ts < t20) continue;
+      const price = Number(tr?.price ?? 0);
+      const size = Number(tr?.size ?? tr?.shares ?? 0);
+      const usdc = Number.isFinite(price) && Number.isFinite(size) ? price * size : 0;
+      if (ts >= t10) last += usdc;
+      else if (ts >= t20) prev += usdc;
+    }
+    return { last10m: last, prev10m: prev };
+  } catch {
+    return { last10m: null, prev10m: null };
+  }
 }
 
 function priceAt(hist: HistPoint[], targetTs: number): number | null {
@@ -198,7 +228,9 @@ export const MomentumBreakouts = ({
         else if (netDelta < -FLAT_BAND) trajectory = "narrowing";
         else trajectory = "flat";
 
-        found.push({ source: "local", market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory });
+        const vol = await fetchRecentVolume(leader.clob_token_id!);
+
+        found.push({ source: "local", market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory, volLast: vol.last10m, volPrev: vol.prev10m });
       }));
       done += batch.length;
       setProgress(Math.round((done / eligible.length) * 100));
@@ -506,6 +538,30 @@ const CountdownBadge = ({
 
 type RowExtras = { stake: number; stakePct: number; score: number };
 
+const ACTION_META: Record<ActionDecision["action"], { cls: string; label: string }> = {
+  ENTER: { cls: "bg-blue-500/20 text-blue-200 border-blue-400/60", label: "ENTER" },
+  ADD:   { cls: "bg-emerald-500/20 text-emerald-200 border-emerald-400/60", label: "ADD" },
+  HOLD:  { cls: "bg-amber-500/20 text-amber-200 border-amber-400/60", label: "HOLD" },
+  TRIM:  { cls: "bg-red-500/20 text-red-200 border-red-400/60", label: "TRIM" },
+};
+
+const ActionBadge = ({ decision, degradedHint }: { decision: ActionDecision; degradedHint?: string }) => {
+  const meta = ACTION_META[decision.action];
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-[11px]",
+        meta.cls,
+      )}
+      title={decision.degraded ? (degradedHint ?? "Limited data: volume unavailable") : undefined}
+    >
+      <span className="font-bold tracking-wide">{meta.label}</span>
+      <span className="font-mono-num font-semibold opacity-90">{decision.confidence}%</span>
+      <span className="opacity-80 font-normal truncate">{decision.reason}{decision.degraded ? " · limited data" : ""}</span>
+    </div>
+  );
+};
+
 const CardShell = ({
   onClick, children, clickable,
 }: { onClick?: () => void; children: React.ReactNode; clickable: boolean }) => (
@@ -579,6 +635,15 @@ const Row = ({ m, onSelect, stake, stakePct, score }: { m: Movement; onSelect?: 
     else onSelect?.(m.market);
   };
 
+  const peakMs = peakWeatherTimeMs(m.market.event_time, { city: m.market.city, lat: m.market.latitude, lon: m.market.longitude });
+  const ttpMinutes = peakMs != null
+    ? Math.max(0, (peakMs - Date.now()) / 60000)
+    : Math.max(0, (new Date(m.market.event_time).getTime() - Date.now()) / 60000);
+  const decision = decideAction({
+    gap2h: m.gap2h, gap1h: m.gap1h, gapNow: m.gapNow,
+    volLast: m.volLast, volPrev: m.volPrev, ttpMinutes,
+  });
+
   const copy = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
@@ -598,6 +663,7 @@ const Row = ({ m, onSelect, stake, stakePct, score }: { m: Movement; onSelect?: 
           </span>
           <span className="text-[10px] text-muted-foreground font-mono-num">score {score.toFixed(3)}</span>
         </div>
+        <ActionBadge decision={decision} />
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
@@ -658,6 +724,15 @@ const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & Ro
     if (m.polymarket_url) window.open(m.polymarket_url, "_blank", "noopener,noreferrer");
   };
 
+  const peakMs = peakWeatherTimeMs(m.event_time, { city: m.city });
+  const ttpMinutes = peakMs != null
+    ? Math.max(0, (peakMs - Date.now()) / 60000)
+    : (m.event_time ? Math.max(0, (new Date(m.event_time).getTime() - Date.now()) / 60000) : null);
+  const decision = decideAction({
+    gap2h: m.gap2h, gap1h: m.gap1h, gapNow: m.gapNow,
+    volLast: null, volPrev: null, ttpMinutes,
+  });
+
   return (
     <CardShell onClick={openCard} clickable={!!m.polymarket_url}>
       <CardHeader city={m.city} leader={m.leader_label} runner={m.runner_label} sourceLabel="From Polymarket" eventTime={m.event_time} />
@@ -668,6 +743,7 @@ const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & Ro
           </span>
           <span className="text-[10px] text-muted-foreground font-mono-num">score {score.toFixed(3)}</span>
         </div>
+        <ActionBadge decision={decision} degradedHint="External market: live volume not fetched" />
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
