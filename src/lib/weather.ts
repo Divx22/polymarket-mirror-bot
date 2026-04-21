@@ -271,7 +271,8 @@ export const decideAction = ({
   // Surface verdict via the existing weatherState field for back-compat.
   const stateForBackCompat: WeatherState =
     verdict === "AGREE" ? "STRONG"
-    : verdict === "DISAGREE" ? "WEAK"
+    : verdict === "STRONG_DISAGREE" ? "WEAK"
+    : verdict === "WEAK_DISAGREE" ? "MODERATE"
     : verdict === "NEUTRAL" ? "MODERATE"
     : "UNKNOWN";
 
