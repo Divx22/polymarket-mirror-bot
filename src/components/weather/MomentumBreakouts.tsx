@@ -228,7 +228,9 @@ export const MomentumBreakouts = ({
         else if (netDelta < -FLAT_BAND) trajectory = "narrowing";
         else trajectory = "flat";
 
-        found.push({ source: "local", market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory });
+        const vol = await fetchRecentVolume(leader.clob_token_id!);
+
+        found.push({ source: "local", market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory, volLast: vol.last10m, volPrev: vol.prev10m });
       }));
       done += batch.length;
       setProgress(Math.round((done / eligible.length) * 100));
