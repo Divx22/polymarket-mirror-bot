@@ -66,6 +66,11 @@ type ExternalMovement = {
   gapNow: number;
   netDelta: number;
   trajectory: Trajectory;
+  /** Coords resolved from local markets or Open-Meteo geocoding (post-discover). */
+  lat: number | null;
+  lon: number | null;
+  /** Open-Meteo snapshot, fetched after discover so the WX verdict can run. */
+  weather: OpenMeteoSnapshot | null;
 };
 
 type AnyMove = Movement | ExternalMovement;
