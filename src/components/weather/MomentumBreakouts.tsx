@@ -276,7 +276,9 @@ export const MomentumBreakouts = ({
           fetchOpenMeteoSnapshot(m.latitude, m.longitude),
         ]);
 
-        found.push({ source: "local", market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory, volLast: vol.last10m, volPrev: vol.prev10m, weather });
+        const liveMidsMap: Record<string, number> = {};
+        enriched.forEach((e) => { liveMidsMap[e.o.id] = e.mid; });
+        found.push({ source: "local", market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory, volLast: vol.last10m, volPrev: vol.prev10m, weather, liveMids: liveMidsMap });
       }));
       done += batch.length;
       setProgress(Math.round((done / eligible.length) * 100));
