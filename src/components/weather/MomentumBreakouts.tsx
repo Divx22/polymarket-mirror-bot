@@ -88,6 +88,34 @@ async function fetchMid(tokenId: string): Promise<number | null> {
   } catch { return null; }
 }
 
+/** Fetch recent trades for a token and bucket USDC volume into two 10-minute windows. */
+async function fetchRecentVolume(tokenId: string): Promise<{ last10m: number | null; prev10m: number | null }> {
+  try {
+    const r = await fetch(`https://clob.polymarket.com/data/trades?market=${tokenId}&limit=500`);
+    if (!r.ok) return { last10m: null, prev10m: null };
+    const j = await r.json();
+    const trades: any[] = Array.isArray(j) ? j : (j?.data ?? []);
+    const now = Date.now();
+    const t10 = now - 10 * 60_000;
+    const t20 = now - 20 * 60_000;
+    let last = 0, prev = 0;
+    for (const tr of trades) {
+      const tsRaw = Number(tr?.match_time ?? tr?.timestamp ?? tr?.t ?? 0);
+      // CLOB returns seconds; normalize.
+      const ts = tsRaw > 1e12 ? tsRaw : tsRaw * 1000;
+      if (!Number.isFinite(ts) || ts < t20) continue;
+      const price = Number(tr?.price ?? 0);
+      const size = Number(tr?.size ?? tr?.shares ?? 0);
+      const usdc = Number.isFinite(price) && Number.isFinite(size) ? price * size : 0;
+      if (ts >= t10) last += usdc;
+      else if (ts >= t20) prev += usdc;
+    }
+    return { last10m: last, prev10m: prev };
+  } catch {
+    return { last10m: null, prev10m: null };
+  }
+}
+
 function priceAt(hist: HistPoint[], targetTs: number): number | null {
   if (hist.length === 0) return null;
   let best: HistPoint | null = null;
