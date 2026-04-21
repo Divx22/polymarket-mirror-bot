@@ -538,6 +538,30 @@ const CountdownBadge = ({
 
 type RowExtras = { stake: number; stakePct: number; score: number };
 
+const ACTION_META: Record<ActionDecision["action"], { cls: string; label: string }> = {
+  ENTER: { cls: "bg-blue-500/20 text-blue-200 border-blue-400/60", label: "ENTER" },
+  ADD:   { cls: "bg-emerald-500/20 text-emerald-200 border-emerald-400/60", label: "ADD" },
+  HOLD:  { cls: "bg-amber-500/20 text-amber-200 border-amber-400/60", label: "HOLD" },
+  TRIM:  { cls: "bg-red-500/20 text-red-200 border-red-400/60", label: "TRIM" },
+};
+
+const ActionBadge = ({ decision, degradedHint }: { decision: ActionDecision; degradedHint?: string }) => {
+  const meta = ACTION_META[decision.action];
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-[11px]",
+        meta.cls,
+      )}
+      title={decision.degraded ? (degradedHint ?? "Limited data: volume unavailable") : undefined}
+    >
+      <span className="font-bold tracking-wide">{meta.label}</span>
+      <span className="font-mono-num font-semibold opacity-90">{decision.confidence}%</span>
+      <span className="opacity-80 font-normal truncate">{decision.reason}{decision.degraded ? " · limited data" : ""}</span>
+    </div>
+  );
+};
+
 const CardShell = ({
   onClick, children, clickable,
 }: { onClick?: () => void; children: React.ReactNode; clickable: boolean }) => (
