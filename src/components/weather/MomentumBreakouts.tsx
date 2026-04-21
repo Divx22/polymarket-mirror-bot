@@ -613,7 +613,7 @@ const CountdownBadge = ({
   );
 };
 
-type RowExtras = { stake: number; stakePct: number; score: number };
+type RowExtras = { stake: number; stakePct: number; score: number; bankroll: number; stakeCapPct: number };
 
 const ACTION_META: Record<ActionDecision["action"], { cls: string; label: string }> = {
   ENTER: { cls: "bg-blue-500/20 text-blue-200 border-blue-400/60", label: "ENTER" },
