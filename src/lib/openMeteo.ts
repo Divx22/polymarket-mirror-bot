@@ -1,5 +1,11 @@
 // Open-Meteo snapshot fetcher with 10-minute in-memory cache.
 // No API key required. See https://open-meteo.com/.
+//
+// When available, today's realized high/low is overridden with values from
+// authoritative METAR-based stations (ECCC SWOB / NOAA NWS) — Polymarket
+// weather markets resolve on official station data, not gridded forecast.
+
+import { fetchOfficialExtremes } from "./officialStation";
 
 export type ForecastPathPoint = {
   hour_offset: number;       // hours from "now" (0 = current hour)
@@ -24,6 +30,8 @@ export type OpenMeteoSnapshot = {
   today_high_so_far_c: number | null;
   /** Min temperature °C observed since local midnight (in API's local tz) through the current hour. Null when unavailable. */
   today_low_so_far_c: number | null;
+  /** Source label for today's extremes. "open-meteo" (gridded) or e.g. "CYYZ" / "KSEA" when overridden by official station. */
+  today_extreme_source?: string;
 };
 
 /** Result of scanning the forecast path for the temperature extreme between now and event_time. */
