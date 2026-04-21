@@ -549,12 +549,10 @@ const CountdownBadge = ({
         const sincePeakMs = peakPassed && peakMs != null ? Date.now() - peakMs : 0;
         const sinceH = Math.floor(sincePeakMs / 3_600_000);
         const sinceM = Math.floor((sincePeakMs % 3_600_000) / 60_000);
-        // After peak: amber (recent, <2h) → red (stale, ≥2h). Before: orange.
+        // After peak: green (high likely already set, safer). Before: red (still pending).
         const peakColor = peakPassed
-          ? sincePeakMs >= 2 * 3_600_000
-            ? "bg-red-500/20 text-red-300 border-red-400/50"
-            : "bg-amber-500/20 text-amber-300 border-amber-400/50"
-          : "bg-orange-500/15 text-orange-300 border-orange-400/40";
+          ? "bg-emerald-500/20 text-emerald-200 border-emerald-400/50"
+          : "bg-red-500/20 text-red-200 border-red-400/50";
         return (
           <div className={cn("inline-flex flex-col items-end gap-0.5 px-2 py-1 rounded border", peakColor)}>
             <div className="inline-flex items-center gap-1 text-[11px] font-mono-num font-semibold">
