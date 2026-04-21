@@ -114,6 +114,7 @@ export function projectPeakTempC(
   s: WeatherSnapshotLike | null | undefined,
   hoursToPeak: number | null | undefined,
   extreme: "min" | "max" = "max",
+  pastPeak: boolean = false,
 ): {
   meanC: number;
   bandC: number;
