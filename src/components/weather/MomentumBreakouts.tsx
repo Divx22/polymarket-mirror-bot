@@ -1281,7 +1281,7 @@ const ExternalRow = ({ m, stake, stakePct, score, bankroll, stakeCapPct }: { m: 
           verdict={verdict}
           verdictTitle={verdictTitle}
           verdictReason={unknownReason || (projection
-            ? `Model ${projection.modelTopLabel ?? "—"} vs market ${projection.marketTopLabel ?? "—"}`
+            ? `Model ${projection.modelTopLabel ?? "—"} bucket (proj ${projTempStr}) vs market ${projection.marketTopLabel ?? "—"}`
             : undefined)}
           wxSourceLine={wxSourceLine}
         />
