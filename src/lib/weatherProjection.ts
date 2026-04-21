@@ -206,6 +206,10 @@ export function projectPeakTempC(
   if (forecastDrift) bandF = Math.min(6, bandF + 0.5);
   let bandC = bandF * 5 / 9;
   let sigmaC = bandC / 1.96;
+  // Asymmetric halves — default symmetric, narrowed on the "rare" side post-peak / when realized anchor binds.
+  let bandUpC = bandC;
+  let bandDownC = bandC;
+  let anchorBinding = false;
 
   // Past-peak collapse: the daily extreme is essentially realized.
   // Anchor mean to whichever is more extreme (current temp vs path argmax/min)
@@ -217,6 +221,9 @@ export function projectPeakTempC(
     meanC = realized;
     bandC = 0.4;       // ±0.4°C residual — small late-day moves still possible
     sigmaC = bandC / 1.96;
+    bandUpC = bandC;
+    bandDownC = bandC;
+    anchorBinding = true;
   }
 
   // Realized-extreme anchor: today's high/low so far is already locked in.
@@ -228,16 +235,40 @@ export function projectPeakTempC(
       meanC = s.today_high_so_far_c;
       bandC = Math.min(bandC, 0.6);
       sigmaC = bandC / 1.96;
+      bandUpC = bandC;
+      bandDownC = bandC;
+      anchorBinding = true;
     }
   } else if (extreme === "min" && s.today_low_so_far_c != null && Number.isFinite(s.today_low_so_far_c)) {
     if (s.today_low_so_far_c < meanC) {
       meanC = s.today_low_so_far_c;
       bandC = Math.min(bandC, 0.6);
       sigmaC = bandC / 1.96;
+      bandUpC = bandC;
+      bandDownC = bandC;
+      anchorBinding = true;
     }
   }
 
-  return { meanC, bandC, sigmaC, peak, forecastDrift, plateauDetected, peakBias };
+  // Asymmetric collapse: once anchored to realized extreme, motion in the
+  // "re-extreme" direction is rare; natural reversion dominates.
+  if (anchorBinding) {
+    if (extreme === "max") {
+      bandUpC = 0.2;          // re-peak rare
+      bandDownC = bandC;      // natural cooling
+    } else {
+      bandDownC = 0.2;        // re-trough rare
+      bandUpC = bandC;        // natural warming
+    }
+    // Back-compat scalar = wider half
+    bandC = Math.max(bandUpC, bandDownC);
+    sigmaC = bandC / 1.96;
+  }
+
+  const sigmaUpC = bandUpC / 1.96;
+  const sigmaDownC = bandDownC / 1.96;
+
+  return { meanC, bandC, sigmaC, bandUpC, bandDownC, sigmaUpC, sigmaDownC, peak, forecastDrift, plateauDetected, peakBias };
 }
 
 // Abramowitz & Stegun erf approximation (max error ~1.5e-7)
