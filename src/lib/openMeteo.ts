@@ -193,7 +193,23 @@ export async function fetchOpenMeteoSnapshot(
       forecast_path: path,
       today_high_so_far_c: todayHigh,
       today_low_so_far_c: todayLow,
+      today_extreme_source: todayHigh != null || todayLow != null ? "open-meteo" : undefined,
     };
+
+    // Override today extremes with official station data when available.
+    // Official METAR/SWOB matches what Polymarket actually resolves on, so it
+    // gives the projection a more authoritative anchor than gridded values.
+    try {
+      const official = await fetchOfficialExtremes(lat, lon);
+      if (official) {
+        if (official.today_high_so_far_c != null) snap.today_high_so_far_c = official.today_high_so_far_c;
+        if (official.today_low_so_far_c != null) snap.today_low_so_far_c = official.today_low_so_far_c;
+        snap.today_extreme_source = official.source;
+      }
+    } catch {
+      // Non-fatal — keep gridded values.
+    }
+
     cache.set(key, { at: Date.now(), data: snap });
     return snap;
   } catch {
