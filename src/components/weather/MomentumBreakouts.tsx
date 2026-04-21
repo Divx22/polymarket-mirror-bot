@@ -1235,8 +1235,9 @@ const ExternalRow = ({ m, stake, stakePct, score, bankroll, stakeCapPct }: { m: 
     marketVerdict: verdict,
   });
 
+  const projTempStr = projection ? `${tConv(projection.meanC).toFixed(1)}${tSym}` : null;
   const verdictTitle = projection
-    ? `Model #1: ${projection.modelTopLabel ?? "—"} · Market #1: ${projection.marketTopLabel ?? "—"}`
+    ? `Model #1: ${projection.modelTopLabel ?? "—"} bucket (proj ${projTempStr}) · Market #1: ${projection.marketTopLabel ?? "—"}`
     : "No projection (missing weather or bucket data)";
 
   const wxSourceLine = (() => {
