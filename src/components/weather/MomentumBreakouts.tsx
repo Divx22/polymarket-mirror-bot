@@ -475,6 +475,18 @@ const useCountdown = (targetTime: string | null | undefined) => {
   return timeLeft;
 };
 
+// Live local-time formatter for a city/coords. Re-renders every second.
+const useNowInLocation = (loc: { city?: string | null; lat?: number | null; lon?: number | null }): string | null => {
+  const [now, setNow] = useState<string | null>(() => formatLocalHour(Date.now(), loc));
+  useEffect(() => {
+    const tick = () => setNow(formatLocalHour(Date.now(), loc));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [loc.city, loc.lat, loc.lon]);
+  return now;
+};
+
 // Countdown badge component — shows local close time + live countdown,
 // plus a secondary "peak weather" countdown (4 PM local in city tz).
 const CountdownBadge = ({
