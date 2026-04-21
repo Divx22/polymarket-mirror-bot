@@ -826,7 +826,7 @@ type TradeContext = Omit<LogEdgeTradeInput, "source" | "entry_price" | "suggeste
 
 const ProjectionPanel = ({
   projection, snapshot, bankroll, stakeCapPct, confidence, unit,
-  tradeContext, buckets, mode, leaderLabel,
+  tradeContext, buckets, mode, leaderLabel, pastPeak,
 }: {
   projection: ProjectionResult;
   snapshot: OpenMeteoSnapshot | null;
@@ -838,6 +838,7 @@ const ProjectionPanel = ({
   buckets: BucketLike[];
   mode: MomentumMode;
   leaderLabel: string | null;
+  pastPeak?: boolean;
 }) => {
   const isCounterTrend = projection.bestValueLabel != null
     && leaderLabel != null
@@ -1027,11 +1028,25 @@ const ProjectionPanel = ({
               </div>
             );
           })()}
-          {projection.outOfRange && (
-            <div className="mb-2 rounded border border-red-400/40 bg-red-500/10 px-2 py-1.5 text-[10px] text-red-200">
-              Model projects ~{meanDisp.toFixed(1)}{sym} — well outside all listed buckets. Market is pricing a peak the forecast doesn't support.
-            </div>
-          )}
+          {projection.outOfRange && (() => {
+            const realizedC = snapshot?.today_high_so_far_c ?? null;
+            const realizedDisp = realizedC != null ? toUnit(realizedC) : null;
+            // Past-peak case: today's realized high is locked in. The forecast
+            // mean is a stale lower-bound; market is pricing what already happened.
+            if (pastPeak) {
+              return (
+                <div className="mb-2 rounded border border-amber-400/40 bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-200">
+                  Past peak — today's high {realizedDisp != null ? `(${realizedDisp.toFixed(1)}${sym}) ` : ""}is already locked in.
+                  Forecast mean ({meanDisp.toFixed(1)}{sym}) is stale and no longer relevant; trust the market's leader bucket.
+                </div>
+              );
+            }
+            return (
+              <div className="mb-2 rounded border border-red-400/40 bg-red-500/10 px-2 py-1.5 text-[10px] text-red-200">
+                Model projects ~{meanDisp.toFixed(1)}{sym} — well outside all listed buckets. Market is pricing a peak the forecast doesn't support.
+              </div>
+            );
+          })()}
           <table className="w-full text-[11px] font-mono-num">
             <thead>
               <tr className="text-muted-foreground text-[9px] uppercase tracking-wider">
@@ -1352,7 +1367,7 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct,
           detectingResolution={detectingResolution}
         />
         <ActionBadge decision={decision} />
-        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} buckets={buckets} mode={decision.mode} leaderLabel={m.leader.label} tradeContext={{ market_slug: m.market.polymarket_event_slug ?? null, market_question: m.market.market_question, city: m.market.city, event_time: m.market.event_time, clob_token_id: null }} />}
+        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} buckets={buckets} mode={decision.mode} leaderLabel={m.leader.label} pastPeak={pastPeak} tradeContext={{ market_slug: m.market.polymarket_event_slug ?? null, market_question: m.market.market_question, city: m.market.city, event_time: m.market.event_time, clob_token_id: null }} />}
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
@@ -1522,7 +1537,7 @@ const ExternalRow = ({ m, stake, stakePct, score, bankroll, stakeCapPct }: { m: 
           wxSourceLine={wxSourceLine}
         />
         <ActionBadge decision={decision} degradedHint="External market: live volume not fetched" />
-        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} buckets={buckets} mode={decision.mode} leaderLabel={m.leader_label} tradeContext={{ market_slug: m.event_slug, market_question: m.event_title, city: m.city, event_time: m.event_time, clob_token_id: null }} />}
+        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} buckets={buckets} mode={decision.mode} leaderLabel={m.leader_label} pastPeak={pastPeak} tradeContext={{ market_slug: m.event_slug, market_question: m.event_title, city: m.city, event_time: m.event_time, clob_token_id: null }} />}
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
