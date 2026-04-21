@@ -47,6 +47,7 @@ type Movement = {
   volLast: number | null;
   volPrev: number | null;
   weather: OpenMeteoSnapshot | null;
+  liveMids: Record<string, number>;
 };
 
 type ExternalMovement = {
@@ -275,7 +276,9 @@ export const MomentumBreakouts = ({
           fetchOpenMeteoSnapshot(m.latitude, m.longitude),
         ]);
 
-        found.push({ source: "local", market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory, volLast: vol.last10m, volPrev: vol.prev10m, weather });
+        const liveMidsMap: Record<string, number> = {};
+        enriched.forEach((e) => { liveMidsMap[e.o.id] = e.mid; });
+        found.push({ source: "local", market: m, leader, runnerUp, leaderNow, gap2h, gap1h, gapNow, netDelta, trajectory, volLast: vol.last10m, volPrev: vol.prev10m, weather, liveMids: liveMidsMap });
       }));
       done += batch.length;
       setProgress(Math.round((done / eligible.length) * 100));
@@ -877,7 +880,7 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
     label: o.label,
     bucket_min_c: o.bucket_min_c,
     bucket_max_c: o.bucket_max_c,
-    marketPrice: o.polymarket_price,
+    marketPrice: m.liveMids?.[o.id] ?? o.polymarket_price,
   }));
   const projection = compareToMarket(m.weather, hoursToPeak, buckets);
   const verdict: MarketVerdict = projection?.verdict ?? "UNKNOWN";
