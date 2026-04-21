@@ -810,6 +810,44 @@ const UnknownReasonLabel = ({ reason }: { reason: string }) => (
   <span className="text-[9px] text-muted-foreground italic">{reason}</span>
 );
 
+/** Side-by-side info boxes: Momentum mode + WX verdict, each with its own explanation. */
+const SignalBoxes = ({
+  mode, modeTip, modeCls,
+  verdict, verdictTitle, verdictReason,
+  wxSourceLine,
+}: {
+  mode: MomentumMode;
+  modeTip: string;
+  modeCls: string;
+  verdict: MarketVerdict;
+  verdictTitle?: string;
+  verdictReason?: string;
+  wxSourceLine: string;
+}) => (
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+    <div className="rounded-md border border-border bg-background/40 p-2.5 space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Momentum</span>
+        <ModeBadge mode={mode} />
+      </div>
+      <div className={cn("text-[11px] leading-snug font-medium", modeCls)}>{modeTip}</div>
+    </div>
+    <div className="rounded-md border border-border bg-background/40 p-2.5 space-y-1.5">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-[9px] uppercase tracking-wider text-muted-foreground">WX verdict</span>
+        <VerdictBadge verdict={verdict} title={verdictTitle} />
+      </div>
+      {verdictReason && (
+        <div className="text-[11px] leading-snug text-muted-foreground italic">{verdictReason}</div>
+      )}
+      <div className="text-[10px] leading-snug text-muted-foreground">
+        <span className="uppercase tracking-wider text-[9px]">Temp source: </span>
+        {wxSourceLine}
+      </div>
+    </div>
+  </div>
+);
+
 const CardHeader = ({
   title, city, lat, lon, leader, runner, sourceLabel, eventTime,
 }: { title?: string | null; city: string | null; lat?: number | null; lon?: number | null; leader: string; runner: string; sourceLabel: string; eventTime?: string | null }) => (
