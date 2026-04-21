@@ -1,74 +1,75 @@
 
 
-## Decision engine on momentum cards
+## Add real weather as a decision filter on momentum cards
 
-Add an **action badge** (`ENTER` / `ADD` / `HOLD` / `TRIM`) to every momentum card. The current scan/sort/UI stays exactly as is — this is a layer on top.
+Layer Open-Meteo data + a weather score onto the existing `decideAction` engine. Existing logic, sort, scan, and UI stay intact — only the action rules and two new badges change.
 
-### Inputs we already have per card
-- `gap2h`, `gap1h`, `gapNow`, `leaderNow` — already computed
-- `time_to_peak_minutes` — derive from existing `peakWeatherTimeMs(eventTime, city, lat, lon)`
+### What you'll see
 
-### New input: volume confirmation
-Polymarket CLOB exposes per-token trade history. Add a small fetch that pulls the last ~25 minutes of trades for the leader token and buckets them into two 10-minute windows:
+Each momentum card gains **two new pill badges** next to the current action badge:
 
 ```
-volume_last_10m = sum(usdc) over [now-10m, now]
-volume_prev_10m = sum(usdc) over [now-20m, now-10m]
+[ENTER 78%] [MODE: MOMENTUM 🟢] [WEATHER: STRONG 🟢]  gap widening, accel +3%, vol ↑
 ```
 
-Endpoint: `https://clob.polymarket.com/data/trades?market=<tokenId>&limit=500` (cheap, public, same origin pattern as the existing `prices-history` fetch). If unavailable for a token, treat `volume_change = 0` (neutral).
+- **MODE** (driven by time-to-peak):
+  - `MOMENTUM` 🟢 when ttp > 30 min
+  - `TRANSITION` 🟡 when 0 ≤ ttp ≤ 30 min
+  - `CERTAINTY` 🔵 when peak already passed
+- **WEATHER** (driven by live + 1h-ahead Open-Meteo):
+  - `STRONG` 🟢 / `MODERATE` 🟡 / `WEAK` 🔴
+  - Tooltip shows `temp_speed`, `forecast_speed`, cloud %, precip, humidity, wind, and the numeric weather_score.
 
-This fetch runs once per card during scan, in the same batched loop — no extra round trips per render.
+### Decision rules (new, additive)
 
-### Decision logic (exact spec the user provided)
+Updated priority inside `decideAction`:
 
 ```text
-momentum_1   = gap_1h - gap_2h
-momentum_2   = gap_now - gap_1h
-acceleration = momentum_2 - momentum_1
-volume_change = volume_last_10m - volume_prev_10m
-gap_direction = gap_now > gap_1h ? "widening" : "shrinking"
-
-Priority (top wins):
-1. TRIM  : shrinking OR acceleration < -0.05 OR volume_change < 0
-2. ADD   : widening AND acceleration > 0 AND volume_change > 0 AND ttp < 120
-3. ENTER : widening AND gap_now > 0.15 AND ttp < 120
-4. HOLD  : otherwise
+1. shrinking            → TRIM
+2. acceleration < -5%   → TRIM
+3. widening + accel>0 + weather=STRONG → ADD
+4. widening + weather=WEAK             → HOLD       (NEW: weather veto)
+5. widening + ttp < 120 min            → ENTER
+6. otherwise                           → HOLD
 ```
 
-Note: spec uses cents (`gap_now > 15`, `acceleration < -5`). Per project memory ("momentum UI in percentages"), thresholds are stored as 0–1 (`0.15`, `-0.05`) and the engine works on the same units already in `Movement`.
+Hard rule: **never ADD when weather=WEAK**, even if volume/acceleration look good.
 
-Confidence (0–100): weighted blend of `|acceleration|`, `|volume_change|` magnitude, gap size, and time-to-peak proximity. Clamped 0–100.
+### Weather fetch (Open-Meteo, no key)
 
-Reason: short auto-generated string, e.g. *"gap widening, acceleration +3%, volume rising"* or *"acceleration slowing, volume flat"*.
+`https://api.open-meteo.com/v1/forecast?latitude=…&longitude=…&hourly=temperature_2m,cloudcover,relativehumidity_2m,precipitation,windspeed_10m&current_weather=true&timezone=auto`
 
-### UI
+- One fetch per local card (uses `market.latitude/longitude`); cached in component state for 10 min.
+- External (Discover) cards use coords when present, otherwise weather=`UNKNOWN` and the badge shows `n/a` — they remain in degraded mode.
 
-A new compact badge row inside each card, just under the trajectory chip:
+Extracted: `temperature_now`, `temperature_1h_ago`, `temp_forecast_1h`, `cloud_cover`, `precipitation`, `humidity`, `wind_speed` → derived `temp_speed`, `forecast_speed`, `weather_score`, `weather_state`.
 
-```text
-┌──────────────────────────────────────────────┐
-│ [ADD] 78%  gap widening, accel +3%, vol ↑   │
-└──────────────────────────────────────────────┘
+Weather score per spec:
+```
+cloud<30:+2, 30–70:+1, >70:-2
+precip>0:-3, humidity>75:-1, wind>20:-1
 ```
 
-Badge color:
-- `ENTER` blue, `ADD` emerald, `HOLD` amber, `TRIM` red
-
-Available on **local cards** (have full data). External (Discover) cards show only `ENTER` vs `HOLD` (no acceleration/volume → degraded mode), or just hide the badge — your call; default: show with a "limited data" tooltip.
+State per spec (uses °C; Open-Meteo defaults to metric, no conversion needed):
+```
+STRONG   : temp_speed≥0.5 AND forecast_speed≥0.5 AND score≥1
+MODERATE : temp_speed≥0.3 AND score≥0
+WEAK     : otherwise
+```
 
 ### Files
 
-- `src/lib/weather.ts` — add `decideAction({ gap2h, gap1h, gapNow, volPrev, volLast, ttpMinutes })` returning `{ action, confidence, reason }`. Pure function, unit-testable.
-- `src/components/weather/MomentumBreakouts.tsx`
-  - Add `fetchRecentVolume(tokenId)` returning `{ last10m, prev10m }` (Polymarket trades endpoint).
-  - In the scan loop, call it once per leader and store `volLast`/`volPrev` on `Movement`.
-  - Render new `<ActionBadge>` inside each card using `decideAction(...)`.
-- `src/test/decideAction.test.ts` (optional) — small vitest covering the 4 branches.
+- **`src/lib/weather.ts`** — extend `decideAction` to accept `weatherState?: "STRONG"|"MODERATE"|"WEAK"|"UNKNOWN"` and `mode?: "MOMENTUM"|"TRANSITION"|"CERTAINTY"`. Add helpers: `computeWeatherScore(...)`, `classifyWeather(...)`, `classifyMode(ttpMinutes)`. Apply the WEAK→HOLD veto and surface `mode` + `weather_state` in the returned `ActionDecision`.
+- **`src/lib/openMeteo.ts`** *(new)* — `fetchOpenMeteoSnapshot(lat, lon)` returning the seven extracted fields; in-memory 10-min LRU cache keyed by `lat,lon` rounded to 2 dp.
+- **`src/components/weather/MomentumBreakouts.tsx`**
+  - In the scan batch, after volume fetch, also call `fetchOpenMeteoSnapshot(m.latitude, m.longitude)` and store on `Movement`.
+  - Pass `weatherState` and `mode` into `decideAction`.
+  - Add `<ModeBadge>` and `<WeatherBadge>` next to existing `<ActionBadge>` in `Row` and `ExternalRow` (external uses `UNKNOWN` when no coords).
+- **`src/test/decideAction.test.ts`** *(optional)* — extend with WEAK-veto and mode cases.
 
 ### Out of scope
-- No DB changes
-- No edge-function changes
-- Existing momentum score / sort / stake-size logic untouched
-- Discover external cards: degraded badge (gap-only) — no extra Polymarket calls from the edge function
+
+- No DB or edge-function changes (Open-Meteo is called from the browser, same pattern as the existing CLOB fetches).
+- No changes to scoring/sort/stake-size logic.
+- No persistence of weather snapshots (recomputed each scan, like volume).
 
