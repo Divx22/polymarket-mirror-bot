@@ -88,10 +88,13 @@ async function fetchMid(tokenId: string): Promise<number | null> {
   } catch { return null; }
 }
 
-/** Fetch recent trades for a token and bucket USDC volume into two 10-minute windows. */
+/** Fetch recent trades for a token and bucket USDC volume into two 10-minute windows.
+ *  Uses Polymarket's public data-api (no auth required). The CLOB /data/trades
+ *  endpoint requires an API key and returns 401 in the browser. */
 async function fetchRecentVolume(tokenId: string): Promise<{ last10m: number | null; prev10m: number | null }> {
   try {
-    const r = await fetch(`https://clob.polymarket.com/data/trades?market=${tokenId}&limit=500`);
+    // data-api.polymarket.com is public; filters by asset (token) id and is paginated.
+    const r = await fetch(`https://data-api.polymarket.com/trades?market=${tokenId}&limit=500&takerOnly=false`);
     if (!r.ok) return { last10m: null, prev10m: null };
     const j = await r.json();
     const trades: any[] = Array.isArray(j) ? j : (j?.data ?? []);
@@ -100,8 +103,8 @@ async function fetchRecentVolume(tokenId: string): Promise<{ last10m: number | n
     const t20 = now - 20 * 60_000;
     let last = 0, prev = 0;
     for (const tr of trades) {
-      const tsRaw = Number(tr?.match_time ?? tr?.timestamp ?? tr?.t ?? 0);
-      // CLOB returns seconds; normalize.
+      const tsRaw = Number(tr?.timestamp ?? tr?.match_time ?? tr?.t ?? 0);
+      // data-api returns seconds; normalize either way.
       const ts = tsRaw > 1e12 ? tsRaw : tsRaw * 1000;
       if (!Number.isFinite(ts) || ts < t20) continue;
       const price = Number(tr?.price ?? 0);
