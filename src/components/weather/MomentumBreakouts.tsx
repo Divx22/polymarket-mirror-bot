@@ -681,17 +681,19 @@ const VerdictBadge = ({ verdict, title }: { verdict: MarketVerdict; title?: stri
 };
 
 const ProjectionPanel = ({
-  projection, snapshot, bankroll, stakeCapPct, confidence,
+  projection, snapshot, bankroll, stakeCapPct, confidence, unit,
 }: {
   projection: ProjectionResult;
   snapshot: OpenMeteoSnapshot | null;
   bankroll: number;
   stakeCapPct: number;
   confidence: number;
+  unit: "C" | "F";
 }) => {
   const [open, setOpen] = useState(false);
-  const meanF = cToF(projection.meanC);
-  const bandF = projection.bandC * 9 / 5;
+  const meanDisp = unit === "F" ? cToF(projection.meanC) : projection.meanC;
+  const bandDisp = unit === "F" ? projection.bandC * 9 / 5 : projection.bandC;
+  const sym = unit === "F" ? "°F" : "°C";
   const h = Math.floor(projection.hoursToPeak);
   const m = Math.round((projection.hoursToPeak - h) * 60);
   const ttpStr = projection.hoursToPeak > 0
@@ -718,7 +720,7 @@ const ProjectionPanel = ({
         <div className="flex flex-col">
           <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Projected temp at peak ({ttpStr})</span>
           <span className="font-mono-num text-sm font-bold text-foreground">
-            {meanF.toFixed(1)}°F <span className="text-muted-foreground font-normal">±{bandF.toFixed(1)}°F</span>
+            {meanDisp.toFixed(1)}{sym} <span className="text-muted-foreground font-normal">±{bandDisp.toFixed(1)}{sym}</span>
           </span>
         </div>
         <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />
@@ -931,6 +933,11 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
     bucket_max_c: o.bucket_max_c,
     marketPrice: m.liveMids?.[o.id] ?? o.polymarket_price,
   }));
+  // Detect market unit from bucket labels (e.g. "26-27°C" → C, "78-79°F" → F).
+  const labelBlob = outs.map((o) => o.label).join(" ");
+  const unit: "C" | "F" = /°\s*C|\bC\b/i.test(labelBlob) && !/°\s*F/i.test(labelBlob) ? "C" : "F";
+  const tConv = (c: number) => unit === "F" ? cToF(c) : c;
+  const tSym = unit === "F" ? "°F" : "°C";
   const projection = compareToMarket(m.weather, hoursToPeak, buckets);
   const verdict: MarketVerdict = projection?.verdict ?? "UNKNOWN";
 
@@ -986,15 +993,15 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
             : undefined)}
           wxSourceLine={(() => {
             if (!m.weather) return "No live snapshot available";
-            const nowF = cToF(m.weather.temperature_now).toFixed(1);
+            const nowDisp = tConv(m.weather.temperature_now).toFixed(1);
             const ph = Math.floor(hoursToPeak);
             const pm = Math.round((hoursToPeak - ph) * 60);
             const ttp = hoursToPeak > 0 ? (ph > 0 ? `in ${ph}h ${pm.toString().padStart(2, "0")}m` : `in ${pm}m`) : "now";
             if (!projection) {
-              const f1 = m.weather.temp_forecast_1h != null ? `${cToF(m.weather.temp_forecast_1h).toFixed(1)}°F` : "—";
-              return `Open-Meteo ${m.market.city ?? "site"} · now ${nowF}°F · +1h ${f1}`;
+              const f1 = m.weather.temp_forecast_1h != null ? `${tConv(m.weather.temp_forecast_1h).toFixed(1)}${tSym}` : "—";
+              return `Open-Meteo ${m.market.city ?? "site"} · now ${nowDisp}${tSym} · +1h ${f1}`;
             }
-            const peakF = cToF(projection.meanC).toFixed(1);
+            const peakDisp = tConv(projection.meanC).toFixed(1);
             const peak = projection.peak;
             const cloud = peak?.cloud != null ? `${Math.round(peak.cloud)}%` : "—";
             const precip = peak?.precipitation != null ? `${peak.precipitation.toFixed(1)}mm` : "—";
@@ -1003,11 +1010,11 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
             if (projection.forecastDrift) flags.push("⚠ forecast drift");
             if (projection.plateauDetected) flags.push("≈ plateau");
             const flagStr = flags.length ? ` · ${flags.join(" · ")}` : "";
-            return `Open-Meteo ${m.market.city ?? "site"} · now ${nowF}°F · peak (${ttp}) ${peakF}°F · cloud ${cloud} · precip ${precip} · wind ${wind} · conf ${projection.confidence}%${flagStr}`;
+            return `Open-Meteo ${m.market.city ?? "site"} · now ${nowDisp}${tSym} · peak (${ttp}) ${peakDisp}${tSym} · cloud ${cloud} · precip ${precip} · wind ${wind} · conf ${projection.confidence}%${flagStr}`;
           })()}
         />
         <ActionBadge decision={decision} />
-        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} />}
+        {projection && <ProjectionPanel projection={projection} snapshot={m.weather} bankroll={bankroll} stakeCapPct={stakeCapPct} confidence={decision.confidence} unit={unit} />}
         <div className="inline-flex items-center gap-2 rounded border border-border bg-background/60 px-3 py-2">
           <Snap label="2h ago" value={gap2hPct} />
           <span className={cn("text-base", meta.arrow)}>→</span>
