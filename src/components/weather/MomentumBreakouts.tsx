@@ -725,26 +725,38 @@ const ProjectionPanel = ({
       </button>
       {open && (
         <div className="px-3 pb-3">
-          {projection.bestValueLabel && projection.bestValueEdge != null && projection.bestValueEdge >= 7 && (
-            <div className="mb-2 space-y-1">
-              <div className={cn(
-                "text-[11px] font-bold uppercase tracking-wider",
-                projection.bestValueEdge >= 15 ? "text-emerald-300" : "text-amber-300",
-              )}>
-                Best value: <span className="font-mono-num">{projection.bestValueLabel}</span>
-                <span className="ml-1 font-mono-num">(+{projection.bestValueEdge} edge)</span>
-              </div>
-              {smartBid > 0 && (
-                <div
-                  className="text-[10px] text-muted-foreground"
-                  title={`Sized from edge +${projection.bestValueEdge}pp · confidence ${confidence}% · bankroll $${bankroll.toLocaleString()} · cap ${stakeCapPct}%`}
-                >
-                  Smart bid: <span className="font-mono-num font-semibold text-foreground">${smartBid.toLocaleString()}</span>
-                  <span className="ml-1 font-mono-num">({smartBidPct.toFixed(1)}% of bankroll)</span>
+          {projection.bestValueLabel && projection.bestValueEdge != null && projection.bestValueEdge >= 7 && (() => {
+            const bestRow = projection.rows.find((r) => r.label === projection.bestValueLabel);
+            const bestPrice = bestRow?.marketPct ?? null;
+            const edge = projection.bestValueEdge;
+            const strong = edge >= 15 && bestPrice != null && bestPrice <= 70;
+            const weak = edge < 10;
+            const tier = strong ? "STRONG" : weak ? "WEAK" : "MODERATE";
+            const tierCls = strong ? "text-emerald-300" : weak ? "text-muted-foreground" : "text-amber-300";
+            return (
+              <div className="mb-2 space-y-1">
+                <div className={cn("text-[11px] font-bold uppercase tracking-wider", tierCls)}>
+                  Best value: <span className="font-mono-num">{projection.bestValueLabel}</span>
+                  <span className="ml-1 font-mono-num">({tier} +{edge})</span>
+                  {bestPrice != null && <span className="ml-1 font-mono-num text-muted-foreground">@ {bestPrice.toFixed(0)}%</span>}
                 </div>
-              )}
-            </div>
-          )}
+                {!strong && (
+                  <div className="text-[10px] text-muted-foreground">
+                    {weak ? "Edge <10 — not actionable." : `Need edge ≥15 and price ≤70% for a real opportunity${bestPrice != null && bestPrice > 70 ? ` (price ${bestPrice.toFixed(0)}% too high)` : ""}.`}
+                  </div>
+                )}
+                {strong && smartBid > 0 && (
+                  <div
+                    className="text-[10px] text-muted-foreground"
+                    title={`Sized from edge +${edge}pp · confidence ${confidence}% · bankroll $${bankroll.toLocaleString()} · cap ${stakeCapPct}%`}
+                  >
+                    Smart bid: <span className="font-mono-num font-semibold text-foreground">${smartBid.toLocaleString()}</span>
+                    <span className="ml-1 font-mono-num">({smartBidPct.toFixed(1)}% of bankroll)</span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <table className="w-full text-[11px] font-mono-num">
             <thead>
               <tr className="text-muted-foreground text-[9px] uppercase tracking-wider">
