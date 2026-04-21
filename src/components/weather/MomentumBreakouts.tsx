@@ -897,6 +897,7 @@ const ProjectionPanel = ({
   useEffect(() => {
     if (!fair || projection.bestValueEdge == null) return;
     if (projection.bestValueEdge < 15) return;
+    if (blockAutoLog) return;
     const key = `${tradeContext.market_slug ?? tradeContext.market_question}::${projection.bestValueLabel}`;
     if (autoLoggedKeyRef.current === key) return;
     autoLoggedKeyRef.current = key;
@@ -904,7 +905,7 @@ const ProjectionPanel = ({
     if (!payload) return;
     void logEdgeTrade(payload);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projection.bestValueEdge, projection.bestValueLabel, tradeContext.market_slug]);
+  }, [projection.bestValueEdge, projection.bestValueLabel, tradeContext.market_slug, blockAutoLog]);
 
   const onMarkTraded = async (e: React.MouseEvent) => {
     e.stopPropagation();
