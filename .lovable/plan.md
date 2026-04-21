@@ -1,37 +1,74 @@
 
 
-## Why some cards show peak time and others don't
+## Decision engine on momentum cards
 
-The peak-weather badge only renders when the card's city name is found in the **hardcoded `CITY_TIMEZONES` map** in `src/lib/cityTimezones.ts`. If the city isn't in that ~40-entry list (or the name doesn't match exactly, e.g. "Las Vegas" vs "Vegas", "Kyiv", "Jakarta", "Bangkok", "Cairo", "Vancouver"), `tzForCity` returns `null`, so `peakWeatherTimeMs` returns `null`, and the orange peak badge is hidden.
+Add an **action badge** (`ENTER` / `ADD` / `HOLD` / `TRIM`) to every momentum card. The current scan/sort/UI stays exactly as is — this is a layer on top.
 
-Right now the map covers ~40 cities. Anything outside that list silently drops the peak timer.
+### Inputs we already have per card
+- `gap2h`, `gap1h`, `gapNow`, `leaderNow` — already computed
+- `time_to_peak_minutes` — derive from existing `peakWeatherTimeMs(eventTime, city, lat, lon)`
 
-## Fix
+### New input: volume confirmation
+Polymarket CLOB exposes per-token trade history. Add a small fetch that pulls the last ~25 minutes of trades for the leader token and buckets them into two 10-minute windows:
 
-Make peak time available for **every** city by replacing the hardcoded lookup with a real geo→timezone resolver, using data we already have on each market (`latitude` / `longitude` from `weather_markets`, plus the resolution station coords for momentum cards).
+```
+volume_last_10m = sum(usdc) over [now-10m, now]
+volume_prev_10m = sum(usdc) over [now-20m, now-10m]
+```
 
-### Approach
+Endpoint: `https://clob.polymarket.com/data/trades?market=<tokenId>&limit=500` (cheap, public, same origin pattern as the existing `prices-history` fetch). If unavailable for a token, treat `volume_change = 0` (neutral).
 
-1. **Add `tz-lookup`** (tiny ~50KB lib, offline, lat/lon → IANA timezone). Works for any point on Earth.
-2. **Update `src/lib/cityTimezones.ts`**:
-   - Add `tzForCoords(lat, lon)` using `tz-lookup`.
-   - Change `tzForCity` callers to a new `resolveTz({ city, lat, lon })` that tries coords first, then the city map as fallback, then returns `null`.
-   - Update `formatLocalCloseTime`, `peakWeatherTimeMs`, `formatLocalHour` to accept an optional `{ lat, lon }` (or a resolved tz string) instead of just city.
-3. **Update `MomentumBreakouts.tsx`**:
-   - Pass `latitude` / `longitude` (local markets) and the discovered coords (external rows — these come back from the discover function; if missing, fall back to city-name lookup) into `CountdownBadge` and `CardHeader`.
-4. **Light normalization** in the city map (lowercase, strip "city of", common aliases) so the fallback path catches more names too.
+This fetch runs once per card during scan, in the same batched loop — no extra round trips per render.
 
-### Result
+### Decision logic (exact spec the user provided)
 
-Every card with either coords or a recognizable city shows close-local-time + peak-local-time. The orange peak badge will no longer disappear for Bangkok, Vegas, Kyiv, etc.
+```text
+momentum_1   = gap_1h - gap_2h
+momentum_2   = gap_now - gap_1h
+acceleration = momentum_2 - momentum_1
+volume_change = volume_last_10m - volume_prev_10m
+gap_direction = gap_now > gap_1h ? "widening" : "shrinking"
+
+Priority (top wins):
+1. TRIM  : shrinking OR acceleration < -0.05 OR volume_change < 0
+2. ADD   : widening AND acceleration > 0 AND volume_change > 0 AND ttp < 120
+3. ENTER : widening AND gap_now > 0.15 AND ttp < 120
+4. HOLD  : otherwise
+```
+
+Note: spec uses cents (`gap_now > 15`, `acceleration < -5`). Per project memory ("momentum UI in percentages"), thresholds are stored as 0–1 (`0.15`, `-0.05`) and the engine works on the same units already in `Movement`.
+
+Confidence (0–100): weighted blend of `|acceleration|`, `|volume_change|` magnitude, gap size, and time-to-peak proximity. Clamped 0–100.
+
+Reason: short auto-generated string, e.g. *"gap widening, acceleration +3%, volume rising"* or *"acceleration slowing, volume flat"*.
+
+### UI
+
+A new compact badge row inside each card, just under the trajectory chip:
+
+```text
+┌──────────────────────────────────────────────┐
+│ [ADD] 78%  gap widening, accel +3%, vol ↑   │
+└──────────────────────────────────────────────┘
+```
+
+Badge color:
+- `ENTER` blue, `ADD` emerald, `HOLD` amber, `TRIM` red
+
+Available on **local cards** (have full data). External (Discover) cards show only `ENTER` vs `HOLD` (no acceleration/volume → degraded mode), or just hide the badge — your call; default: show with a "limited data" tooltip.
 
 ### Files
 
-- `src/lib/cityTimezones.ts` — add coord-based resolver, broaden API
-- `src/components/weather/MomentumBreakouts.tsx` — pass lat/lon into badge/header
-- `package.json` — add `tz-lookup` dependency
+- `src/lib/weather.ts` — add `decideAction({ gap2h, gap1h, gapNow, volPrev, volLast, ttpMinutes })` returning `{ action, confidence, reason }`. Pure function, unit-testable.
+- `src/components/weather/MomentumBreakouts.tsx`
+  - Add `fetchRecentVolume(tokenId)` returning `{ last10m, prev10m }` (Polymarket trades endpoint).
+  - In the scan loop, call it once per leader and store `volLast`/`volPrev` on `Movement`.
+  - Render new `<ActionBadge>` inside each card using `decideAction(...)`.
+- `src/test/decideAction.test.ts` (optional) — small vitest covering the 4 branches.
 
-### Note (separate, minor)
-
-The console warnings about `forwardRef` on `Snap` / `StakeBar` / `ExternalRow` are unrelated to this issue but I can fix them in the same pass if you want.
+### Out of scope
+- No DB changes
+- No edge-function changes
+- Existing momentum score / sort / stake-size logic untouched
+- Discover external cards: degraded badge (gap-only) — no extra Polymarket calls from the edge function
 
