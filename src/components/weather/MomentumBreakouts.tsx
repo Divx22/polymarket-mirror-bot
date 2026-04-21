@@ -1079,8 +1079,9 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
     marketVerdict: verdict,
   });
 
+  const projTempStr = projection ? `${tConv(projection.meanC).toFixed(1)}${tSym}` : null;
   const verdictTitle = projection
-    ? `Model #1: ${projection.modelTopLabel ?? "—"} · Market #1: ${projection.marketTopLabel ?? "—"}`
+    ? `Model #1: ${projection.modelTopLabel ?? "—"} bucket (proj ${projTempStr}) · Market #1: ${projection.marketTopLabel ?? "—"}`
     : "No projection (missing weather or bucket data)";
 
   const copy = async (e: React.MouseEvent) => {
@@ -1109,7 +1110,7 @@ const Row = ({ m, outs, onSelect, stake, stakePct, score, bankroll, stakeCapPct 
           verdict={verdict}
           verdictTitle={verdictTitle}
           verdictReason={unknownReason || (projection
-            ? `Model ${projection.modelTopLabel ?? "—"} vs market ${projection.marketTopLabel ?? "—"}`
+            ? `Model ${projection.modelTopLabel ?? "—"} bucket (proj ${projTempStr}) vs market ${projection.marketTopLabel ?? "—"}`
             : undefined)}
           wxSourceLine={(() => {
             if (!m.weather) return "No live snapshot available";
@@ -1234,8 +1235,9 @@ const ExternalRow = ({ m, stake, stakePct, score, bankroll, stakeCapPct }: { m: 
     marketVerdict: verdict,
   });
 
+  const projTempStr = projection ? `${tConv(projection.meanC).toFixed(1)}${tSym}` : null;
   const verdictTitle = projection
-    ? `Model #1: ${projection.modelTopLabel ?? "—"} · Market #1: ${projection.marketTopLabel ?? "—"}`
+    ? `Model #1: ${projection.modelTopLabel ?? "—"} bucket (proj ${projTempStr}) · Market #1: ${projection.marketTopLabel ?? "—"}`
     : "No projection (missing weather or bucket data)";
 
   const wxSourceLine = (() => {
@@ -1279,7 +1281,7 @@ const ExternalRow = ({ m, stake, stakePct, score, bankroll, stakeCapPct }: { m: 
           verdict={verdict}
           verdictTitle={verdictTitle}
           verdictReason={unknownReason || (projection
-            ? `Model ${projection.modelTopLabel ?? "—"} vs market ${projection.marketTopLabel ?? "—"}`
+            ? `Model ${projection.modelTopLabel ?? "—"} bucket (proj ${projTempStr}) vs market ${projection.marketTopLabel ?? "—"}`
             : undefined)}
           wxSourceLine={wxSourceLine}
         />
