@@ -205,7 +205,12 @@ export const MomentumBreakouts = ({
         if (outs.length < 2) return;
 
         const liveMids = await Promise.all(outs.map(o => fetchMid(o.clob_token_id!)));
-        const enriched = outs.map((o, i) => ({ o, mid: liveMids[i] ?? o.polymarket_price ?? 0 }));
+        // Only rank outcomes with a fresh live midpoint — mixing stale DB prices
+        // produces wrong leader/runner pairs.
+        const enriched = outs
+          .map((o, i) => ({ o, mid: liveMids[i] }))
+          .filter((e): e is { o: typeof e.o; mid: number } => e.mid != null && Number.isFinite(e.mid));
+        if (enriched.length < 2) return;
         enriched.sort((a, b) => b.mid - a.mid);
 
         const leader = enriched[0].o;
