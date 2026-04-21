@@ -53,6 +53,10 @@ export type ProjectionResult = {
   peakBias: PeakBias;
   /** Conditions interpolated to the peak hour, useful for UI display. */
   peak: PeakConditions | null;
+  /** Raw (un-normalized) probability mass of the top model bucket, 0–1. Used by UI to flag "out of range" projections. */
+  topModelRawMass: number;
+  /** True when every displayed bucket has <5% raw model mass — projection sits outside the listed range. */
+  outOfRange: boolean;
 };
 
 export const cToF = (c: number): number => c * 9 / 5 + 32;
@@ -171,12 +175,13 @@ export function projectPeakTempC(
   if (peakBias === "LOWER") meanC -= 0.3;
   else if (peakBias === "HIGHER") meanC += 0.3;
 
-  // Band: cloud + wind contributions evaluated at the peak hour.
+  // Band: cloud + wind + time-to-peak contributions evaluated at the peak hour.
   const peakWind = peak?.wind ?? s.wind_speed;
   const cloudPct = Math.max(0, Math.min(100, peakCloud ?? 0));
   const windKmh = Math.max(0, peakWind ?? 0);
-  let bandF = Math.max(1, Math.min(4, 1 + (cloudPct / 100) * 1.5 + (windKmh / 30) * 1));
-  if (forecastDrift) bandF = Math.min(5, bandF + 0.5);
+  const hoursTerm = Math.min(2.0, Math.sqrt(Math.max(0, h)) * 0.4);
+  let bandF = Math.max(1, Math.min(6, 1 + (cloudPct / 100) * 1.5 + (windKmh / 30) * 1 + hoursTerm));
+  if (forecastDrift) bandF = Math.min(6, bandF + 0.5);
   const bandC = bandF * 5 / 9;
   const sigmaC = bandC / 1.96;
 
@@ -274,8 +279,17 @@ export function compareToMarket(
   const marketTop = [...rows].sort((a, b) => b.marketPct - a.marketPct)[0] ?? null;
   const modelTop = [...rows].sort((a, b) => b.modelPct - a.modelPct)[0] ?? null;
 
+  // Top model raw mass (un-normalized) — used to flag "out of range" projections.
+  const topModelRawMass = rawModel.length > 0 ? Math.max(...rawModel) : 0;
+  const outOfRange = rawModel.length > 0 && rawModel.every((p) => p < 0.05);
+
   let verdict: MarketVerdict = "UNKNOWN";
-  if (marketTop && modelTop) {
+  let modelTopLabelOut: string | null = modelTop?.label ?? null;
+  if (outOfRange) {
+    // Model says none of the displayed buckets are likely → not a real winner.
+    verdict = "STRONG_DISAGREE";
+    modelTopLabelOut = null;
+  } else if (marketTop && modelTop) {
     if (marketTop.label !== modelTop.label) {
       const modelRow = rows.find((r) => r.label === modelTop.label)!;
       verdict = modelRow.edge >= 15 ? "STRONG_DISAGREE" : "WEAK_DISAGREE";
@@ -304,7 +318,7 @@ export function compareToMarket(
     rows,
     verdict,
     marketTopLabel: marketTop?.label ?? null,
-    modelTopLabel: modelTop?.label ?? null,
+    modelTopLabel: modelTopLabelOut,
     bestValueLabel: best?.label ?? null,
     bestValueEdge: best?.edge ?? null,
     confidence,
@@ -312,5 +326,7 @@ export function compareToMarket(
     plateauDetected: proj.plateauDetected,
     peakBias: proj.peakBias,
     peak: proj.peak,
+    topModelRawMass,
+    outOfRange,
   };
 }
