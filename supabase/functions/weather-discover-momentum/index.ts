@@ -239,12 +239,35 @@ function eventEndTime(ev: any, city: string | null): number | null {
   return Number.isFinite(earliest) ? earliest : null;
 }
 
+function extractSlugFromUrl(url: string): string | null {
+  try {
+    const u = new URL(url.trim());
+    // Expected: /event/<slug> or /event/<slug>/<market-slug>
+    const parts = u.pathname.split("/").filter(Boolean);
+    const idx = parts.indexOf("event");
+    if (idx >= 0 && parts[idx + 1]) return parts[idx + 1];
+    // Fallback: last non-empty segment
+    return parts[parts.length - 1] ?? null;
+  } catch { return null; }
+}
+
+async function fetchEventBySlug(slug: string): Promise<any | null> {
+  try {
+    const r = await fetch(`https://gamma-api.polymarket.com/events?slug=${encodeURIComponent(slug)}`);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const arr = Array.isArray(j) ? j : (j?.events ?? []);
+    return arr[0] ?? null;
+  } catch { return null; }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    // Optional body: { gap_min?: number, max_hours?: number }.
+    // Optional body: { gap_min?: number, max_hours?: number, event_url?: string }.
     let gapMin = DEFAULT_GAP_MIN;
     let maxHours = MAX_HOURS;
+    let singleEventUrl: string | null = null;
     try {
       if (req.method === "POST") {
         const body = await req.json().catch(() => null);
@@ -252,24 +275,47 @@ Deno.serve(async (req) => {
         if (Number.isFinite(v) && v > 0 && v < 1) gapMin = v;
         const h = Number(body?.max_hours);
         if (Number.isFinite(h) && h > 0 && h <= 72) maxHours = h;
+        if (typeof body?.event_url === "string" && body.event_url.trim()) {
+          singleEventUrl = body.event_url.trim();
+        }
       }
     } catch { /* ignore */ }
 
-    const events = await discoverEvents();
     const now = Date.now();
     const target1h = now - 3_600_000;
 
-    // Filter to events ending within window. City is detected from title+sub-questions
-    // so eventEndTime can compute end-of-day in the city's local timezone.
-    const eligible = events.filter((ev) => {
-      const subs: any[] = Array.isArray(ev?.markets) ? ev.markets : [];
-      const text = String(ev?.title ?? "") + " " + subs.map((s) => s?.question ?? "").join(" ");
-      const city = detectCity(text);
-      const t = eventEndTime(ev, city);
-      if (t == null) return false;
-      const hours = (t - now) / 3_600_000;
-      return hours > MIN_HOURS && hours <= maxHours;
-    });
+    // Single-event mode: fetch by slug, skip time-window + gap filters,
+    // but keep gap-history & trajectory math so the UI looks the same.
+    const singleMode = !!singleEventUrl;
+    let eligible: any[];
+    if (singleMode) {
+      const slug = extractSlugFromUrl(singleEventUrl!);
+      if (!slug) {
+        return new Response(JSON.stringify({ error: "Could not extract slug from URL" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const ev = await fetchEventBySlug(slug);
+      if (!ev) {
+        return new Response(JSON.stringify({ error: `Event not found for slug: ${slug}` }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      eligible = [ev];
+    } else {
+      const events = await discoverEvents();
+      // Filter to events ending within window. City is detected from title+sub-questions
+      // so eventEndTime can compute end-of-day in the city's local timezone.
+      eligible = events.filter((ev) => {
+        const subs: any[] = Array.isArray(ev?.markets) ? ev.markets : [];
+        const text = String(ev?.title ?? "") + " " + subs.map((s) => s?.question ?? "").join(" ");
+        const city = detectCity(text);
+        const t = eventEndTime(ev, city);
+        if (t == null) return false;
+        const hours = (t - now) / 3_600_000;
+        return hours > MIN_HOURS && hours <= maxHours;
+      });
+    }
 
     type BucketOut = { label: string; clob_token_id: string; mid: number };
     type Result = {
@@ -315,14 +361,16 @@ Deno.serve(async (req) => {
         const leader = valid[0];
         const runner = valid[1];
         const gapNow = leader.mid - runner.mid;
-        if (gapNow < gapMin || leader.mid > MAX_ENTRY_PRICE) return;
+        // In single-event mode, bypass gap/price filters so the requested URL
+        // always renders even if it doesn't qualify on momentum.
+        if (!singleMode && (gapNow < gapMin || leader.mid > MAX_ENTRY_PRICE)) return;
 
         const [lh, rh] = await Promise.all([fetchHistory(leader.tokenId), fetchHistory(runner.tokenId)]);
         const l1h = priceAt(lh, target1h);
         const r1h = priceAt(rh, target1h);
-        if (l1h == null || r1h == null) return;
-        const gap1h = l1h - r1h;
-        if (gap1h < gapMin) return;
+        if (!singleMode && (l1h == null || r1h == null)) return;
+        const gap1h = (l1h != null && r1h != null) ? l1h - r1h : gapNow;
+        if (!singleMode && gap1h < gapMin) return;
 
         const target2h = now - 2 * 3_600_000;
         const l2h = priceAt(lh, target2h);

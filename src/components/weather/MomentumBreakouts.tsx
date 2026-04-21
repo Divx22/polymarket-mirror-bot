@@ -217,6 +217,8 @@ export const MomentumBreakouts = ({
   // Resolution window in hours. User-selectable: 8 / 12 / 24.
   const [windowHours, setWindowHours] = useState<WindowHours>(DEFAULT_WINDOW);
   const [detectingIds, setDetectingIds] = useState<Set<string>>(new Set());
+  const [singleUrl, setSingleUrl] = useState<string>("");
+  const [analyzingUrl, setAnalyzingUrl] = useState(false);
 
   const detectResolution = async (marketId: string) => {
     setDetectingIds((s) => new Set(s).add(marketId));
@@ -392,6 +394,71 @@ export const MomentumBreakouts = ({
     }
   };
 
+  const analyzeUrl = async () => {
+    const url = singleUrl.trim();
+    if (!url) return;
+    if (!/polymarket\.com\/event\//i.test(url)) {
+      toast.error("Paste a Polymarket event URL (https://polymarket.com/event/…)");
+      return;
+    }
+    setAnalyzingUrl(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("weather-discover-momentum", {
+        body: { event_url: url, gap_min: gapMin, max_hours: 720 },
+      });
+      if (error) throw error;
+      const results = (data?.results ?? []) as any[];
+      if (results.length === 0) {
+        toast.error("No tradable buckets found for that event.");
+        return;
+      }
+      const r = results[0];
+      const city: string | null = r.city ?? null;
+      let coords: { lat: number; lon: number } | null = null;
+      if (city) {
+        const local = markets.find((lm) => lm.city?.trim().toLowerCase() === city.trim().toLowerCase());
+        if (local && Number.isFinite(local.latitude) && Number.isFinite(local.longitude)) {
+          coords = { lat: Number(local.latitude), lon: Number(local.longitude) };
+        } else {
+          coords = await geocodeCity(city);
+        }
+      }
+      const weather = coords ? await fetchOpenMeteoSnapshot(coords.lat, coords.lon) : null;
+      const ext: ExternalMovement = {
+        source: "external",
+        event_title: r.event_title,
+        event_slug: r.event_slug,
+        city,
+        event_time: r.event_time,
+        polymarket_url: r.polymarket_url ?? url,
+        leader_label: r.leader_label,
+        runner_label: r.runner_label,
+        leaderNow: r.leader_now,
+        gap2h: r.gap_2h ?? r.gap_1h,
+        gap1h: r.gap_1h,
+        gapNow: r.gap_now,
+        netDelta: r.net_delta,
+        trajectory: r.trajectory,
+        lat: coords?.lat ?? null,
+        lon: coords?.lon ?? null,
+        weather,
+        allBuckets: Array.isArray(r.buckets) ? r.buckets : [],
+      };
+      // Replace any existing entry for the same slug, then prepend.
+      setExternals((prev) => {
+        const filtered = prev.filter((e) => !ext.event_slug || e.event_slug !== ext.event_slug);
+        return [ext, ...filtered];
+      });
+      setSingleUrl("");
+      toast.success(`Loaded "${ext.event_title}"`);
+    } catch (e: any) {
+      console.error("analyzeUrl failed", e);
+      toast.error(e?.message ?? "Failed to analyze URL");
+    } finally {
+      setAnalyzingUrl(false);
+    }
+  };
+
   useEffect(() => {
     // Re-scan local list whenever the window changes so the visible set matches.
     if (markets.length > 0 && !scanning) scan();
@@ -483,6 +550,28 @@ export const MomentumBreakouts = ({
             {scanning ? `${progress}%` : "Rescan"}
           </button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 px-4 py-2 border-b border-border bg-surface-2/20">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-1">Analyze URL</span>
+        <input
+          type="url"
+          placeholder="https://polymarket.com/event/…"
+          value={singleUrl}
+          onChange={(e) => setSingleUrl(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") analyzeUrl(); }}
+          disabled={analyzingUrl}
+          className="flex-1 min-w-[200px] rounded border border-border bg-background px-2 py-1 text-[11px] font-mono-num text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+        />
+        <button
+          onClick={analyzeUrl}
+          disabled={analyzingUrl || !singleUrl.trim()}
+          className="inline-flex items-center gap-1.5 rounded border border-border bg-background hover:bg-surface-2 px-2.5 py-1 text-[11px] disabled:opacity-50"
+          title="Discover and chart this single Polymarket event"
+        >
+          {analyzingUrl ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
+          {analyzingUrl ? "Analyzing…" : "Analyze"}
+        </button>
       </div>
 
       {scanning && items.length === 0 && (
