@@ -1251,7 +1251,7 @@ const ExternalRow = ({ m, stake, stakePct, score, bankroll, stakeCapPct }: { m: 
   if (verdict === "UNKNOWN") {
     if (!m.lat || !m.lon) unknownReason = `No coordinates for ${m.city ?? "city"}`;
     else if (!m.weather) unknownReason = "Weather snapshot unavailable";
-    else if (leaderParsed.min_c == null && leaderParsed.max_c == null) unknownReason = "Could not parse bucket bounds from labels";
+    else if (buckets.every((b) => b.bucket_min_c == null && b.bucket_max_c == null)) unknownReason = "Could not parse bucket bounds from labels";
     else unknownReason = "Unable to compute projection";
   }
 
