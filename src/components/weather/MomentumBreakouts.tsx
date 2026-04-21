@@ -500,9 +500,16 @@ const CountdownBadge = ({
   const localTime = formatLocalCloseTime(eventTime, loc);
   const peakLocal = formatLocalHour(peakMs, loc);
   const peakPassed = peakLeft != null && peakLeft.totalMs <= 0;
+  const nowLocal = useNowInLocation(loc);
 
   return (
     <div className="inline-flex flex-col items-end gap-1">
+      {nowLocal && (
+        <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded border bg-muted/40 text-muted-foreground border-border text-[10px] font-mono-num">
+          <span className="opacity-70 uppercase tracking-wider text-[9px]">now</span>
+          <span className="font-semibold">{nowLocal}</span>
+        </div>
+      )}
       <div className={cn("inline-flex flex-col items-end gap-0.5 px-2 py-1 rounded border", colorClass)}>
         <div className="inline-flex items-center gap-1 text-[11px] font-mono-num font-semibold">
           <Clock className="h-3 w-3" />
