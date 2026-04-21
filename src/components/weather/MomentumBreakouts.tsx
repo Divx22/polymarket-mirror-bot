@@ -987,25 +987,32 @@ const ProjectionPanel = ({
                     <span className="ml-1 font-mono-num">({smartBidPct.toFixed(1)}% of bankroll)</span>
                   </div>
                 )}
-                <button
-                  onClick={onMarkTraded}
-                  disabled={logging || logged}
-                  className={cn(
-                    "mt-1 inline-flex items-center gap-1.5 rounded border px-2 py-1 text-[11px] font-semibold transition-colors",
-                    logged
-                      ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200"
-                      : "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20",
-                  )}
-                  title={`Log this opportunity (${projection.bestValueLabel}) as a trade in your /trades log`}
-                >
-                  {logging
-                    ? <Loader2 className="h-3 w-3 animate-spin" />
-                    : logged ? <Check className="h-3 w-3" /> : <BookmarkPlus className="h-3 w-3" />}
-                  {logged ? "Logged" : "Mark as traded"}
-                </button>
-                {edge >= 15 && (
+                {!hideCta && (
+                  <button
+                    onClick={onMarkTraded}
+                    disabled={logging || logged}
+                    className={cn(
+                      "mt-1 inline-flex items-center gap-1.5 rounded border px-2 py-1 text-[11px] font-semibold transition-colors",
+                      logged
+                        ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200"
+                        : "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20",
+                    )}
+                    title={`Log this opportunity (${projection.bestValueLabel}) as a trade in your /trades log`}
+                  >
+                    {logging
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : logged ? <Check className="h-3 w-3" /> : <BookmarkPlus className="h-3 w-3" />}
+                    {logged ? "Logged" : "Mark as traded"}
+                  </button>
+                )}
+                {edge >= 15 && !blockAutoLog && (
                   <div className="text-[9px] text-muted-foreground italic">
                     Auto-logged (edge ≥15pp). Review or update outcome on the /trades page.
+                  </div>
+                )}
+                {edge >= 15 && blockAutoLog && (
+                  <div className="text-[9px] text-amber-300/80 italic">
+                    Auto-log blocked: counter-trend in {mode} mode. {hideCta ? "CTA hidden — no fighting trend after peak." : "Use manual CTA if you still want to enter."}
                   </div>
                 )}
               </div>
