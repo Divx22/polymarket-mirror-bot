@@ -709,8 +709,11 @@ const VerdictBadge = ({ verdict, title }: { verdict: MarketVerdict; title?: stri
   );
 };
 
+type TradeContext = Omit<LogEdgeTradeInput, "source" | "entry_price" | "suggested_price" | "edge_pp" | "p_model" | "projected_temp_c" | "projected_temp_unit" | "stake_usdc" | "outcome_label" | "bucket_min_c" | "bucket_max_c">;
+
 const ProjectionPanel = ({
   projection, snapshot, bankroll, stakeCapPct, confidence, unit,
+  tradeContext, buckets,
 }: {
   projection: ProjectionResult;
   snapshot: OpenMeteoSnapshot | null;
@@ -718,8 +721,13 @@ const ProjectionPanel = ({
   stakeCapPct: number;
   confidence: number;
   unit: "C" | "F";
+  tradeContext: TradeContext;
+  buckets: BucketLike[];
 }) => {
   const [open, setOpen] = useState(false);
+  const [logging, setLogging] = useState(false);
+  const [logged, setLogged] = useState(false);
+  const autoLoggedKeyRef = useRef<string | null>(null);
   const meanDisp = unit === "F" ? cToF(projection.meanC) : projection.meanC;
   const bandDisp = unit === "F" ? projection.bandC * 9 / 5 : projection.bandC;
   const sym = unit === "F" ? "°F" : "°C";
@@ -738,56 +746,59 @@ const ProjectionPanel = ({
   const smartBid = suggestSmartBid(projection.bestValueEdge, confidence, bankroll, stakeCapPct);
   const smartBidPct = bankroll > 0 ? (smartBid / bankroll) * 100 : 0;
 
-  return (
-    <div className="rounded-md border border-border bg-background/40">
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-surface-2/40"
-        title={headerTitle}
-      >
-        <div className="flex flex-col">
-          <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Projected temp at peak ({ttpStr})</span>
-          <span className="font-mono-num text-sm font-bold text-foreground">
-            {meanDisp.toFixed(1)}{sym} <span className="text-muted-foreground font-normal">±{bandDisp.toFixed(1)}{sym}</span>
-          </span>
-        </div>
-        <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />
-      </button>
-      {open && (
-        <div className="px-3 pb-3">
-          {projection.bestValueLabel && projection.bestValueEdge != null && projection.bestValueEdge >= 7 && (() => {
-            const bestRow = projection.rows.find((r) => r.label === projection.bestValueLabel);
-            const bestPrice = bestRow?.marketPct ?? null;
-            const edge = projection.bestValueEdge;
-            const strong = edge >= 15 && bestPrice != null && bestPrice <= 70;
-            const weak = edge < 10;
-            const tier = strong ? "STRONG" : weak ? "WEAK" : "MODERATE";
-            const tierCls = strong ? "text-emerald-300" : weak ? "text-muted-foreground" : "text-amber-300";
-            return (
-              <div className="mb-2 space-y-1">
-                <div className={cn("text-[11px] font-bold uppercase tracking-wider", tierCls)}>
-                  Best value: <span className="font-mono-num">{projection.bestValueLabel}</span>
-                  <span className="ml-1 font-mono-num">({tier} +{edge})</span>
-                  {bestPrice != null && <span className="ml-1 font-mono-num text-muted-foreground">@ {bestPrice.toFixed(0)}%</span>}
-                </div>
-                {!strong && (
-                  <div className="text-[10px] text-muted-foreground">
-                    {weak ? "Edge <10 — not actionable." : `Need edge ≥15 and price ≤70% for a real opportunity${bestPrice != null && bestPrice > 70 ? ` (price ${bestPrice.toFixed(0)}% too high)` : ""}.`}
-                  </div>
-                )}
-                {strong && smartBid > 0 && (
-                  <div
-                    className="text-[10px] text-muted-foreground"
-                    title={`Sized from edge +${edge}pp · confidence ${confidence}% · bankroll $${bankroll.toLocaleString()} · cap ${stakeCapPct}%`}
-                  >
-                    Smart bid: <span className="font-mono-num font-semibold text-foreground">${smartBid.toLocaleString()}</span>
-                    <span className="ml-1 font-mono-num">({smartBidPct.toFixed(1)}% of bankroll)</span>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+  // Fair price + bucket info derived from the projection.
+  const fair = fairPriceFromProjection(projection);
+  const bestBucket = fair ? buckets.find((b) => b.label === fair.bucketLabel) : null;
+
+  const buildPayload = (source: "manual" | "auto_edge", stake: number): LogEdgeTradeInput | null => {
+    if (!fair || !projection.bestValueLabel) return null;
+    return {
+      ...tradeContext,
+      source,
+      outcome_label: projection.bestValueLabel,
+      clob_token_id: bestBucket?.clob_token_id ?? tradeContext.clob_token_id ?? null,
+      bucket_min_c: bestBucket?.bucket_min_c ?? null,
+      bucket_max_c: bestBucket?.bucket_max_c ?? null,
+      side: "YES",
+      entry_price: fair.marketPrice,
+      suggested_price: fair.fairPrice,
+      edge_pp: fair.edgePp,
+      p_model: fair.fairPrice,
+      projected_temp_c: projection.meanC,
+      projected_temp_unit: unit,
+      stake_usdc: stake,
+    };
+  };
+
+  // Auto-log every qualifying outcome once per render-instance (DB has unique
+  // index per user/token/day, so duplicates are silently dropped).
+  useEffect(() => {
+    if (!fair || projection.bestValueEdge == null) return;
+    if (projection.bestValueEdge < 15) return;
+    const key = `${tradeContext.market_slug ?? tradeContext.market_question}::${projection.bestValueLabel}`;
+    if (autoLoggedKeyRef.current === key) return;
+    autoLoggedKeyRef.current = key;
+    const payload = buildPayload("auto_edge", smartBid);
+    if (!payload) return;
+    void logEdgeTrade(payload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projection.bestValueEdge, projection.bestValueLabel, tradeContext.market_slug]);
+
+  const onMarkTraded = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const payload = buildPayload("manual", smartBid > 0 ? smartBid : 0);
+    if (!payload) { toast.error("No best-value bucket to log"); return; }
+    setLogging(true);
+    const r = await logEdgeTrade(payload);
+    setLogging(false);
+    if (r.ok) {
+      setLogged(true);
+      toast.success(r.duplicate ? "Already logged today" : "Trade logged");
+    } else {
+      toast.error(r.error ?? "Failed to log trade");
+    }
+  };
+
           <table className="w-full text-[11px] font-mono-num">
             <thead>
               <tr className="text-muted-foreground text-[9px] uppercase tracking-wider">
