@@ -3,6 +3,7 @@ import { TrendingUp, Loader2, Copy, Check, RefreshCw, Globe, ExternalLink, Clock
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { type WeatherMarket, type WeatherOutcome } from "@/lib/weather";
+import { formatLocalCloseTime } from "@/lib/cityTimezones";
 import { cn } from "@/lib/utils";
 
 type Props = {
