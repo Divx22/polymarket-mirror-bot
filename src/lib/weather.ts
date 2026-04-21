@@ -160,6 +160,10 @@ export type WeatherSnapshotLike = {
     humidity: number | null;
     wind: number | null;
   }>;
+  /** Highest temp °C observed since local midnight in the market's tz, up to & including current hour. Null when unavailable. */
+  today_high_so_far_c?: number | null;
+  /** Lowest temp °C observed since local midnight in the market's tz, up to & including current hour. Null when unavailable. */
+  today_low_so_far_c?: number | null;
 };
 
 /** Weather score per spec: cloud<30:+2, 30–70:+1, >70:-2; precip>0:-3; humidity>75:-1; wind>20:-1. */
