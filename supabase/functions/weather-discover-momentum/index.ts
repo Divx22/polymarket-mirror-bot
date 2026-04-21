@@ -29,6 +29,78 @@ const KNOWN_CITIES: Record<string, string> = {
   "buenos aires": "Buenos Aires", "sao paulo": "Sao Paulo",
 };
 
+// City → IANA timezone for resolving "end of day" in the city's local time.
+const CITY_TZ: Record<string, string> = {
+  "New York": "America/New_York", "Los Angeles": "America/Los_Angeles",
+  "San Francisco": "America/Los_Angeles", "Chicago": "America/Chicago",
+  "Boston": "America/New_York", "Miami": "America/New_York",
+  "Seattle": "America/Los_Angeles", "Toronto": "America/Toronto",
+  "Austin": "America/Chicago", "Denver": "America/Denver",
+  "Phoenix": "America/Phoenix", "Dallas": "America/Chicago",
+  "Houston": "America/Chicago", "Philadelphia": "America/New_York",
+  "Atlanta": "America/New_York", "Minneapolis": "America/Chicago",
+  "Washington DC": "America/New_York", "Mexico City": "America/Mexico_City",
+  "London": "Europe/London", "Paris": "Europe/Paris",
+  "Berlin": "Europe/Berlin", "Madrid": "Europe/Madrid",
+  "Rome": "Europe/Rome", "Moscow": "Europe/Moscow",
+  "Istanbul": "Europe/Istanbul", "Tokyo": "Asia/Tokyo",
+  "Seoul": "Asia/Seoul", "Beijing": "Asia/Shanghai",
+  "Shanghai": "Asia/Shanghai", "Hong Kong": "Asia/Hong_Kong",
+  "Singapore": "Asia/Singapore", "Mumbai": "Asia/Kolkata",
+  "Delhi": "Asia/Kolkata", "Dubai": "Asia/Dubai",
+  "Sydney": "Australia/Sydney", "Rio de Janeiro": "America/Sao_Paulo",
+  "Sao Paulo": "America/Sao_Paulo",
+  "Buenos Aires": "America/Argentina/Buenos_Aires",
+};
+
+const MONTHS: Record<string, number> = {
+  january: 0, jan: 0, february: 1, feb: 1, march: 2, mar: 2, april: 3, apr: 3,
+  may: 4, june: 5, jun: 5, july: 6, jul: 6, august: 7, aug: 7,
+  september: 8, sep: 8, sept: 8, october: 9, oct: 9, november: 10, nov: 10,
+  december: 11, dec: 11,
+};
+
+// Find the offset (ms) of a timezone at a given UTC instant — uses Intl to invert.
+function tzOffsetMs(tz: string, utcMs: number): number {
+  // Format the instant in the target tz, then parse back as UTC components.
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  const parts = dtf.formatToParts(new Date(utcMs));
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? "0");
+  const asUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+  return asUtc - utcMs;
+}
+
+// Compute the UTC instant that corresponds to "end of <Y-M-D> 23:59:59" in the given tz.
+function endOfDayInTz(year: number, month0: number, day: number, tz: string): number {
+  // Approximate: assume the offset at noon of that day, then refine once.
+  const guess = Date.UTC(year, month0, day, 23, 59, 59);
+  const off = tzOffsetMs(tz, guess);
+  return guess - off;
+}
+
+// Try to extract a date (year/month/day) from the sub-market or event text — e.g.
+// "Highest temperature in London on April 22" or "Will the highest temp be 12°C on April 22?".
+function extractMarketDate(text: string, fallbackYear: number): { y: number; m: number; d: number } | null {
+  // Pattern: "April 22" or "April 22, 2026" or "Apr 22 '26"
+  const re1 = /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:[,\s]+(?:'?(\d{2,4})))?/i;
+  const m = text.match(re1);
+  if (m) {
+    const month = MONTHS[m[1].toLowerCase()];
+    const day = parseInt(m[2], 10);
+    let year = fallbackYear;
+    if (m[3]) {
+      const yr = parseInt(m[3], 10);
+      year = yr < 100 ? 2000 + yr : yr;
+    }
+    if (Number.isFinite(month) && day >= 1 && day <= 31) return { y: year, m: month, d: day };
+  }
+  return null;
+}
+
 function detectCity(text: string): string | null {
   const lower = text.toLowerCase();
   for (const k of Object.keys(KNOWN_CITIES)) {
