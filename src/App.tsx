@@ -7,6 +7,7 @@ import Index from "./pages/Index.tsx";
 import Auth from "./pages/Auth.tsx";
 import Weather from "./pages/Weather.tsx";
 import Momentum from "./pages/Momentum.tsx";
+import Trades from "./pages/Trades.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
           <Route path="/auth" element={<Auth />} />
           <Route path="/weather" element={<Weather />} />
           <Route path="/momentum" element={<Momentum />} />
+          <Route path="/trades" element={<Trades />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

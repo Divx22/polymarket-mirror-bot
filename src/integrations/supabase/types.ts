@@ -231,6 +231,99 @@ export type Database = {
         }
         Relationships: []
       }
+      edge_trades: {
+        Row: {
+          actual_temp_c: number | null
+          bucket_max_c: number | null
+          bucket_min_c: number | null
+          city: string | null
+          clob_token_id: string | null
+          created_at: string
+          created_on: string | null
+          edge_pp: number | null
+          entry_price: number
+          event_time: string | null
+          exit_price: number | null
+          id: string
+          market_question: string
+          market_slug: string | null
+          notes: string | null
+          outcome_label: string
+          p_model: number | null
+          pnl_usdc: number | null
+          projected_temp_c: number | null
+          projected_temp_unit: string | null
+          resolved_at: string | null
+          side: string
+          source: string
+          stake_usdc: number
+          status: string
+          suggested_price: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          actual_temp_c?: number | null
+          bucket_max_c?: number | null
+          bucket_min_c?: number | null
+          city?: string | null
+          clob_token_id?: string | null
+          created_at?: string
+          created_on?: string | null
+          edge_pp?: number | null
+          entry_price: number
+          event_time?: string | null
+          exit_price?: number | null
+          id?: string
+          market_question: string
+          market_slug?: string | null
+          notes?: string | null
+          outcome_label: string
+          p_model?: number | null
+          pnl_usdc?: number | null
+          projected_temp_c?: number | null
+          projected_temp_unit?: string | null
+          resolved_at?: string | null
+          side?: string
+          source?: string
+          stake_usdc?: number
+          status?: string
+          suggested_price?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          actual_temp_c?: number | null
+          bucket_max_c?: number | null
+          bucket_min_c?: number | null
+          city?: string | null
+          clob_token_id?: string | null
+          created_at?: string
+          created_on?: string | null
+          edge_pp?: number | null
+          entry_price?: number
+          event_time?: string | null
+          exit_price?: number | null
+          id?: string
+          market_question?: string
+          market_slug?: string | null
+          notes?: string | null
+          outcome_label?: string
+          p_model?: number | null
+          pnl_usdc?: number | null
+          projected_temp_c?: number | null
+          projected_temp_unit?: string | null
+          resolved_at?: string | null
+          side?: string
+          source?: string
+          stake_usdc?: number
+          status?: string
+          suggested_price?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       forecast_bias: {
         Row: {
           actual_temp_c: number

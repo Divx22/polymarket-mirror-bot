@@ -62,7 +62,10 @@ const Momentum = () => {
           </Link>
           <TrendingUp className="h-4 w-4 text-primary" />
           <h1 className="text-sm font-semibold tracking-wide">Momentum Scanner</h1>
-          <div className="ml-auto text-[10px] text-muted-foreground font-mono-num">
+          <Link to="/trades" className="ml-auto text-[11px] rounded border border-border bg-background hover:bg-surface-2 px-2 py-1 text-muted-foreground hover:text-foreground">
+            Trades log
+          </Link>
+          <div className="text-[10px] text-muted-foreground font-mono-num">
             Bankroll ${bankroll.toLocaleString()} · max {stakeCapPct}%/trade
           </div>
         </div>
