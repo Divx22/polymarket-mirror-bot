@@ -622,16 +622,16 @@ const CardShell = ({
 );
 
 const CardHeader = ({
-  city, lat, lon, leader, runner, sourceLabel, eventTime,
-}: { city: string | null; lat?: number | null; lon?: number | null; leader: string; runner: string; sourceLabel: string; eventTime?: string | null }) => (
+  title, city, lat, lon, leader, runner, sourceLabel, eventTime,
+}: { title?: string | null; city: string | null; lat?: number | null; lon?: number | null; leader: string; runner: string; sourceLabel: string; eventTime?: string | null }) => (
   <div className="px-4 pt-3 pb-2 border-b border-border/60 bg-surface-2/30">
     <div className="flex items-start justify-between gap-2">
       <div className="flex-1 min-w-0">
-        {city && (
-          <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-0.5">{sourceLabel}</div>
-        )}
-        {city && (
-          <div className="text-xl sm:text-2xl font-extrabold text-foreground leading-tight">{city}</div>
+        <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-0.5">
+          {sourceLabel}{city ? ` · ${city}` : ""}
+        </div>
+        {title && (
+          <div className="text-base sm:text-lg font-extrabold text-foreground leading-snug">{title}</div>
         )}
         <div className="mt-1 flex items-baseline gap-2 flex-wrap">
           <span className="text-base font-bold text-emerald-400">{leader}</span>
@@ -700,7 +700,7 @@ const Row = ({ m, onSelect, stake, stakePct, score }: { m: Movement; onSelect?: 
 
   return (
     <CardShell onClick={openCard} clickable>
-      <CardHeader city={m.market.city} lat={m.market.latitude} lon={m.market.longitude} leader={m.leader.label} runner={m.runnerUp.label} sourceLabel="In your scanner" eventTime={m.market.event_time} />
+      <CardHeader title={m.market.market_question} city={m.market.city} lat={m.market.latitude} lon={m.market.longitude} leader={m.leader.label} runner={m.runnerUp.label} sourceLabel="In your scanner" eventTime={m.market.event_time} />
       <div className="px-4 py-3 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={cn("inline-flex items-center px-2.5 py-1 rounded-md border text-[12px] font-bold uppercase tracking-wide", meta.badge)}>
@@ -780,7 +780,7 @@ const ExternalRow = ({ m, stake, stakePct, score }: { m: ExternalMovement } & Ro
 
   return (
     <CardShell onClick={openCard} clickable={!!m.polymarket_url}>
-      <CardHeader city={m.city} leader={m.leader_label} runner={m.runner_label} sourceLabel="From Polymarket" eventTime={m.event_time} />
+      <CardHeader title={m.event_title} city={m.city} leader={m.leader_label} runner={m.runner_label} sourceLabel="From Polymarket" eventTime={m.event_time} />
       <div className="px-4 py-3 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={cn("inline-flex items-center px-2.5 py-1 rounded-md border text-[12px] font-bold uppercase tracking-wide", meta.badge)}>
