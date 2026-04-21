@@ -123,6 +123,10 @@ export function projectPeakTempC(
   meanC: number;
   bandC: number;
   sigmaC: number;
+  bandUpC: number;
+  bandDownC: number;
+  sigmaUpC: number;
+  sigmaDownC: number;
   peak: PeakConditions | null;
   forecastDrift: boolean;
   plateauDetected: boolean;
