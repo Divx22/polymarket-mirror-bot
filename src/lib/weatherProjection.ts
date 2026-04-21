@@ -250,6 +250,26 @@ export function projectPeakTempC(
     }
   }
 
+  // Boundary nudge: when realized anchor sits within 0.3°C of an integer
+  // bucket boundary AND we're not past peak AND temp is still trending toward
+  // that boundary, nudge the mean 0.2°C across so the projection doesn't
+  // bury the next-bucket case in a midpoint tie (e.g. realized 10.5 → 11.2).
+  if (anchorBinding && !pastPeak) {
+    const trendUp = s.temp_forecast_1h != null && s.temp_forecast_1h > s.temperature_now;
+    const trendDown = s.temp_forecast_1h != null && s.temp_forecast_1h < s.temperature_now;
+    if (extreme === "max" && trendUp) {
+      const nextBoundary = Math.ceil(meanC);
+      if (nextBoundary - meanC <= 0.3 && nextBoundary - meanC > 0) {
+        meanC = nextBoundary + 0.2;
+      }
+    } else if (extreme === "min" && trendDown) {
+      const nextBoundary = Math.floor(meanC);
+      if (meanC - nextBoundary <= 0.3 && meanC - nextBoundary > 0) {
+        meanC = nextBoundary - 0.2;
+      }
+    }
+  }
+
   // Asymmetric collapse: once anchored to realized extreme, motion in the
   // "re-extreme" direction is rare; natural reversion dominates.
   if (anchorBinding) {
