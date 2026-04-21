@@ -243,7 +243,14 @@ export const MomentumBreakouts = ({
         momentumScore(b.leaderNow, b.gapNow, b.netDelta, b.trajectory) -
         momentumScore(a.leaderNow, a.gapNow, a.netDelta, a.trajectory),
       );
-      setExternals(mapped);
+      // Defensive client-side filter in case the function returns markets outside the window.
+      const cutoffMs = Date.now() + windowHours * 3_600_000;
+      const filtered = mapped.filter((m) => {
+        if (!m.event_time) return true;
+        const t = Date.parse(m.event_time);
+        return !Number.isFinite(t) || t <= cutoffMs;
+      });
+      setExternals(filtered);
     } catch (e: any) {
       console.error("Discover failed", e);
     } finally {
