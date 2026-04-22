@@ -363,9 +363,6 @@ Deno.serve(async (req) => {
         const gapNow = leader.mid - runner.mid;
         const evTitle = String(ev?.title ?? "").toLowerCase();
         const isHighTemp = /\b(highest|hottest|warmest|high\s+temp)/.test(evTitle);
-        // Quality filter: skip markets where leader is already >85% — too expensive,
-        // little remaining upside. Applies to all modes except single-event lookups.
-        if (!singleMode && leader.mid > 0.85) return;
         if (!singleMode && !isHighTemp && (gapNow < gapMin || leader.mid > MAX_ENTRY_PRICE)) return;
 
         // Skip expensive history fetches for pass-through events that don't meet
