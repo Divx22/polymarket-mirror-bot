@@ -613,16 +613,30 @@ export const MomentumBreakouts = ({
           );
         }
         if (merged.length === 0) return null;
+        const visible = merged.slice(0, visibleCount);
+        const hasMore = merged.length > visible.length;
         return (
-          <div className="p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {merged.map((row) => {
-              const stake = suggestStake(bankroll, stakeCapPct, row.sortScore);
-              const stakePct = bankroll > 0 ? (stake / bankroll) * 100 : 0;
-              return row.kind === "local"
-                ? <Row key={row.key} m={row.data} outs={outcomes[row.data.market.id] ?? []} onSelect={onSelect} stake={stake} stakePct={stakePct} score={row.sortScore} bankroll={bankroll} stakeCapPct={stakeCapPct} onDetectResolution={detectResolution} detectingResolution={detectingIds.has(row.data.market.id)} />
-                : <ExternalRow key={row.key} m={row.data} stake={stake} stakePct={stakePct} score={row.sortScore} bankroll={bankroll} stakeCapPct={stakeCapPct} />;
-            })}
-          </div>
+          <>
+            <div className="p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {visible.map((row) => {
+                const stake = suggestStake(bankroll, stakeCapPct, row.sortScore);
+                const stakePct = bankroll > 0 ? (stake / bankroll) * 100 : 0;
+                return row.kind === "local"
+                  ? <Row key={row.key} m={row.data} outs={outcomes[row.data.market.id] ?? []} onSelect={onSelect} stake={stake} stakePct={stakePct} score={row.sortScore} bankroll={bankroll} stakeCapPct={stakeCapPct} onDetectResolution={detectResolution} detectingResolution={detectingIds.has(row.data.market.id)} />
+                  : <ExternalRow key={row.key} m={row.data} stake={stake} stakePct={stakePct} score={row.sortScore} bankroll={bankroll} stakeCapPct={stakeCapPct} />;
+              })}
+            </div>
+            {hasMore && (
+              <div className="px-3 sm:px-4 pb-4 flex justify-center">
+                <button
+                  onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                  className="text-xs rounded border border-border bg-background hover:bg-surface-2 px-3 py-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Show more ({merged.length - visible.length} remaining)
+                </button>
+              </div>
+            )}
+          </>
         );
       })()}
     </div>
