@@ -212,6 +212,9 @@ export const MomentumBreakouts = ({
   const [externals, setExternals] = useState<ExternalMovement[]>([]);
   const [scannedAt, setScannedAt] = useState<number | null>(null);
   const [progress, setProgress] = useState(0);
+  // Discovery pagination: show first N results, user can load more.
+  const PAGE_SIZE = 10;
+  const [visibleCount, setVisibleCount] = useState<number>(PAGE_SIZE);
   // Threshold (0–1). Editable via slider when showThresholdControl is true.
   const [gapMin, setGapMin] = useState<number>(gapMinProp ?? DEFAULT_GAP_MIN);
   // Resolution window in hours. User-selectable: 8 / 12 / 24.
