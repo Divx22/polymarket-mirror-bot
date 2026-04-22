@@ -32,6 +32,7 @@ const FLAT_BAND = 0.01;
 const WINDOW_OPTIONS = [8, 12, 24] as const;
 type WindowHours = typeof WINDOW_OPTIONS[number];
 const DEFAULT_WINDOW: WindowHours = 12;
+const DISCOVER_MAX_HOURS = 48;
 
 type Trajectory = "accelerating" | "widening" | "flat" | "narrowing";
 type HistPoint = { t: number; p: number };
@@ -389,16 +390,10 @@ export const MomentumBreakouts = ({
     for (let i = 0; i < slice.length; i += BATCH) {
       const batch = slice.slice(i, i + BATCH);
       const enriched = await Promise.all(batch.map((r) => enrichResult(r, coordsByCity)));
-      const cutoffMs = Date.now() + windowHours * 3_600_000;
-      const filtered = enriched.filter((m) => {
-        if (!m.event_time) return true;
-        const t = Date.parse(m.event_time);
-        return !Number.isFinite(t) || t <= cutoffMs;
-      });
-      if (filtered.length > 0) {
+      if (enriched.length > 0) {
         setExternals((prev) => {
           const seen = new Set(prev.map((p) => p.event_slug).filter(Boolean));
-          const fresh = filtered.filter((f) => !f.event_slug || !seen.has(f.event_slug));
+          const fresh = enriched.filter((f) => !f.event_slug || !seen.has(f.event_slug));
           const merged = [...prev, ...fresh];
           merged.sort((a, b) =>
             momentumScore(b.leaderNow, b.gapNow, b.netDelta, b.trajectory) -
@@ -423,7 +418,7 @@ export const MomentumBreakouts = ({
     }
     try {
       const { data, error } = await supabase.functions.invoke("weather-discover-momentum", {
-        body: { gap_min: gapMin, max_hours: windowHours },
+        body: { gap_min: gapMin, max_hours: DISCOVER_MAX_HOURS },
       });
       if (error) throw error;
       const results = (data?.results ?? []) as any[];
@@ -512,15 +507,6 @@ export const MomentumBreakouts = ({
   useEffect(() => {
     // Re-scan local list whenever the window changes so the visible set matches.
     if (markets.length > 0 && !scanning) scan();
-    // Also re-filter any externals already loaded.
-    if (externals.length > 0) {
-      const cutoffMs = Date.now() + windowHours * 3_600_000;
-      setExternals((prev) => prev.filter((m) => {
-        if (!m.event_time) return true;
-        const t = Date.parse(m.event_time);
-        return !Number.isFinite(t) || t <= cutoffMs;
-      }));
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [windowHours]);
 
