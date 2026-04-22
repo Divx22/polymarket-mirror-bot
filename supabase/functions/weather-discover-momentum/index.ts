@@ -337,7 +337,7 @@ Deno.serve(async (req) => {
     };
     const results: Result[] = [];
 
-    const BATCH = 4;
+    const BATCH = 12;
     for (let i = 0; i < eligible.length; i += BATCH) {
       const batch = eligible.slice(i, i + BATCH);
       await Promise.all(batch.map(async (ev) => {
@@ -361,33 +361,32 @@ Deno.serve(async (req) => {
         const leader = valid[0];
         const runner = valid[1];
         const gapNow = leader.mid - runner.mid;
-        // High-temperature markets ("highest", "hottest", "warmest", "high temp")
-        // are never filtered out — user wants full coverage of those.
         const evTitle = String(ev?.title ?? "").toLowerCase();
         const isHighTemp = /\b(highest|hottest|warmest|high\s+temp)/.test(evTitle);
-        // In single-event mode or high-temp mode, bypass gap/price filters so
-        // every qualifying event renders even if it doesn't meet momentum thresholds.
         if (!singleMode && !isHighTemp && (gapNow < gapMin || leader.mid > MAX_ENTRY_PRICE)) return;
 
-        const [lh, rh] = await Promise.all([fetchHistory(leader.tokenId), fetchHistory(runner.tokenId)]);
-        const l1h = priceAt(lh, target1h);
-        const r1h = priceAt(rh, target1h);
-        // 1h gap is informational only (used for trajectory). Fresh widenings (no 1h history
-        // or gap_1h < gapMin) still qualify as long as gap_now meets the threshold.
-        const gap1h = (l1h != null && r1h != null) ? l1h - r1h : gapNow;
-
-        const target2h = now - 2 * 3_600_000;
-        const l2h = priceAt(lh, target2h);
-        const r2h = priceAt(rh, target2h);
-        const gap2h = (l2h != null && r2h != null) ? l2h - r2h : gap1h;
-        const d1 = gap1h - gap2h;
-        const d2 = gapNow - gap1h;
-        const netDelta = gapNow - gap2h;
-        let trajectory: Trajectory;
-        if (d1 > 0 && d2 > 0 && d2 >= d1) trajectory = "accelerating";
-        else if (netDelta > FLAT_BAND) trajectory = "widening";
-        else if (netDelta < -FLAT_BAND) trajectory = "narrowing";
-        else trajectory = "flat";
+        // Skip expensive history fetches for pass-through events that don't meet
+        // momentum thresholds — trajectory math isn't meaningful and slows scan.
+        const skipHistory = (singleMode || isHighTemp) && (gapNow < gapMin || leader.mid > MAX_ENTRY_PRICE);
+        let gap1h = gapNow, gap2h = gapNow, netDelta = 0;
+        let trajectory: Trajectory = "flat";
+        if (!skipHistory) {
+          const [lh, rh] = await Promise.all([fetchHistory(leader.tokenId), fetchHistory(runner.tokenId)]);
+          const l1h = priceAt(lh, target1h);
+          const r1h = priceAt(rh, target1h);
+          gap1h = (l1h != null && r1h != null) ? l1h - r1h : gapNow;
+          const target2h = now - 2 * 3_600_000;
+          const l2h = priceAt(lh, target2h);
+          const r2h = priceAt(rh, target2h);
+          gap2h = (l2h != null && r2h != null) ? l2h - r2h : gap1h;
+          const d1 = gap1h - gap2h;
+          const d2 = gapNow - gap1h;
+          netDelta = gapNow - gap2h;
+          if (d1 > 0 && d2 > 0 && d2 >= d1) trajectory = "accelerating";
+          else if (netDelta > FLAT_BAND) trajectory = "widening";
+          else if (netDelta < -FLAT_BAND) trajectory = "narrowing";
+          else trajectory = "flat";
+        }
 
         const slug = ev?.slug ?? null;
         const text = String(ev?.title ?? "") + " " + subs.map((s) => s?.question ?? "").join(" ");
