@@ -337,6 +337,7 @@ export const MomentumBreakouts = ({
         body: { gap_min: gapMin, max_hours: windowHours },
       });
       if (error) throw error;
+      setVisibleCount(PAGE_SIZE);
       const results = (data?.results ?? []) as any[];
       // Build a coord lookup from the user's local markets so we avoid an
       // extra geocode call whenever possible.
