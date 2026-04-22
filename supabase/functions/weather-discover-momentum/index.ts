@@ -361,9 +361,13 @@ Deno.serve(async (req) => {
         const leader = valid[0];
         const runner = valid[1];
         const gapNow = leader.mid - runner.mid;
-        // In single-event mode, bypass gap/price filters so the requested URL
-        // always renders even if it doesn't qualify on momentum.
-        if (!singleMode && (gapNow < gapMin || leader.mid > MAX_ENTRY_PRICE)) return;
+        // High-temperature markets ("highest", "hottest", "warmest", "high temp")
+        // are never filtered out — user wants full coverage of those.
+        const evTitle = String(ev?.title ?? "").toLowerCase();
+        const isHighTemp = /\b(highest|hottest|warmest|high\s+temp)/.test(evTitle);
+        // In single-event mode or high-temp mode, bypass gap/price filters so
+        // every qualifying event renders even if it doesn't meet momentum thresholds.
+        if (!singleMode && !isHighTemp && (gapNow < gapMin || leader.mid > MAX_ENTRY_PRICE)) return;
 
         const [lh, rh] = await Promise.all([fetchHistory(leader.tokenId), fetchHistory(runner.tokenId)]);
         const l1h = priceAt(lh, target1h);
