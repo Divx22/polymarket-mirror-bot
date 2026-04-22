@@ -222,6 +222,10 @@ export const MomentumBreakouts = ({
   const [detectingIds, setDetectingIds] = useState<Set<string>>(new Set());
   const [singleUrl, setSingleUrl] = useState<string>("");
   const [analyzingUrl, setAnalyzingUrl] = useState(false);
+  // Discovery: keep raw (unenriched) results so we can lazily geocode/weather more on demand.
+  const rawResultsRef = useRef<any[]>([]);
+  const coordsCacheRef = useRef<Map<string, { lat: number; lon: number }>>(new Map());
+  const enrichedSlugsRef = useRef<Set<string>>(new Set());
 
   const detectResolution = async (marketId: string) => {
     setDetectingIds((s) => new Set(s).add(marketId));
