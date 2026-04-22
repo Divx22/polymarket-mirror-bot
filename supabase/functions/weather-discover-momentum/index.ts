@@ -360,6 +360,8 @@ Deno.serve(async (req) => {
         valid.sort((a, b) => b.mid - a.mid);
         const leader = valid[0];
         const runner = valid[1];
+        // Filter: avoid markets where leader is already at/near 100%
+        if (leader.mid >= 0.995) return;
         const gapNow = leader.mid - runner.mid;
         const evTitle = String(ev?.title ?? "").toLowerCase();
         const isHighTemp = /\b(highest|hottest|warmest|high\s+temp)/.test(evTitle);
