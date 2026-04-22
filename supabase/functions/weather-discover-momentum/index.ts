@@ -363,13 +363,10 @@ Deno.serve(async (req) => {
         // Filter: avoid markets where leader is already at/near 100%
         if (leader.mid >= 0.995) return;
         const gapNow = leader.mid - runner.mid;
-        const evTitle = String(ev?.title ?? "").toLowerCase();
-        const isHighTemp = /\b(highest|hottest|warmest|high\s+temp)/.test(evTitle);
-        if (!singleMode && !isHighTemp && (gapNow < gapMin || leader.mid > MAX_ENTRY_PRICE)) return;
 
-        // Skip expensive history fetches for pass-through events that don't meet
-        // momentum thresholds — trajectory math isn't meaningful and slows scan.
-        const skipHistory = (singleMode || isHighTemp) && (gapNow < gapMin || leader.mid > MAX_ENTRY_PRICE);
+        // Discovery mode should scan broadly and only exclude effectively closed markets.
+        // The UI handles pagination and progressive loading.
+        const skipHistory = false;
         let gap1h = gapNow, gap2h = gapNow, netDelta = 0;
         let trajectory: Trajectory = "flat";
         if (!skipHistory) {
