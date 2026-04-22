@@ -222,6 +222,10 @@ export const MomentumBreakouts = ({
   const [detectingIds, setDetectingIds] = useState<Set<string>>(new Set());
   const [singleUrl, setSingleUrl] = useState<string>("");
   const [analyzingUrl, setAnalyzingUrl] = useState(false);
+  // Discovery: keep raw (unenriched) results so we can lazily geocode/weather more on demand.
+  const rawResultsRef = useRef<any[]>([]);
+  const coordsCacheRef = useRef<Map<string, { lat: number; lon: number }>>(new Map());
+  const enrichedSlugsRef = useRef<Set<string>>(new Set());
 
   const detectResolution = async (marketId: string) => {
     setDetectingIds((s) => new Set(s).add(marketId));
@@ -330,69 +334,111 @@ export const MomentumBreakouts = ({
     setScanning(false);
   };
 
-  const discover = async () => {
-    setDiscovering(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("weather-discover-momentum", {
-        body: { gap_min: gapMin, max_hours: windowHours },
-      });
-      if (error) throw error;
-      setVisibleCount(PAGE_SIZE);
-      const results = (data?.results ?? []) as any[];
-      // Build a coord lookup from the user's local markets so we avoid an
-      // extra geocode call whenever possible.
-      const coordsByCity = new Map<string, { lat: number; lon: number }>();
-      for (const lm of markets) {
-        if (lm.city && Number.isFinite(lm.latitude) && Number.isFinite(lm.longitude)) {
-          coordsByCity.set(lm.city.trim().toLowerCase(), { lat: Number(lm.latitude), lon: Number(lm.longitude) });
-        }
+  // Helper: enrich a raw discover result with city coords + Open-Meteo weather.
+  // Used by discover() to lazily enrich only the rows the user actually views.
+  const enrichResult = async (
+    r: any,
+    coordsByCity: Map<string, { lat: number; lon: number }>,
+  ): Promise<ExternalMovement> => {
+    const city: string | null = r.city ?? null;
+    let coords: { lat: number; lon: number } | null = null;
+    if (city) {
+      coords = coordsByCity.get(city.trim().toLowerCase()) ?? null;
+      if (!coords) {
+        try { coords = await geocodeCity(city); } catch { coords = null; }
+        if (coords) coordsByCity.set(city.trim().toLowerCase(), coords);
       }
+    }
+    let weather: OpenMeteoSnapshot | null = null;
+    if (coords) {
+      try { weather = await fetchOpenMeteoSnapshot(coords.lat, coords.lon); } catch { weather = null; }
+    }
+    return {
+      source: "external",
+      event_title: r.event_title,
+      event_slug: r.event_slug,
+      city,
+      event_time: r.event_time,
+      polymarket_url: r.polymarket_url,
+      leader_label: r.leader_label,
+      runner_label: r.runner_label,
+      leaderNow: r.leader_now,
+      gap2h: r.gap_2h ?? r.gap_1h,
+      gap1h: r.gap_1h,
+      gapNow: r.gap_now,
+      netDelta: r.net_delta,
+      trajectory: r.trajectory,
+      lat: coords?.lat ?? null,
+      lon: coords?.lon ?? null,
+      weather,
+      allBuckets: Array.isArray(r.buckets) ? r.buckets : [],
+    };
+  };
 
-      const enriched: ExternalMovement[] = await Promise.all(results.map(async (r) => {
-        const city: string | null = r.city ?? null;
-        let coords: { lat: number; lon: number } | null = null;
-        if (city) {
-          coords = coordsByCity.get(city.trim().toLowerCase()) ?? null;
-          if (!coords) coords = await geocodeCity(city);
-        }
-        const weather = coords ? await fetchOpenMeteoSnapshot(coords.lat, coords.lon) : null;
-        return {
-          source: "external",
-          event_title: r.event_title,
-          event_slug: r.event_slug,
-          city,
-          event_time: r.event_time,
-          polymarket_url: r.polymarket_url,
-          leader_label: r.leader_label,
-          runner_label: r.runner_label,
-          leaderNow: r.leader_now,
-          gap2h: r.gap_2h ?? r.gap_1h,
-          gap1h: r.gap_1h,
-          gapNow: r.gap_now,
-          netDelta: r.net_delta,
-          trajectory: r.trajectory,
-          lat: coords?.lat ?? null,
-          lon: coords?.lon ?? null,
-          weather,
-          allBuckets: Array.isArray((r as any).buckets) ? (r as any).buckets : [],
-        };
-      }));
-
-      // Same momentum-weighted sort as local results.
-      enriched.sort((a, b) =>
-        momentumScore(b.leaderNow, b.gapNow, b.netDelta, b.trajectory) -
-        momentumScore(a.leaderNow, a.gapNow, a.netDelta, a.trajectory),
-      );
-      // Defensive client-side filter in case the function returns markets outside the window.
+  /** Enrich the next chunk of raw results in the background and append them to externals. */
+  const enrichChunk = async (count: number) => {
+    const coordsByCity = coordsCacheRef.current;
+    const remaining = rawResultsRef.current.filter((r) => {
+      const key = r.event_slug ?? r.event_title;
+      return !enrichedSlugsRef.current.has(key);
+    });
+    const slice = remaining.slice(0, count);
+    if (slice.length === 0) return;
+    for (const r of slice) enrichedSlugsRef.current.add(r.event_slug ?? r.event_title);
+    const BATCH = 4;
+    for (let i = 0; i < slice.length; i += BATCH) {
+      const batch = slice.slice(i, i + BATCH);
+      const enriched = await Promise.all(batch.map((r) => enrichResult(r, coordsByCity)));
       const cutoffMs = Date.now() + windowHours * 3_600_000;
       const filtered = enriched.filter((m) => {
         if (!m.event_time) return true;
         const t = Date.parse(m.event_time);
         return !Number.isFinite(t) || t <= cutoffMs;
       });
-      setExternals(filtered);
+      if (filtered.length > 0) {
+        setExternals((prev) => {
+          const seen = new Set(prev.map((p) => p.event_slug).filter(Boolean));
+          const fresh = filtered.filter((f) => !f.event_slug || !seen.has(f.event_slug));
+          const merged = [...prev, ...fresh];
+          merged.sort((a, b) =>
+            momentumScore(b.leaderNow, b.gapNow, b.netDelta, b.trajectory) -
+            momentumScore(a.leaderNow, a.gapNow, a.netDelta, a.trajectory),
+          );
+          return merged;
+        });
+      }
+    }
+  };
+
+  const discover = async () => {
+    setDiscovering(true);
+    setExternals([]);
+    setVisibleCount(PAGE_SIZE);
+    enrichedSlugsRef.current = new Set();
+    coordsCacheRef.current = new Map();
+    for (const lm of markets) {
+      if (lm.city && Number.isFinite(lm.latitude) && Number.isFinite(lm.longitude)) {
+        coordsCacheRef.current.set(lm.city.trim().toLowerCase(), { lat: Number(lm.latitude), lon: Number(lm.longitude) });
+      }
+    }
+    try {
+      const { data, error } = await supabase.functions.invoke("weather-discover-momentum", {
+        body: { gap_min: gapMin, max_hours: windowHours },
+      });
+      if (error) throw error;
+      const results = (data?.results ?? []) as any[];
+      results.sort((a, b) =>
+        momentumScore(b.leader_now, b.gap_now, b.net_delta, b.trajectory) -
+        momentumScore(a.leader_now, a.gap_now, a.net_delta, a.trajectory),
+      );
+      rawResultsRef.current = results;
+      toast.success(`Discovered ${results.length} markets — enriching first ${Math.min(PAGE_SIZE, results.length)}…`);
+      await enrichChunk(PAGE_SIZE);
+      // Continue enriching the rest in the background so "Show more" is instant.
+      void enrichChunk(results.length);
     } catch (e: any) {
       console.error("Discover failed", e);
+      toast.error(e?.message ?? "Discovery failed");
     } finally {
       setDiscovering(false);
     }
